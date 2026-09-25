@@ -40,7 +40,7 @@ const chargerConditionStyles: Record<ChargerCondition, string> = {
   Missing: "bg-red-500/10 text-red-700 dark:text-red-400",
 };
 
-function Section({
+export function Section({
   title,
   icon: Icon,
   children,
@@ -60,7 +60,7 @@ function Section({
   );
 }
 
-function Detail({
+export function Detail({
   label,
   children,
   mono,
@@ -84,7 +84,7 @@ function Detail({
   );
 }
 
-function Pill({
+export function Pill({
   className,
   children,
 }: {
@@ -103,11 +103,13 @@ function Pill({
   );
 }
 
-function OwnershipTimeline({
+type TimelineItem = Pick<Laptop, "history" | "purchaseDate" | "status">;
+
+export function OwnershipTimeline({
   laptop,
   today,
 }: {
-  laptop: Laptop;
+  laptop: TimelineItem;
   today: Date | null;
 }) {
   const owners = new Set(
@@ -163,7 +165,7 @@ function EntryDot({
   laptop,
 }: {
   entry: OwnershipEntry;
-  laptop: Laptop;
+  laptop: TimelineItem;
 }) {
   if (entry.to === null) {
     return (

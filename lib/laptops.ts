@@ -874,7 +874,10 @@ export function formatSpan(from: Date, to: Date) {
   return rest === 0 ? `${years} yr` : `${years} yr ${rest} mo`;
 }
 
-export function warrantyInfo(laptop: Laptop, today: Date) {
+export function warrantyInfo(
+  laptop: Pick<Laptop, "purchaseDate" | "warrantyYears">,
+  today: Date,
+) {
   const end = parseDate(laptop.purchaseDate);
   end.setFullYear(end.getFullYear() + laptop.warrantyYears);
   const daysLeft = Math.ceil((end.getTime() - today.getTime()) / 86_400_000);
@@ -890,6 +893,12 @@ export function formatDate(date: Date) {
     year: "numeric",
   });
 }
+
+// The fields the shared assign / repair dialogs need from any tracked item.
+export type TrackedItem = Pick<
+  Laptop,
+  "brand" | "model" | "assetTag" | "handler"
+>;
 
 export function initials(name: string) {
   return name

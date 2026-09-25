@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { type Laptop } from "@/lib/laptops";
+import { type TrackedItem } from "@/lib/laptops";
 import { cn } from "@/lib/utils";
 
 export type RepairOutcome = "handler" | "stock" | "retire";
@@ -32,8 +32,10 @@ export function ReturnFromRepairDialog({
   open,
   onOpenChange,
   onConfirm,
+  noun = "laptop",
 }: {
-  laptop: Laptop | null;
+  laptop: TrackedItem | null;
+  noun?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (outcome: RepairOutcome, note: string) => void;
@@ -41,7 +43,9 @@ export function ReturnFromRepairDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
-        {laptop && <ReturnForm laptop={laptop} onConfirm={onConfirm} />}
+        {laptop && (
+          <ReturnForm laptop={laptop} onConfirm={onConfirm} noun={noun} />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -50,8 +54,10 @@ export function ReturnFromRepairDialog({
 function ReturnForm({
   laptop,
   onConfirm,
+  noun,
 }: {
-  laptop: Laptop;
+  laptop: TrackedItem;
+  noun: string;
   onConfirm: (outcome: RepairOutcome, note: string) => void;
 }) {
   const options: {
@@ -174,7 +180,7 @@ function ReturnForm({
           variant={outcome === "retire" ? "destructive" : "default"}
           onClick={() => onConfirm(outcome, note.trim())}
         >
-          {outcome === "retire" ? "Retire laptop" : "Mark as repaired"}
+          {outcome === "retire" ? `Retire ${noun}` : "Mark as repaired"}
         </Button>
       </DialogFooter>
     </>

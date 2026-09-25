@@ -2,47 +2,56 @@
 
 import { useMemo, useState } from "react";
 import {
+  BackpackIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
   CircleDotIcon,
-  CpuIcon,
   DownloadIcon,
   EllipsisIcon,
   EyeIcon,
   HashIcon,
+  HeadphonesIcon,
   HourglassIcon,
-  LaptopIcon,
+  TvMinimalIcon,
+  MouseIcon,
   PaletteIcon,
   SearchIcon,
   ShieldCheckIcon,
+  SlidersHorizontalIcon,
+  TagIcon,
   Trash2Icon,
-  UserIcon,
   Undo2Icon,
+  UserIcon,
   UserPlusIcon,
   WrenchIcon,
   XIcon,
+  type LucideIcon,
 } from "lucide-react";
 
-import { AddLaptopDialog } from "@/components/add-laptop-dialog";
+import { AccessoryDetailsDialog } from "@/components/accessory-details-dialog";
+import { AddAccessoryDialog } from "@/components/add-accessory-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
+import {
+  ColumnHeader,
+  FilterMenu,
+  cellClass,
+  isoToday,
+  rowsPerPageOptions,
+} from "@/components/laptop-inventory-table";
 import {
   ReturnFromRepairDialog,
   type RepairOutcome,
 } from "@/components/return-from-repair-dialog";
-import { LaptopDetailsDialog } from "@/components/laptop-details-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -50,48 +59,47 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
+  accessoryConfigs,
+  initialAccessories,
+  type Accessory,
+  type AccessoryConfig,
+  type AccessoryKind,
+} from "@/lib/accessories";
+import { type Employee } from "@/lib/employees";
+import {
   formatAge,
   formatDate,
-  initialLaptops,
   initials,
   parseDate,
   statusStyles,
   statuses,
   useToday,
   warrantyInfo,
-  type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops";
-import { type Employee } from "@/lib/employees";
 import { cn } from "@/lib/utils";
+
+export const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
+  headset: HeadphonesIcon,
+  mouse: MouseIcon,
+  monitor: TvMinimalIcon,
+  bag: BackpackIcon,
+};
 
 type Tab = "All" | LaptopStatus;
 const tabs: Tab[] = ["All", ...statuses];
 
-export const cellClass =
-  "border-r border-border px-2.5 py-2 align-middle whitespace-nowrap";
-
-export function isoToday() {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-export const rowsPerPageOptions = [10, 15, 25, 50];
-
-function exportCsv(rows: Laptop[], today: Date | null) {
+function exportCsv(
+  rows: Accessory[],
+  config: AccessoryConfig,
+  today: Date | null,
+) {
   const header = [
     "Asset tag",
     "Brand",
     "Model",
     "Serial number",
-    "CPU",
-    "RAM",
-    "Storage",
-    "OS",
+    ...config.specFields.map((field) => field.label),
     "Color",
     "Current handler",
     "Department",
@@ -99,35 +107,22 @@ function exportCsv(rows: Laptop[], today: Date | null) {
     "Age",
     "Warranty ends",
     "Status",
-    "Charger connector",
-    "Charger wattage",
-    "Charger part no.",
-    "Charger serial no.",
-    "Charger condition",
   ];
-  const lines = rows.map((l) => {
-    const warranty = today ? warrantyInfo(l, today) : null;
+  const lines = rows.map((item) => {
+    const warranty = today ? warrantyInfo(item, today) : null;
     return [
-      l.assetTag,
-      l.brand,
-      l.model,
-      l.serialNumber,
-      l.cpu,
-      l.ram,
-      l.storage,
-      l.os,
-      l.color,
-      l.handler ?? "Unassigned",
-      l.department ?? "",
-      l.purchaseDate,
-      today ? formatAge(l.purchaseDate, today) : "",
+      item.assetTag,
+      item.brand,
+      item.model,
+      item.serialNumber,
+      ...config.specFields.map((field) => item.specs[field.key] ?? ""),
+      item.color,
+      item.handler ?? "Unassigned",
+      item.department ?? "",
+      item.purchaseDate,
+      today ? formatAge(item.purchaseDate, today) : "",
       warranty ? formatDate(warranty.end) : "",
-      l.status,
-      l.charger.connector,
-      `${l.charger.wattage} W`,
-      l.charger.partNumber,
-      l.charger.serialNumber,
-      l.charger.condition,
+      item.status,
     ]
       .map((value) => `"${String(value).replaceAll('"', '""')}"`)
       .join(",");
@@ -138,139 +133,62 @@ function exportCsv(rows: Laptop[], today: Date | null) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "laptop-inventory.csv";
+  link.download = `${config.plural.toLowerCase().replaceAll(" ", "-")}-inventory.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
 
-export function ColumnHeader({
-  icon: Icon,
-  children,
-  className,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <th
-      className={cn(
-        "sticky top-0 z-10 h-9 border-r bg-card shadow-[inset_0_-1px_0_var(--color-border)] border-border px-2.5 text-left text-[11px] font-medium whitespace-nowrap text-muted-foreground",
-        className,
-      )}
-    >
-      <span className="inline-flex items-center gap-1.5">
-        <Icon className="size-3" />
-        {children}
-      </span>
-    </th>
-  );
-}
+export function AccessoryInventoryTable({ kind }: { kind: AccessoryKind }) {
+  const config = accessoryConfigs[kind];
+  const Icon = accessoryIcons[kind];
+  const noun = config.singular.toLowerCase();
+  const nounPlural = config.plural.toLowerCase();
 
-export function FilterMenu<T extends string>({
-  label,
-  icon: Icon,
-  options,
-  selected,
-  onChange,
-}: {
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  options: T[];
-  selected: T[];
-  onChange: (value: T[]) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="outline"
-            className={cn(
-              "rounded-full",
-              selected.length > 0 && "border-foreground/40",
-            )}
-          />
-        }
-      >
-        <Icon className="text-muted-foreground" />
-        {label}
-        {selected.length > 0 && (
-          <span className="flex size-4 items-center justify-center rounded-full bg-foreground text-[10px] text-background">
-            {selected.length}
-          </span>
-        )}
-        <ChevronDownIcon className="text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-44">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>{label}</DropdownMenuLabel>
-          {options.map((option) => (
-            <DropdownMenuCheckboxItem
-              key={option}
-              checked={selected.includes(option)}
-              onCheckedChange={(checked) =>
-                onChange(
-                  checked
-                    ? [...selected, option]
-                    : selected.filter((value) => value !== option),
-                )
-              }
-            >
-              {option}
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-export function LaptopInventoryTable() {
   const today = useToday();
-  const [laptops, setLaptops] = useState(initialLaptops);
+  const [items, setItems] = useState(initialAccessories[kind]);
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>("All");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rowsPerPage, setRowsPerPage] = useState(15);
   const [page, setPage] = useState(1);
-  const [viewing, setViewing] = useState<Laptop | null>(null);
+  const [viewing, setViewing] = useState<Accessory | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
-  const [assigning, setAssigning] = useState<Laptop | null>(null);
+  const [assigning, setAssigning] = useState<Accessory | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [repairing, setRepairing] = useState<Laptop | null>(null);
+  const [repairing, setRepairing] = useState<Accessory | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
 
   const brands = useMemo(
-    () => [...new Set(laptops.map((l) => l.brand))].sort(),
-    [laptops],
+    () => [...new Set(items.map((item) => item.brand))].sort(),
+    [items],
   );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return laptops.filter((l) => {
-      if (brandFilter.length && !brandFilter.includes(l.brand)) return false;
-      if (tab !== "All" && l.status !== tab) return false;
+    return items.filter((item) => {
+      if (brandFilter.length && !brandFilter.includes(item.brand)) return false;
+      if (tab !== "All" && item.status !== tab) return false;
       if (!q) return true;
       return [
-        l.assetTag,
-        l.brand,
-        l.model,
-        l.serialNumber,
-        l.handler ?? "",
-        l.department ?? "",
-        l.color,
+        item.assetTag,
+        item.brand,
+        item.model,
+        item.serialNumber,
+        item.handler ?? "",
+        item.department ?? "",
+        item.color,
+        ...Object.values(item.specs),
       ].some((value) => value.toLowerCase().includes(q));
     });
-  }, [laptops, query, brandFilter, tab]);
+  }, [items, query, brandFilter, tab]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const currentPage = Math.min(page, pageCount);
   const start = (currentPage - 1) * rowsPerPage;
   const pageRows = filtered.slice(start, start + rowsPerPage);
 
-  const pageIds = pageRows.map((l) => l.id);
+  const pageIds = pageRows.map((item) => item.id);
   const selectedOnPage = pageIds.filter((id) => selected.has(id)).length;
   const allOnPageSelected =
     pageIds.length > 0 && selectedOnPage === pageIds.length;
@@ -279,15 +197,15 @@ export function LaptopInventoryTable() {
 
   const tabCounts = useMemo(() => {
     const counts: Record<Tab, number> = {
-      All: laptops.length,
+      All: items.length,
       "In use": 0,
       Vacant: 0,
       "In repair": 0,
       Retired: 0,
     };
-    for (const l of laptops) counts[l.status] += 1;
+    for (const item of items) counts[item.status] += 1;
     return counts;
-  }, [laptops]);
+  }, [items]);
 
   function toggleRow(id: string, checked: boolean) {
     setSelected((prev) => {
@@ -309,32 +227,34 @@ export function LaptopInventoryTable() {
     });
   }
 
-  function openView(laptop: Laptop) {
-    setViewing(laptop);
+  function openView(item: Accessory) {
+    setViewing(item);
     setViewOpen(true);
   }
 
-  function openAssign(laptop: Laptop) {
-    setAssigning(laptop);
+  function openAssign(item: Accessory) {
+    setAssigning(item);
     setAssignOpen(true);
   }
 
-  function openReturn(laptop: Laptop) {
-    setRepairing(laptop);
+  function openReturn(item: Accessory) {
+    setRepairing(item);
     setRepairOpen(true);
   }
 
-  function updateLaptop(id: string, update: (laptop: Laptop) => Laptop) {
-    setLaptops((prev) => prev.map((l) => (l.id === id ? update(l) : l)));
+  function updateItem(id: string, update: (item: Accessory) => Accessory) {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? update(item) : item)),
+    );
   }
 
   function sendToRepair(id: string) {
     const note = `Sent for repair ${formatDate(new Date())}`;
-    updateLaptop(id, (l) => ({
-      ...l,
+    updateItem(id, (item) => ({
+      ...item,
       status: "In repair",
       // Ownership doesn't change during a repair; just annotate the current stint.
-      history: l.history.map((entry) =>
+      history: item.history.map((entry) =>
         entry.to === null ? { ...entry, note } : entry,
       ),
     }));
@@ -342,12 +262,12 @@ export function LaptopInventoryTable() {
 
   function returnFromRepair(id: string, outcome: RepairOutcome, note: string) {
     const todayIso = isoToday();
-    updateLaptop(id, (l) => {
+    updateItem(id, (item) => {
       if (outcome === "handler") {
         return {
-          ...l,
+          ...item,
           status: "In use",
-          history: l.history.map((entry) =>
+          history: item.history.map((entry) =>
             entry.to === null
               ? {
                   ...entry,
@@ -359,12 +279,12 @@ export function LaptopInventoryTable() {
       }
       const retire = outcome === "retire";
       return {
-        ...l,
+        ...item,
         status: retire ? "Retired" : "Vacant",
         handler: null,
         department: null,
         history: [
-          ...l.history.map((entry) =>
+          ...item.history.map((entry) =>
             entry.to === null ? { ...entry, to: todayIso } : entry,
           ),
           {
@@ -382,38 +302,32 @@ export function LaptopInventoryTable() {
     setRepairOpen(false);
   }
 
-  function assignLaptop(id: string, employee: Employee, note: string) {
+  function assignItem(id: string, employee: Employee, note: string) {
     const todayIso = isoToday();
-    setLaptops((prev) =>
-      prev.map((l) => {
-        if (l.id !== id) return l;
-        // Close out the current "with IT" stint and open one for the new owner.
-        const history = l.history.map((entry) =>
+    updateItem(id, (item) => ({
+      ...item,
+      handler: employee.name,
+      department: employee.department,
+      status: "In use",
+      // Close out the current "with IT" stint and open one for the new owner.
+      history: [
+        ...item.history.map((entry) =>
           entry.to === null ? { ...entry, to: todayIso } : entry,
-        );
-        return {
-          ...l,
+        ),
+        {
           handler: employee.name,
           department: employee.department,
-          status: "In use",
-          history: [
-            ...history,
-            {
-              handler: employee.name,
-              department: employee.department,
-              from: todayIso,
-              to: null,
-              note: note || undefined,
-            },
-          ],
-        };
-      }),
-    );
+          from: todayIso,
+          to: null,
+          note: note || undefined,
+        },
+      ],
+    }));
     setAssignOpen(false);
   }
 
-  function deleteLaptops(ids: string[]) {
-    setLaptops((prev) => prev.filter((l) => !ids.includes(l.id)));
+  function deleteItems(ids: string[]) {
+    setItems((prev) => prev.filter((item) => !ids.includes(item.id)));
     setSelected((prev) => {
       const next = new Set(prev);
       for (const id of ids) next.delete(id);
@@ -432,7 +346,7 @@ export function LaptopInventoryTable() {
       {/* Folder tabs: the active tab joins the card below */}
       <div
         role="tablist"
-        aria-label="Laptop status"
+        aria-label={`${config.singular} status`}
         className="flex items-end gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((t) => {
@@ -455,13 +369,13 @@ export function LaptopInventoryTable() {
               )}
             >
               {t === "All" ? (
-                <LaptopIcon className="size-4" />
+                <Icon className="size-4" />
               ) : (
                 <span
                   className={cn("size-2 rounded-full", statusStyles[t].dot)}
                 />
               )}
-              {t === "All" ? "All laptops" : t}
+              {t === "All" ? `All ${nounPlural}` : t}
               <span
                 className={cn(
                   "rounded-full px-1.5 text-xs tabular-nums",
@@ -488,7 +402,7 @@ export function LaptopInventoryTable() {
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => deleteLaptops([...selected])}
+                onClick={() => deleteItems([...selected])}
               >
                 <Trash2Icon />
                 Delete
@@ -498,7 +412,7 @@ export function LaptopInventoryTable() {
           <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <FilterMenu
               label="Brand"
-              icon={LaptopIcon}
+              icon={TagIcon}
               options={brands}
               selected={brandFilter}
               onChange={(value) => {
@@ -520,21 +434,22 @@ export function LaptopInventoryTable() {
                   setQuery(event.target.value);
                   setPage(1);
                 }}
-                placeholder="Search laptops"
+                placeholder={`Search ${nounPlural}`}
                 className="h-8 w-full pl-8 text-sm sm:w-48"
               />
             </div>
             <Button
               variant="outline"
-              onClick={() => exportCsv(filtered, today)}
+              onClick={() => exportCsv(filtered, config, today)}
             >
               <DownloadIcon />
               Export
             </Button>
-            <AddLaptopDialog
-              laptops={laptops}
-              onAdd={(laptop) => {
-                setLaptops((prev) => [laptop, ...prev]);
+            <AddAccessoryDialog
+              config={config}
+              items={items}
+              onAdd={(item) => {
+                setItems((prev) => [item, ...prev]);
                 setTab("All");
                 setPage(1);
               }}
@@ -555,7 +470,7 @@ export function LaptopInventoryTable() {
                     onCheckedChange={(checked) => togglePage(checked)}
                   />
                 </th>
-                <ColumnHeader icon={LaptopIcon}>Laptop</ColumnHeader>
+                <ColumnHeader icon={Icon}>{config.singular}</ColumnHeader>
                 <ColumnHeader
                   icon={HashIcon}
                   className="hidden @3xl:table-cell"
@@ -569,7 +484,10 @@ export function LaptopInventoryTable() {
                 >
                   Age
                 </ColumnHeader>
-                <ColumnHeader icon={CpuIcon} className="hidden @5xl:table-cell">
+                <ColumnHeader
+                  icon={SlidersHorizontalIcon}
+                  className="hidden @5xl:table-cell"
+                >
                   Specs
                 </ColumnHeader>
                 <ColumnHeader
@@ -591,53 +509,54 @@ export function LaptopInventoryTable() {
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((laptop) => {
-                const isSelected = selected.has(laptop.id);
-                const warranty = today ? warrantyInfo(laptop, today) : null;
-                const status = statusStyles[laptop.status];
+              {pageRows.map((item) => {
+                const isSelected = selected.has(item.id);
+                const warranty = today ? warrantyInfo(item, today) : null;
+                const status = statusStyles[item.status];
+                const summary = config.summary(item.specs);
                 return (
                   <tr
-                    key={laptop.id}
+                    key={item.id}
                     data-state={isSelected ? "selected" : undefined}
                     className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
                   >
                     <td className="w-9 border-r border-border pl-3">
                       <Checkbox
-                        aria-label={`Select ${laptop.assetTag}`}
+                        aria-label={`Select ${item.assetTag}`}
                         checked={isSelected}
                         onCheckedChange={(checked) =>
-                          toggleRow(laptop.id, checked)
+                          toggleRow(item.id, checked)
                         }
                       />
                     </td>
                     <td className={cellClass}>
-                      <div className="font-medium">{laptop.brand}</div>
+                      <div className="font-medium">{item.brand}</div>
                       <div className="text-[11px] text-muted-foreground">
-                        {laptop.model}
+                        {item.model}
                         <span className="font-mono @3xl:hidden">
                           {" "}
-                          · {laptop.assetTag}
+                          · {item.assetTag}
                         </span>
                       </div>
                     </td>
                     <td className={cn(cellClass, "hidden @3xl:table-cell")}>
-                      <div className="font-mono">{laptop.assetTag}</div>
+                      <div className="font-mono">{item.assetTag}</div>
                       <div className="font-mono text-[11px] text-muted-foreground">
-                        {laptop.serialNumber}
+                        {item.serialNumber}
                       </div>
                     </td>
                     <td className={cellClass}>
-                      {laptop.handler ? (
+                      {item.handler ? (
                         <div className="flex items-center gap-2">
                           <Avatar className="hidden size-6 after:rounded-full @2xl:flex">
                             <AvatarFallback className="bg-muted text-[9px] font-medium">
-                              {initials(laptop.handler)}
+                              {initials(item.handler)}
                             </AvatarFallback>
                           </Avatar>
                           <div className="leading-tight">
-                            <div>{laptop.handler}</div>
+                            <div>{item.handler}</div>
                             <div className="text-[11px] text-muted-foreground">
-                              {laptop.department}
+                              {item.department}
                             </div>
                           </div>
                         </div>
@@ -654,25 +573,25 @@ export function LaptopInventoryTable() {
                       )}
                     >
                       <div>
-                        {today ? formatAge(laptop.purchaseDate, today) : "—"}
+                        {today ? formatAge(item.purchaseDate, today) : "—"}
                       </div>
                       <div className="text-[11px] text-muted-foreground">
-                        {formatDate(parseDate(laptop.purchaseDate))}
+                        {formatDate(parseDate(item.purchaseDate))}
                       </div>
                     </td>
                     <td className={cn(cellClass, "hidden @5xl:table-cell")}>
-                      <div>{laptop.cpu}</div>
+                      <div>{summary.primary}</div>
                       <div className="text-[11px] text-muted-foreground">
-                        {laptop.ram} · {laptop.storage} · {laptop.os}
+                        {summary.secondary}
                       </div>
                     </td>
                     <td className={cn(cellClass, "hidden @6xl:table-cell")}>
                       <span className="inline-flex items-center gap-1.5">
                         <span
                           className="size-3 shrink-0 rounded-full ring-1 ring-foreground/15"
-                          style={{ backgroundColor: laptop.colorHex }}
+                          style={{ backgroundColor: item.colorHex }}
                         />
-                        {laptop.color}
+                        {item.color}
                       </span>
                     </td>
                     <td className={cn(cellClass, "hidden @4xl:table-cell")}>
@@ -710,29 +629,29 @@ export function LaptopInventoryTable() {
                         <span
                           className={cn("size-1.5 rounded-full", status.dot)}
                         />
-                        {laptop.status}
+                        {item.status}
                       </span>
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       {/* Same layout on every row: one primary action in a
                           fixed-width slot, everything else in the menu. */}
                       <div className="flex items-center justify-end gap-1">
-                        {laptop.status === "Vacant" ? (
+                        {item.status === "Vacant" ? (
                           <Button
                             variant="outline"
                             size="xs"
                             className="w-[4.5rem]"
-                            onClick={() => openAssign(laptop)}
+                            onClick={() => openAssign(item)}
                           >
                             <UserPlusIcon />
                             Assign
                           </Button>
-                        ) : laptop.status === "In repair" ? (
+                        ) : item.status === "In repair" ? (
                           <Button
                             variant="outline"
                             size="xs"
                             className="w-[4.5rem]"
-                            onClick={() => openReturn(laptop)}
+                            onClick={() => openReturn(item)}
                           >
                             <Undo2Icon />
                             Return
@@ -742,7 +661,7 @@ export function LaptopInventoryTable() {
                             variant="ghost"
                             size="xs"
                             className="w-[4.5rem] text-muted-foreground hover:text-foreground"
-                            onClick={() => openView(laptop)}
+                            onClick={() => openView(item)}
                           >
                             <EyeIcon />
                             View
@@ -754,7 +673,7 @@ export function LaptopInventoryTable() {
                               <Button
                                 variant="ghost"
                                 size="icon-xs"
-                                aria-label={`More actions for ${laptop.assetTag}`}
+                                aria-label={`More actions for ${item.assetTag}`}
                                 className="text-muted-foreground hover:text-foreground"
                               />
                             }
@@ -763,30 +682,28 @@ export function LaptopInventoryTable() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-40">
                             {/* Only what the row's main button doesn't already do. */}
-                            {(laptop.status === "Vacant" ||
-                              laptop.status === "In repair") && (
-                              <DropdownMenuItem
-                                onClick={() => openView(laptop)}
-                              >
+                            {(item.status === "Vacant" ||
+                              item.status === "In repair") && (
+                              <DropdownMenuItem onClick={() => openView(item)}>
                                 <EyeIcon />
                                 View details
                               </DropdownMenuItem>
                             )}
-                            {(laptop.status === "In use" ||
-                              laptop.status === "Vacant") && (
+                            {(item.status === "In use" ||
+                              item.status === "Vacant") && (
                               <DropdownMenuItem
-                                onClick={() => sendToRepair(laptop.id)}
+                                onClick={() => sendToRepair(item.id)}
                               >
                                 <WrenchIcon />
                                 Send to repair
                               </DropdownMenuItem>
                             )}
-                            {laptop.status !== "Retired" && (
+                            {item.status !== "Retired" && (
                               <DropdownMenuSeparator />
                             )}
                             <DropdownMenuItem
                               variant="destructive"
-                              onClick={() => deleteLaptops([laptop.id])}
+                              onClick={() => deleteItems([item.id])}
                             >
                               <Trash2Icon />
                               Delete
@@ -804,7 +721,7 @@ export function LaptopInventoryTable() {
                     colSpan={10}
                     className="px-4 py-12 text-center text-sm text-muted-foreground"
                   >
-                    No laptops match your filters.
+                    No {nounPlural} match your filters.
                   </td>
                 </tr>
               )}
@@ -898,6 +815,7 @@ export function LaptopInventoryTable() {
 
       <ReturnFromRepairDialog
         laptop={repairing}
+        noun={noun}
         open={repairOpen}
         onOpenChange={setRepairOpen}
         onConfirm={(outcome, note) =>
@@ -907,16 +825,20 @@ export function LaptopInventoryTable() {
 
       <AssignLaptopDialog
         laptop={assigning}
-        laptops={laptops}
+        laptops={items}
+        noun={noun}
+        icon={Icon}
         open={assignOpen}
         onOpenChange={setAssignOpen}
         onAssign={(employee, note) =>
-          assigning && assignLaptop(assigning.id, employee, note)
+          assigning && assignItem(assigning.id, employee, note)
         }
       />
 
-      <LaptopDetailsDialog
-        laptop={viewing}
+      <AccessoryDetailsDialog
+        item={viewing}
+        config={config}
+        icon={Icon}
         open={viewOpen}
         onOpenChange={setViewOpen}
         today={today}

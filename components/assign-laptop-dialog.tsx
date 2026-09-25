@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckIcon, LaptopIcon, SearchIcon, UserPlusIcon } from "lucide-react";
+import {
+  CheckIcon,
+  LaptopIcon,
+  SearchIcon,
+  UserPlusIcon,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -17,7 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { employees, type Employee } from "@/lib/employees";
-import { initials, type Laptop } from "@/lib/laptops";
+import { initials, type TrackedItem } from "@/lib/laptops";
 import { cn } from "@/lib/utils";
 
 export function AssignLaptopDialog({
@@ -26,9 +32,13 @@ export function AssignLaptopDialog({
   open,
   onOpenChange,
   onAssign,
+  noun = "laptop",
+  icon = LaptopIcon,
 }: {
-  laptop: Laptop | null;
-  laptops: Laptop[];
+  laptop: TrackedItem | null;
+  laptops: TrackedItem[];
+  noun?: string;
+  icon?: LucideIcon;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAssign: (employee: Employee, note: string) => void;
@@ -37,7 +47,13 @@ export function AssignLaptopDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
         {laptop && (
-          <AssignForm laptop={laptop} laptops={laptops} onAssign={onAssign} />
+          <AssignForm
+            laptop={laptop}
+            laptops={laptops}
+            onAssign={onAssign}
+            noun={noun}
+            icon={icon}
+          />
         )}
       </DialogContent>
     </Dialog>
@@ -48,9 +64,13 @@ function AssignForm({
   laptop,
   laptops,
   onAssign,
+  noun,
+  icon: Icon,
 }: {
-  laptop: Laptop;
-  laptops: Laptop[];
+  laptop: TrackedItem;
+  laptops: TrackedItem[];
+  noun: string;
+  icon: LucideIcon;
   onAssign: (employee: Employee, note: string) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -58,7 +78,7 @@ function AssignForm({
   const [note, setNote] = useState("");
 
   // Asset tags each employee currently holds, so IT can spot people who
-  // already have a laptop before handing out another one.
+  // already have one before handing out another.
   const heldBy = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const l of laptops) {
@@ -91,10 +111,10 @@ function AssignForm({
     <>
       <DialogHeader className="border-b border-border px-6 py-5 pr-12">
         <DialogTitle className="text-lg font-semibold">
-          Assign laptop
+          Assign {noun}
         </DialogTitle>
         <DialogDescription className="flex items-center gap-1.5">
-          <LaptopIcon className="size-3.5" />
+          <Icon className="size-3.5" />
           {laptop.brand} {laptop.model}
           <span aria-hidden>·</span>
           <span className="font-mono text-xs">{laptop.assetTag}</span>
@@ -154,7 +174,7 @@ function AssignForm({
                   </span>
                 ) : (
                   <span className="shrink-0 text-[11px] text-muted-foreground">
-                    No laptop
+                    No {noun}
                   </span>
                 )}
                 <span

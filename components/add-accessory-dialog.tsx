@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { PlusIcon } from "lucide-react";
 
+import {
+  FormField,
+  FormSection,
+  selectClass,
+  toIsoDate,
+} from "@/components/add-laptop-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,103 +21,32 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  statuses,
-  type ChargerCondition,
-  type Laptop,
-  type LaptopStatus,
-} from "@/lib/laptops";
-import { cn } from "@/lib/utils";
+import { type Accessory, type AccessoryConfig } from "@/lib/accessories";
+import { statuses, type LaptopStatus } from "@/lib/laptops";
 
-const chargerConditions: ChargerCondition[] = [
-  "Good",
-  "Worn cable",
-  "Replaced",
-  "Missing",
-];
-
-const connectors = [
-  "USB-C",
-  "MagSafe 3 (USB-C)",
-  "Surface Connect",
-  "Barrel 4.5 mm",
-  "Barrel 7.4 mm",
-];
-
-export const selectClass =
-  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
-
-export function toIsoDate(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function nextAssetTag(laptops: Laptop[]) {
-  const max = laptops.reduce((highest, l) => {
-    const n = Number(l.assetTag.replace(/\D/g, ""));
+function nextAssetTag(items: Accessory[], prefix: string) {
+  const max = items.reduce((highest, item) => {
+    const n = Number(item.assetTag.replace(/\D/g, ""));
     return Number.isFinite(n) && n > highest ? n : highest;
   }, 0);
-  return `LT-${String(max + 1).padStart(4, "0")}`;
+  return `${prefix}-${String(max + 1).padStart(4, "0")}`;
 }
 
-export function FormField({
-  label,
-  htmlFor,
-  optional,
-  className,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  optional?: boolean;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
-      <Label htmlFor={htmlFor} className="text-xs">
-        {label}
-        {optional && (
-          <span className="font-normal text-muted-foreground">(optional)</span>
-        )}
-      </Label>
-      {children}
-    </div>
-  );
-}
-
-export function FormSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <fieldset className="flex flex-col gap-3">
-      <legend className="mb-3 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
-        {title}
-      </legend>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{children}</div>
-    </fieldset>
-  );
-}
-
-export function AddLaptopDialog({
-  laptops,
+export function AddAccessoryDialog({
+  config,
+  items,
   onAdd,
 }: {
-  laptops: Laptop[];
-  onAdd: (laptop: Laptop) => void;
+  config: AccessoryConfig;
+  items: Accessory[];
+  onAdd: (item: Accessory) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [colorHex, setColorHex] = useState("#2b2b2d");
 
-  const brands = [...new Set(laptops.map((l) => l.brand))].sort();
+  const noun = config.singular.toLowerCase();
+  const brands = [...new Set(items.map((item) => item.brand))].sort();
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -124,12 +59,12 @@ export function AddLaptopDialog({
     const department = get("department");
     const purchaseDate = get("purchaseDate");
 
-    if (laptops.some((l) => l.assetTag.toUpperCase() === assetTag)) {
+    if (items.some((item) => item.assetTag.toUpperCase() === assetTag)) {
       setError(`Asset tag ${assetTag} is already in use.`);
       return;
     }
     if (status === "In use" && !handler) {
-      setError("A laptop that is in use needs a handler.");
+      setError(`A ${noun} that is in use needs a handler.`);
       return;
     }
 
@@ -138,14 +73,11 @@ export function AddLaptopDialog({
 
     onAdd({
       id: crypto.randomUUID(),
+      kind: config.kind,
       assetTag,
       brand: get("brand"),
       model: get("model"),
       serialNumber: get("serialNumber").toUpperCase(),
-      cpu: get("cpu"),
-      ram: get("ram"),
-      storage: get("storage"),
-      os: get("os"),
       color: get("color"),
       colorHex,
       handler: assignedHandler && handler ? handler : null,
@@ -153,13 +85,9 @@ export function AddLaptopDialog({
       purchaseDate,
       warrantyYears: Number(get("warrantyYears")),
       status,
-      charger: {
-        connector: get("chargerConnector"),
-        wattage: Number(get("chargerWattage")),
-        partNumber: get("chargerPartNumber"),
-        serialNumber: get("chargerSerialNumber").toUpperCase(),
-        condition: get("chargerCondition") as ChargerCondition,
-      },
+      specs: Object.fromEntries(
+        config.specFields.map((field) => [field.key, get(`spec-${field.key}`)]),
+      ),
       history: [
         assignedHandler && handler
           ? {
@@ -191,33 +119,33 @@ export function AddLaptopDialog({
     >
       <DialogTrigger render={<Button />}>
         <PlusIcon />
-        Add laptop
+        Add {noun}
       </DialogTrigger>
       <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-6xl">
         <DialogHeader className="border-b border-border px-6 py-5 pr-12">
           <DialogTitle className="text-lg font-semibold">
-            Add laptop
+            Add {noun}
           </DialogTitle>
           <DialogDescription>
-            Register a laptop and its charger in the inventory.
+            Register a {noun} in the inventory.
           </DialogDescription>
         </DialogHeader>
 
         <form
-          id="add-laptop-form"
+          id={`add-${config.kind}-form`}
           onSubmit={handleSubmit}
           className="flex min-h-0 flex-col gap-6 overflow-y-auto px-6 py-5"
         >
-          <FormSection title="Laptop">
+          <FormSection title={config.singular}>
             <FormField label="Brand" htmlFor="brand">
               <Input
                 id="brand"
                 name="brand"
-                list="brand-options"
-                placeholder="e.g. Lenovo"
+                list={`${config.kind}-brand-options`}
+                placeholder={config.brandPlaceholder}
                 required
               />
-              <datalist id="brand-options">
+              <datalist id={`${config.kind}-brand-options`}>
                 {brands.map((brand) => (
                   <option key={brand} value={brand} />
                 ))}
@@ -227,7 +155,7 @@ export function AddLaptopDialog({
               <Input
                 id="model"
                 name="model"
-                placeholder="e.g. ThinkPad T14 Gen 5"
+                placeholder={config.modelPlaceholder}
                 required
               />
             </FormField>
@@ -243,7 +171,7 @@ export function AddLaptopDialog({
               <Input
                 id="assetTag"
                 name="assetTag"
-                defaultValue={nextAssetTag(laptops)}
+                defaultValue={nextAssetTag(items, config.tagPrefix)}
                 className="font-mono"
                 required
               />
@@ -260,7 +188,7 @@ export function AddLaptopDialog({
                 <Input
                   id="color"
                   name="color"
-                  placeholder="e.g. Space Black"
+                  placeholder="e.g. Black"
                   required
                 />
               </div>
@@ -268,33 +196,34 @@ export function AddLaptopDialog({
           </FormSection>
 
           <FormSection title="Specifications">
-            <FormField label="Processor" htmlFor="cpu">
-              <Input
-                id="cpu"
-                name="cpu"
-                placeholder="e.g. Intel Core i7-1365U"
-                required
-              />
-            </FormField>
-            <FormField label="Memory" htmlFor="ram">
-              <Input id="ram" name="ram" placeholder="e.g. 16 GB" required />
-            </FormField>
-            <FormField label="Storage" htmlFor="storage">
-              <Input
-                id="storage"
-                name="storage"
-                placeholder="e.g. 512 GB SSD"
-                required
-              />
-            </FormField>
-            <FormField label="Operating system" htmlFor="os">
-              <Input
-                id="os"
-                name="os"
-                placeholder="e.g. Windows 11 Pro"
-                required
-              />
-            </FormField>
+            {config.specFields.map((field) => {
+              const id = `spec-${field.key}`;
+              return (
+                <FormField key={field.key} label={field.label} htmlFor={id}>
+                  {field.options ? (
+                    <select
+                      id={id}
+                      name={id}
+                      defaultValue={field.options[0]}
+                      className={selectClass}
+                    >
+                      {field.options.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      id={id}
+                      name={id}
+                      placeholder={field.placeholder}
+                      required
+                    />
+                  )}
+                </FormField>
+              );
+            })}
           </FormSection>
 
           <FormSection title="Assignment & purchase">
@@ -337,66 +266,8 @@ export function AddLaptopDialog({
                 name="warrantyYears"
                 type="number"
                 min={0}
-                max={10}
-                defaultValue={3}
-                required
-              />
-            </FormField>
-          </FormSection>
-
-          <FormSection title="Charger">
-            <FormField label="Connector" htmlFor="chargerConnector">
-              <select
-                id="chargerConnector"
-                name="chargerConnector"
-                defaultValue="USB-C"
-                className={selectClass}
-              >
-                {connectors.map((connector) => (
-                  <option key={connector} value={connector}>
-                    {connector}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Power (W)" htmlFor="chargerWattage">
-              <Input
-                id="chargerWattage"
-                name="chargerWattage"
-                type="number"
-                min={5}
-                max={400}
-                defaultValue={65}
-                required
-              />
-            </FormField>
-            <FormField label="Condition" htmlFor="chargerCondition">
-              <select
-                id="chargerCondition"
-                name="chargerCondition"
-                defaultValue="Good"
-                className={selectClass}
-              >
-                {chargerConditions.map((condition) => (
-                  <option key={condition} value={condition}>
-                    {condition}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Part number" htmlFor="chargerPartNumber">
-              <Input
-                id="chargerPartNumber"
-                name="chargerPartNumber"
-                className="font-mono"
-                required
-              />
-            </FormField>
-            <FormField label="Serial number" htmlFor="chargerSerialNumber">
-              <Input
-                id="chargerSerialNumber"
-                name="chargerSerialNumber"
-                className="font-mono"
+                max={25}
+                defaultValue={2}
                 required
               />
             </FormField>
@@ -412,9 +283,9 @@ export function AddLaptopDialog({
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit" form="add-laptop-form">
+          <Button type="submit" form={`add-${config.kind}-form`}>
             <PlusIcon />
-            Add laptop
+            Add {noun}
           </Button>
         </DialogFooter>
       </DialogContent>

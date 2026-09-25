@@ -3,15 +3,20 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
+  BackpackIcon,
+  ChartColumnIcon,
   ChevronLeftIcon,
+  HeadphonesIcon,
   LaptopIcon,
   LayoutDashboardIcon,
   LogOutIcon,
   MonitorIcon,
+  MouseIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
   TicketIcon,
+  TvMinimalIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react"
@@ -55,6 +60,19 @@ const overviewItems: {
     title: "Laptop Inventory",
     href: "/dashboard/laptops",
     icon: LaptopIcon,
+  },
+  { title: "Headsets", href: "/dashboard/headsets", icon: HeadphonesIcon },
+  { title: "Mice", href: "/dashboard/mice", icon: MouseIcon },
+  { title: "Monitors", href: "/dashboard/monitors", icon: TvMinimalIcon },
+  {
+    title: "Laptop Bags",
+    href: "/dashboard/laptop-bags",
+    icon: BackpackIcon,
+  },
+  {
+    title: "Laptop Analytics",
+    href: "/dashboard/analytics",
+    icon: ChartColumnIcon,
   },
   {
     title: "Tickets",
