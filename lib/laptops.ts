@@ -29,6 +29,7 @@ export type Laptop = {
   purchaseDate: string;
   warrantyYears: number;
   status: LaptopStatus;
+  anydeskAddress?: string | null;
   charger: Charger;
   history: OwnershipEntry[];
 };

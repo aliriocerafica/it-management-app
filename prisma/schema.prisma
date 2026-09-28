@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Employees are not stored here. They come from the other system's
+// employee API. Inventory rows keep `employeeId` plus a name/department
+// snapshot so assignment history still displays if the API is unavailable.
+
+enum AssetStatus {
+  IN_USE
+  VACANT
+  IN_REPAIR
+  RETIRED
+}
+
+enum AccessoryKind {
+  HEADSET
+  MOUSE
+  MONITOR
+  BAG
+}
+
+enum ChargerCondition {
+  GOOD
+  WORN_CABLE
+  REPLACED
+  MISSING
+}
+
+model Laptop {
+  id            String      @id @default(cuid())
+  assetTag      String      @unique
+  brand         String
+  model         String
+  serialNumber  String      @unique
+  cpu           String
+  ram           String
+  storage       String
+  os            String
+  color         String
+  colorHex      String
+  employeeId    String?
+  handlerName   String?
+  department    String?
+  purchaseDate  DateTime    @db.Date
+  warrantyYears  Int
+  status         AssetStatus
+  anydeskAddress String?
+  createdAt      DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  charger       LaptopCharger?
+  assignments   LaptopAssignment[]
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("laptops")
+}
+
+model LaptopCharger {
+  id           String           @id @default(cuid())
+  laptopId     String           @unique
+  laptop       Laptop           @relation(fields: [laptopId], references: [id], onDelete: Cascade)
+  connector    String
+  wattage      Int
+  partNumber   String
+  serialNumber String
+  condition    ChargerCondition
+
+  @@map("laptop_chargers")
+}
+
+model LaptopAssignment {
+  id          String    @id @default(cuid())
+  laptopId    String
+  laptop      Laptop    @relation(fields: [laptopId], references: [id], onDelete: Cascade)
+  employeeId  String?
+  handlerName String?
+  department  String?
+  from        DateTime  @db.Date
+  to          DateTime? @db.Date
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  @@index([laptopId])
+  @@index([employeeId])
+  @@map("laptop_assignments")
+}
+
+model Accessory {
+  id            String        @id @default(cuid())
+  kind          AccessoryKind
+  assetTag      String        @unique
+  brand         String
+  model         String
+  serialNumber  String        @unique
+  color         String
+  colorHex      String
+  employeeId    String?
+  handlerName   String?
+  department    String?
+  purchaseDate  DateTime      @db.Date
+  warrantyYears Int
+  status        AssetStatus
+  specs         Json
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  assignments   AccessoryAssignment[]
+
+  @@index([kind])
+  @@index([employeeId])
+  @@index([status])
+  @@map("accessories")
+}
+
+model AccessoryAssignment {
+  id          String     @id @default(cuid())
+  accessoryId String
+  accessory   Accessory  @relation(fields: [accessoryId], references: [id], onDelete: Cascade)
+  employeeId  String?
+  handlerName String?
+  department  String?
+  from        DateTime   @db.Date
+  to          DateTime?  @db.Date
+  note        String?
+  createdAt   DateTime   @default(now())
+
+  @@index([accessoryId])
+  @@index([employeeId])
+  @@map("accessory_assignments")
+}

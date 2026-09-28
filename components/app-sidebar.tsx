@@ -1,5 +1,6 @@
 "use client"
 
+import type { ComponentType } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -10,7 +11,6 @@ import {
   LaptopIcon,
   LayoutDashboardIcon,
   LogOutIcon,
-  MonitorIcon,
   MouseIcon,
   PlusIcon,
   SearchIcon,
@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { AnyDeskIcon } from "@/components/anydesk-icon"
 import { ThemeSwitch } from "@/components/theme-switch"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -45,16 +46,15 @@ import { cn } from "@/lib/utils"
 const overviewItems: {
   title: string
   href: string
-  icon: LucideIcon
+  icon: LucideIcon | ComponentType<{ className?: string }>
   badge?: string
   action?: boolean
 }[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon },
   {
-    title: "Assets",
-    href: "/dashboard/assets",
-    icon: MonitorIcon,
-    action: true,
+    title: "Remote Access",
+    href: "/dashboard/remote-access",
+    icon: AnyDeskIcon,
   },
   {
     title: "Laptop Inventory",

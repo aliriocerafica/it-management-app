@@ -28,6 +28,13 @@ import {
 
 import { AddLaptopDialog } from "@/components/add-laptop-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
+import { UndoToast } from "@/components/undo-toast";
+import {
+  createLaptop,
+  removeLaptops,
+  saveLaptop,
+} from "@/lib/inventory-api";
 import {
   ReturnFromRepairDialog,
   type RepairOutcome,
@@ -52,7 +59,6 @@ import { Input } from "@/components/ui/input";
 import {
   formatAge,
   formatDate,
-  initialLaptops,
   initials,
   parseDate,
   statusStyles,
@@ -226,9 +232,13 @@ export function FilterMenu<T extends string>({
   );
 }
 
-export function LaptopInventoryTable() {
+export function LaptopInventoryTable({
+  initialData,
+}: {
+  initialData: Laptop[];
+}) {
   const today = useToday();
-  const [laptops, setLaptops] = useState(initialLaptops);
+  const [laptops, setLaptops] = useState(initialData);
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>("All");
@@ -241,6 +251,12 @@ export function LaptopInventoryTable() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [repairing, setRepairing] = useState<Laptop | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  const [undo, setUndo] = useState<{
+    snapshot: Laptop[];
+    removed: Laptop[];
+    message: string;
+  } | null>(null);
 
   const brands = useMemo(
     () => [...new Set(laptops.map((l) => l.brand))].sort(),
@@ -325,7 +341,12 @@ export function LaptopInventoryTable() {
   }
 
   function updateLaptop(id: string, update: (laptop: Laptop) => Laptop) {
-    setLaptops((prev) => prev.map((l) => (l.id === id ? update(l) : l)));
+    setLaptops((prev) => {
+      const next = prev.map((l) => (l.id === id ? update(l) : l));
+      const saved = next.find((l) => l.id === id);
+      if (saved) void saveLaptop(saved);
+      return next;
+    });
   }
 
   function sendToRepair(id: string) {
@@ -384,42 +405,60 @@ export function LaptopInventoryTable() {
 
   function assignLaptop(id: string, employee: Employee, note: string) {
     const todayIso = isoToday();
-    setLaptops((prev) =>
-      prev.map((l) => {
-        if (l.id !== id) return l;
-        // Close out the current "with IT" stint and open one for the new owner.
-        const history = l.history.map((entry) =>
-          entry.to === null ? { ...entry, to: todayIso } : entry,
-        );
-        return {
-          ...l,
-          handler: employee.name,
-          department: employee.department,
-          status: "In use",
-          history: [
-            ...history,
-            {
-              handler: employee.name,
-              department: employee.department,
-              from: todayIso,
-              to: null,
-              note: note || undefined,
-            },
-          ],
-        };
-      }),
-    );
+    updateLaptop(id, (l) => {
+      const history = l.history.map((entry) =>
+        entry.to === null ? { ...entry, to: todayIso } : entry,
+      );
+      return {
+        ...l,
+        handler: employee.name,
+        department: employee.department,
+        status: "In use",
+        history: [
+          ...history,
+          {
+            handler: employee.name,
+            department: employee.department,
+            from: todayIso,
+            to: null,
+            note: note || undefined,
+          },
+        ],
+      };
+    });
     setAssignOpen(false);
   }
 
   function deleteLaptops(ids: string[]) {
+    const removed = laptops.filter((laptop) => ids.includes(laptop.id));
+    setUndo({
+      snapshot: laptops,
+      removed,
+      message:
+        removed.length === 1
+          ? `Deleted ${removed[0].assetTag}`
+          : `Deleted ${removed.length} laptops`,
+    });
     setLaptops((prev) => prev.filter((l) => !ids.includes(l.id)));
     setSelected((prev) => {
       const next = new Set(prev);
       for (const id of ids) next.delete(id);
       return next;
     });
+    void removeLaptops(ids);
   }
+
+  const pendingDelete = pendingDeleteIds
+    .map((id) => laptops.find((laptop) => laptop.id === id))
+    .filter((laptop): laptop is Laptop => laptop != null);
+  const deleteTitle =
+    pendingDelete.length === 1
+      ? "Delete laptop?"
+      : `Delete ${pendingDelete.length} laptops?`;
+  const deleteDescription =
+    pendingDelete.length === 1
+      ? `Delete ${pendingDelete[0].brand} ${pendingDelete[0].model} (${pendingDelete[0].assetTag})? You can undo this afterward.`
+      : `These ${pendingDelete.length} laptops will be removed from inventory. You can undo this afterward.`;
 
   function clearFilters() {
     setQuery("");
@@ -488,7 +527,7 @@ export function LaptopInventoryTable() {
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => deleteLaptops([...selected])}
+                onClick={() => setPendingDeleteIds([...selected])}
               >
                 <Trash2Icon />
                 Delete
@@ -537,6 +576,7 @@ export function LaptopInventoryTable() {
                 setLaptops((prev) => [laptop, ...prev]);
                 setTab("All");
                 setPage(1);
+                void createLaptop(laptop);
               }}
             />
           </div>
@@ -786,7 +826,7 @@ export function LaptopInventoryTable() {
                             )}
                             <DropdownMenuItem
                               variant="destructive"
-                              onClick={() => deleteLaptops([laptop.id])}
+                              onClick={() => setPendingDeleteIds([laptop.id])}
                             >
                               <Trash2Icon />
                               Delete
@@ -895,6 +935,32 @@ export function LaptopInventoryTable() {
           </div>
         </div>
       </div>
+
+      <UndoToast
+        message={undo?.message ?? null}
+        onUndo={() => {
+          if (!undo) return;
+          setLaptops(undo.snapshot);
+          void Promise.all(undo.removed.map((laptop) => createLaptop(laptop)));
+          setUndo(null);
+        }}
+        onDismiss={() => setUndo(null)}
+      />
+
+      <ConfirmDeleteDialog
+        open={pendingDeleteIds.length > 0}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteIds([]);
+        }}
+        title={deleteTitle}
+        description={deleteDescription}
+        confirmLabel={
+          pendingDelete.length === 1
+            ? "Delete"
+            : `Delete ${pendingDelete.length} laptops`
+        }
+        onConfirm={() => deleteLaptops(pendingDeleteIds)}
+      />
 
       <ReturnFromRepairDialog
         laptop={repairing}

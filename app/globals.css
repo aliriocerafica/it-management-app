@@ -130,6 +130,15 @@
     @apply font-sans;
   }
 }
+
+@keyframes undo-border-timer {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 100;
+  }
+}
 /* Printing a dashboard: drop the sidebar and let the page flow onto paper */
 @media print {
   [data-slot="sidebar-gap"],

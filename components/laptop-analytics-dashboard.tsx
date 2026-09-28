@@ -60,12 +60,12 @@ import {
 } from "@/lib/laptop-analytics";
 import {
   formatDate,
-  initialLaptops,
   parseDate,
   statusStyles,
   statuses,
   useToday,
   warrantyInfo,
+  type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops";
 import { cn } from "@/lib/utils";
@@ -746,7 +746,7 @@ const th =
   "sticky top-0 z-10 h-9 bg-muted px-4 shadow-[inset_0_1px_0_var(--color-border),inset_0_-1px_0_var(--color-border)] text-left text-[11px] font-medium whitespace-nowrap text-muted-foreground";
 const td = "border-b border-border px-4 py-2 whitespace-nowrap";
 
-export function LaptopAnalyticsDashboard() {
+export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
   const today = useToday();
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
   const [brandFilter, setBrandFilter] = useState<string[]>([]);
@@ -757,18 +757,18 @@ export function LaptopAnalyticsDashboard() {
   const departments = useMemo(
     () =>
       [
-        ...new Set(initialLaptops.map((l) => l.department ?? UNASSIGNED)),
+        ...new Set(laptops.map((l) => l.department ?? UNASSIGNED)),
       ].sort(),
-    [],
+    [laptops],
   );
   const brands = useMemo(
-    () => [...new Set(initialLaptops.map((l) => l.brand))].sort(),
-    [],
+    () => [...new Set(laptops.map((l) => l.brand))].sort(),
+    [laptops],
   );
 
   const graded = useMemo(
-    () => (today ? initialLaptops.map((l) => gradeLaptop(l, today)) : []),
-    [today],
+    () => (today ? laptops.map((l) => gradeLaptop(l, today)) : []),
+    [today, laptops],
   );
 
   // Filtered by everything except grade, so the grade charts can still

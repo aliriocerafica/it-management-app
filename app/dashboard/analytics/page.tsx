@@ -1,5 +1,9 @@
 import { LaptopAnalyticsDashboard } from "@/components/laptop-analytics-dashboard"
+import { listLaptops } from "@/lib/inventory-repository"
 
-export default function LaptopAnalyticsPage() {
-  return <LaptopAnalyticsDashboard />
+export const dynamic = "force-dynamic"
+
+export default async function LaptopAnalyticsPage() {
+  const laptops = await listLaptops()
+  return <LaptopAnalyticsDashboard laptops={laptops} />
 }

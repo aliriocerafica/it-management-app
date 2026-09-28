@@ -34,6 +34,13 @@ import {
 import { AccessoryDetailsDialog } from "@/components/accessory-details-dialog";
 import { AddAccessoryDialog } from "@/components/add-accessory-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
+import { UndoToast } from "@/components/undo-toast";
+import {
+  createAccessory,
+  removeAccessories,
+  saveAccessory,
+} from "@/lib/inventory-api";
 import {
   ColumnHeader,
   FilterMenu,
@@ -60,7 +67,6 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   accessoryConfigs,
-  initialAccessories,
   type Accessory,
   type AccessoryConfig,
   type AccessoryKind,
@@ -138,14 +144,20 @@ function exportCsv(
   URL.revokeObjectURL(url);
 }
 
-export function AccessoryInventoryTable({ kind }: { kind: AccessoryKind }) {
+export function AccessoryInventoryTable({
+  kind,
+  initialData,
+}: {
+  kind: AccessoryKind;
+  initialData: Accessory[];
+}) {
   const config = accessoryConfigs[kind];
   const Icon = accessoryIcons[kind];
   const noun = config.singular.toLowerCase();
   const nounPlural = config.plural.toLowerCase();
 
   const today = useToday();
-  const [items, setItems] = useState(initialAccessories[kind]);
+  const [items, setItems] = useState(initialData);
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>("All");
@@ -158,6 +170,12 @@ export function AccessoryInventoryTable({ kind }: { kind: AccessoryKind }) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [repairing, setRepairing] = useState<Accessory | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  const [undo, setUndo] = useState<{
+    snapshot: Accessory[];
+    removed: Accessory[];
+    message: string;
+  } | null>(null);
 
   const brands = useMemo(
     () => [...new Set(items.map((item) => item.brand))].sort(),
@@ -243,9 +261,12 @@ export function AccessoryInventoryTable({ kind }: { kind: AccessoryKind }) {
   }
 
   function updateItem(id: string, update: (item: Accessory) => Accessory) {
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? update(item) : item)),
-    );
+    setItems((prev) => {
+      const next = prev.map((item) => (item.id === id ? update(item) : item));
+      const saved = next.find((item) => item.id === id);
+      if (saved) void saveAccessory(saved);
+      return next;
+    });
   }
 
   function sendToRepair(id: string) {
@@ -327,13 +348,35 @@ export function AccessoryInventoryTable({ kind }: { kind: AccessoryKind }) {
   }
 
   function deleteItems(ids: string[]) {
+    const removed = items.filter((item) => ids.includes(item.id));
+    setUndo({
+      snapshot: items,
+      removed,
+      message:
+        removed.length === 1
+          ? `Deleted ${removed[0].assetTag}`
+          : `Deleted ${removed.length} ${nounPlural}`,
+    });
     setItems((prev) => prev.filter((item) => !ids.includes(item.id)));
+    void removeAccessories(ids);
     setSelected((prev) => {
       const next = new Set(prev);
       for (const id of ids) next.delete(id);
       return next;
     });
   }
+
+  const pendingDelete = pendingDeleteIds
+    .map((id) => items.find((item) => item.id === id))
+    .filter((item): item is Accessory => item != null);
+  const deleteTitle =
+    pendingDelete.length === 1
+      ? `Delete ${noun}?`
+      : `Delete ${pendingDelete.length} ${nounPlural}?`;
+  const deleteDescription =
+    pendingDelete.length === 1
+      ? `Delete ${pendingDelete[0].brand} ${pendingDelete[0].model} (${pendingDelete[0].assetTag})? You can undo this afterward.`
+      : `These ${pendingDelete.length} ${nounPlural} will be removed from inventory. You can undo this afterward.`;
 
   function clearFilters() {
     setQuery("");
@@ -402,7 +445,7 @@ export function AccessoryInventoryTable({ kind }: { kind: AccessoryKind }) {
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => deleteItems([...selected])}
+                onClick={() => setPendingDeleteIds([...selected])}
               >
                 <Trash2Icon />
                 Delete
@@ -452,6 +495,7 @@ export function AccessoryInventoryTable({ kind }: { kind: AccessoryKind }) {
                 setItems((prev) => [item, ...prev]);
                 setTab("All");
                 setPage(1);
+                void createAccessory(item);
               }}
             />
           </div>
@@ -703,7 +747,7 @@ export function AccessoryInventoryTable({ kind }: { kind: AccessoryKind }) {
                             )}
                             <DropdownMenuItem
                               variant="destructive"
-                              onClick={() => deleteItems([item.id])}
+                              onClick={() => setPendingDeleteIds([item.id])}
                             >
                               <Trash2Icon />
                               Delete
@@ -812,6 +856,32 @@ export function AccessoryInventoryTable({ kind }: { kind: AccessoryKind }) {
           </div>
         </div>
       </div>
+
+      <UndoToast
+        message={undo?.message ?? null}
+        onUndo={() => {
+          if (!undo) return;
+          setItems(undo.snapshot);
+          void Promise.all(undo.removed.map((item) => createAccessory(item)));
+          setUndo(null);
+        }}
+        onDismiss={() => setUndo(null)}
+      />
+
+      <ConfirmDeleteDialog
+        open={pendingDeleteIds.length > 0}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteIds([]);
+        }}
+        title={deleteTitle}
+        description={deleteDescription}
+        confirmLabel={
+          pendingDelete.length === 1
+            ? "Delete"
+            : `Delete ${pendingDelete.length} ${nounPlural}`
+        }
+        onConfirm={() => deleteItems(pendingDeleteIds)}
+      />
 
       <ReturnFromRepairDialog
         laptop={repairing}
