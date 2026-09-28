@@ -8,6 +8,7 @@ import {
   ChartColumnIcon,
   ChevronLeftIcon,
   HeadphonesIcon,
+  KeyRoundIcon,
   LaptopIcon,
   LayoutDashboardIcon,
   LogOutIcon,
@@ -42,6 +43,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
+import type { SessionUser } from "@/lib/auth/dto"
 
 const overviewItems: {
   title: string
@@ -84,14 +86,17 @@ const overviewItems: {
   { title: "Settings", href: "/dashboard/settings", icon: SettingsIcon },
 ]
 
-export function AppSidebar() {
+export function AppSidebar({ user }: { user: SessionUser }) {
   const pathname = usePathname()
   const router = useRouter()
   const { state, toggleSidebar } = useSidebar()
   const collapsed = state === "collapsed"
+  const initial = user.name.trim()[0]?.toUpperCase() ?? "?"
 
-  function handleLogout() {
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" })
     router.push("/login")
+    router.refresh()
   }
 
   return (
@@ -116,12 +121,12 @@ export function AppSidebar() {
           <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-2xl p-1 text-left group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0 outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring">
             <Avatar className="size-11 shrink-0 after:rounded-full group-data-[collapsible=icon]:size-10">
               <AvatarFallback className="bg-neutral-900 text-sm font-medium text-white dark:bg-white dark:text-neutral-900">
-                A
+                {initial}
               </AvatarFallback>
             </Avatar>
             <div className="grid min-w-0 flex-1 leading-tight group-data-[collapsible=icon]:hidden">
               <span className="truncate text-base font-semibold text-sidebar-foreground">
-                Admin
+                {user.name}
               </span>
               <span className="truncate text-sm text-muted-foreground">
                 IT Portal
@@ -137,12 +142,19 @@ export function AppSidebar() {
             <DropdownMenuGroup>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium">Admin</span>
+                  <span className="text-sm font-medium">{user.name}</span>
                   <span className="text-xs text-muted-foreground">
-                    admin@company.com
+                    {user.email}
                   </span>
                 </div>
               </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
+                <KeyRoundIcon />
+                Change password
+              </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>

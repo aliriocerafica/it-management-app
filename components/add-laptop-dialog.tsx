@@ -50,11 +50,14 @@ export function toIsoDate(date: Date) {
 }
 
 function nextAssetTag(laptops: Laptop[]) {
+  const yy = String(new Date().getFullYear()).slice(-2);
+  const prefix = `AR-LT-AU${yy}-`;
   const max = laptops.reduce((highest, l) => {
-    const n = Number(l.assetTag.replace(/\D/g, ""));
+    if (!l.assetTag.startsWith(prefix)) return highest;
+    const n = Number(l.assetTag.slice(prefix.length));
     return Number.isFinite(n) && n > highest ? n : highest;
   }, 0);
-  return `LT-${String(max + 1).padStart(4, "0")}`;
+  return `${prefix}${String(max + 1).padStart(3, "0")}`;
 }
 
 export function FormField({

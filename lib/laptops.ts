@@ -48,7 +48,7 @@ export type OwnershipEntry = {
 const laptopRecords: Omit<Laptop, "history">[] = [
   {
     id: "1",
-    assetTag: "LT-0001",
+    assetTag: "AR-LT-AU26-001",
     brand: "Apple",
     model: 'MacBook Pro 14" M3',
     serialNumber: "C02XK1Y7MD6T",
@@ -73,7 +73,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "2",
-    assetTag: "LT-0002",
+    assetTag: "AR-LT-AU26-002",
     brand: "Dell",
     model: "Latitude 7440",
     serialNumber: "8H2KJ93",
@@ -98,7 +98,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "3",
-    assetTag: "LT-0003",
+    assetTag: "AR-LT-AU26-003",
     brand: "Lenovo",
     model: "ThinkPad X1 Carbon Gen 11",
     serialNumber: "PF3ZK8QW",
@@ -123,7 +123,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "4",
-    assetTag: "LT-0004",
+    assetTag: "AR-LT-AU26-004",
     brand: "HP",
     model: "EliteBook 840 G10",
     serialNumber: "5CG3291LQX",
@@ -148,7 +148,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "5",
-    assetTag: "LT-0005",
+    assetTag: "AR-LT-AU26-005",
     brand: "Apple",
     model: 'MacBook Air 13" M2',
     serialNumber: "FVFHK2Q1Q6L4",
@@ -173,7 +173,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "6",
-    assetTag: "LT-0006",
+    assetTag: "AR-LT-AU26-006",
     brand: "Lenovo",
     model: "ThinkPad T14 Gen 4",
     serialNumber: "PF4B7M2X",
@@ -198,7 +198,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "7",
-    assetTag: "LT-0007",
+    assetTag: "AR-LT-AU26-007",
     brand: "Dell",
     model: "XPS 13 Plus",
     serialNumber: "3JX8L12",
@@ -223,7 +223,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "8",
-    assetTag: "LT-0008",
+    assetTag: "AR-LT-AU26-008",
     brand: "Apple",
     model: 'MacBook Pro 16" M1 Pro',
     serialNumber: "C02G81KXMD6R",
@@ -248,7 +248,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "9",
-    assetTag: "LT-0009",
+    assetTag: "AR-LT-AU26-009",
     brand: "HP",
     model: "ProBook 450 G9",
     serialNumber: "5CD2140KTR",
@@ -273,7 +273,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "10",
-    assetTag: "LT-0010",
+    assetTag: "AR-LT-AU26-010",
     brand: "Microsoft",
     model: "Surface Laptop 5",
     serialNumber: "0F3K7T22AB",
@@ -298,7 +298,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "11",
-    assetTag: "LT-0011",
+    assetTag: "AR-LT-AU26-011",
     brand: "Lenovo",
     model: "ThinkPad E14 Gen 5",
     serialNumber: "PF4DQ1LZ",
@@ -323,7 +323,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "12",
-    assetTag: "LT-0012",
+    assetTag: "AR-LT-AU26-012",
     brand: "Dell",
     model: "Latitude 5420",
     serialNumber: "9KD2M83",
@@ -348,7 +348,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "13",
-    assetTag: "LT-0013",
+    assetTag: "AR-LT-AU26-013",
     brand: "Apple",
     model: 'MacBook Air 15" M3',
     serialNumber: "H7WQ2LK9P1",
@@ -373,7 +373,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "14",
-    assetTag: "LT-0014",
+    assetTag: "AR-LT-AU26-014",
     brand: "ASUS",
     model: "ExpertBook B9",
     serialNumber: "N9NXCV01H2",
@@ -398,7 +398,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "15",
-    assetTag: "LT-0015",
+    assetTag: "AR-LT-AU26-015",
     brand: "HP",
     model: "ZBook Firefly 14 G10",
     serialNumber: "5CG40211PM",
@@ -423,7 +423,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "16",
-    assetTag: "LT-0016",
+    assetTag: "AR-LT-AU26-016",
     brand: "Lenovo",
     model: "IdeaPad Slim 5",
     serialNumber: "PF3R1Q7C",
@@ -448,7 +448,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "17",
-    assetTag: "LT-0017",
+    assetTag: "AR-LT-AU26-017",
     brand: "Dell",
     model: "Vostro 3520",
     serialNumber: "4LX9P22",
@@ -473,7 +473,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "18",
-    assetTag: "LT-0018",
+    assetTag: "AR-LT-AU26-018",
     brand: "Apple",
     model: 'MacBook Pro 14" M4 Pro',
     serialNumber: "K4TQ9XR2W7",
@@ -498,7 +498,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "19",
-    assetTag: "LT-0019",
+    assetTag: "AR-LT-AU26-019",
     brand: "Microsoft",
     model: "Surface Pro 9",
     serialNumber: "0F1P6S88CD",
@@ -523,7 +523,7 @@ const laptopRecords: Omit<Laptop, "history">[] = [
   },
   {
     id: "20",
-    assetTag: "LT-0020",
+    assetTag: "AR-LT-AU26-020",
     brand: "ASUS",
     model: "Zenbook 14 OLED",
     serialNumber: "R3NXCV77K1",

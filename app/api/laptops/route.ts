@@ -9,6 +9,7 @@ import {
   upsertLaptop,
 } from "@/lib/inventory-repository"
 import type { Laptop } from "@/lib/laptops"
+import { verifySession } from "@/lib/auth/session"
 
 function refreshInventory() {
   revalidatePath("/dashboard")
@@ -17,11 +18,17 @@ function refreshInventory() {
 }
 
 export async function GET() {
+  const user = await verifySession()
+  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
+
   const laptops = await listLaptops()
   return NextResponse.json(laptops)
 }
 
 export async function POST(request: Request) {
+  const user = await verifySession()
+  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
+
   const laptop = (await request.json()) as Laptop
   const saved = await upsertLaptop(laptop)
   refreshInventory()
@@ -29,6 +36,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const user = await verifySession()
+  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
+
   const { ids } = (await request.json()) as { ids: string[] }
   await deleteLaptops(ids)
   refreshInventory()

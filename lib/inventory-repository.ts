@@ -11,6 +11,7 @@ import {
   statusToDb,
 } from "@/lib/inventory-map"
 import { generateAnydeskAddress } from "@/lib/anydesk"
+import { encryptSecret } from "@/lib/crypto"
 import { employees } from "@/lib/employees"
 import type { Laptop } from "@/lib/laptops"
 import type { InventorySummary, StatusCounts } from "@/lib/inventory-map"
@@ -113,8 +114,9 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
     serialNumber: laptop.charger.serialNumber,
     condition: chargerToDb[laptop.charger.condition],
   }
-  const anydeskAddress =
-    laptop.anydeskAddress || generateAnydeskAddress(laptop.assetTag)
+  const anydeskAddress = encryptSecret(
+    laptop.anydeskAddress || generateAnydeskAddress(laptop.assetTag),
+  )
 
   const saved = await prisma.laptop.upsert({
     where: { id: laptop.id },
@@ -252,7 +254,7 @@ export async function backfillAnydeskAddresses() {
   for (const laptop of laptops) {
     await prisma.laptop.update({
       where: { id: laptop.id },
-      data: { anydeskAddress: generateAnydeskAddress(laptop.assetTag) },
+      data: { anydeskAddress: encryptSecret(generateAnydeskAddress(laptop.assetTag)) },
     })
   }
   return laptops.length

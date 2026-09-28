@@ -32,6 +32,58 @@ enum ChargerCondition {
   MISSING
 }
 
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  name                String
+  email               String    @unique
+  passwordHash        String
+  role                UserRole  @default(ADMIN)
+  isActive            Boolean   @default(true)
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  sessions            Session[]
+  resetOtps           PasswordResetOtp[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash    String    @unique
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  lastActiveAt DateTime  @default(now())
+  revokedAt    DateTime?
+  userAgent    String?
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model PasswordResetOtp {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("password_reset_otps")
+}
+
 model Laptop {
   id            String      @id @default(cuid())
   assetTag      String      @unique

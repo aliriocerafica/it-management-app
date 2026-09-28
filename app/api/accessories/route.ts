@@ -7,6 +7,7 @@ import {
   listAccessories,
   upsertAccessory,
 } from "@/lib/inventory-repository"
+import { verifySession } from "@/lib/auth/session"
 
 const accessoryPaths: Record<AccessoryKind, string> = {
   headset: "/dashboard/headsets",
@@ -21,6 +22,9 @@ function refreshInventory(kind?: AccessoryKind) {
 }
 
 export async function GET(request: Request) {
+  const user = await verifySession()
+  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
+
   const kind = new URL(request.url).searchParams.get("kind") as AccessoryKind | null
   if (!kind) {
     return NextResponse.json({ error: "kind is required" }, { status: 400 })
@@ -30,6 +34,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const user = await verifySession()
+  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
+
   const item = (await request.json()) as Accessory
   const saved = await upsertAccessory(item)
   refreshInventory(item.kind)
@@ -37,6 +44,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const user = await verifySession()
+  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
+
   const { ids } = (await request.json()) as { ids: string[] }
   await deleteAccessories(ids)
   refreshInventory()

@@ -7,6 +7,17 @@ import type {
   OwnershipEntry,
 } from "@/lib/laptops"
 import type { Prisma } from "@/lib/generated/prisma"
+import { decryptSecret } from "@/lib/crypto"
+
+function decryptAnydeskAddress(value: string | null): string | null {
+  if (!value) return value
+  try {
+    return decryptSecret(value)
+  } catch {
+    console.warn("Failed to decrypt anydeskAddress; returning raw stored value")
+    return value
+  }
+}
 
 export type StatusCounts = Record<LaptopStatus, number> & { total: number }
 
@@ -120,7 +131,7 @@ export function laptopFromDb(record: LaptopRecord): Laptop {
     purchaseDate: toIsoDate(record.purchaseDate),
     warrantyYears: record.warrantyYears,
     status: statusFromDb[record.status],
-    anydeskAddress: record.anydeskAddress,
+    anydeskAddress: decryptAnydeskAddress(record.anydeskAddress),
     charger: {
       connector: record.charger.connector,
       wattage: record.charger.wattage,
