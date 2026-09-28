@@ -117,15 +117,15 @@ export function OwnershipTimeline({
   ).size;
 
   return (
-    <section className="rounded-xl border border-border p-4 sm:col-span-2 lg:col-span-1">
-      <h3 className="mb-4 flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+    <section className="flex min-h-0 flex-col rounded-xl border border-border p-4 sm:col-span-2 lg:col-span-1">
+      <h3 className="mb-4 flex shrink-0 items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
         <HistoryIcon className="size-3.5" />
         Ownership history
         <span className="ml-auto font-medium tracking-normal normal-case">
           {owners} {owners === 1 ? "owner" : "owners"}
         </span>
       </h3>
-      <ol>
+      <ol className="min-h-0 overflow-y-auto [scrollbar-width:none] max-h-64 sm:max-h-80 lg:max-h-[calc(100svh-22rem)] [&::-webkit-scrollbar]:hidden">
         <TimelineStep
           dot={
             <span className="size-3 rounded-full border-2 border-muted-foreground/40 bg-card" />
@@ -303,7 +303,7 @@ function LaptopDetails({
         </div>
       </DialogHeader>
 
-      <div className="grid min-h-0 gap-4 overflow-y-auto px-6 py-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 py-5 [scrollbar-width:none] sm:grid-cols-2 lg:grid-cols-3 [&::-webkit-scrollbar]:hidden">
         <div className="flex flex-col gap-4">
           <Section title="Assignment" icon={UserIcon}>
             {laptop.handler ? (

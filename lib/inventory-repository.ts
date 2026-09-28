@@ -246,6 +246,28 @@ export async function listRemoteAccessRows(): Promise<RemoteAccessRow[]> {
     .sort((a, b) => a.employee.name.localeCompare(b.employee.name))
 }
 
+export async function getLaptopById(id: string): Promise<Laptop | null> {
+  const row = await prisma.laptop.findUnique({
+    where: { id },
+    include: laptopInclude,
+  })
+  return row ? laptopFromDb(row) : null
+}
+
+// Everything currently checked out to one person, for the accountability form.
+export async function listAssignedAssets(
+  employeeName: string,
+): Promise<{ laptops: Laptop[]; accessories: Accessory[] }> {
+  const [laptopRows, accessoryRows] = await Promise.all([
+    prisma.laptop.findMany({ where: { handlerName: employeeName }, include: laptopInclude }),
+    prisma.accessory.findMany({ where: { handlerName: employeeName }, include: accessoryInclude }),
+  ])
+  return {
+    laptops: laptopRows.map(laptopFromDb),
+    accessories: accessoryRows.map(accessoryFromDb),
+  }
+}
+
 export async function backfillAnydeskAddresses() {
   const laptops = await prisma.laptop.findMany({
     where: { OR: [{ anydeskAddress: null }, { anydeskAddress: "" }] },

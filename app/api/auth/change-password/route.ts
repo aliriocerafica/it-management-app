@@ -7,7 +7,7 @@ import {
   destroyAllSessionsForUser,
   verifySession,
 } from "@/lib/auth/session"
-import { prisma } from "@/lib/prisma"
+import { passwordError } from "@/lib/password"
 
 export const dynamic = "force-dynamic"
 
@@ -26,6 +26,11 @@ export async function POST(request: Request) {
   const parsed = ChangePasswordSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 })
+  }
+
+  const strength = passwordError(parsed.data.newPassword)
+  if (strength) {
+    return NextResponse.json({ error: strength }, { status: 400 })
   }
 
   const user = await prisma.user.findUnique({ where: { id: sessionUser.id } })

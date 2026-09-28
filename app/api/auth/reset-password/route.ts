@@ -1,64 +1,50 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { hashPassword, hashToken } from "@/lib/crypto"
+import { verifyResetOtp } from "@/lib/auth/reset-otp"
+import { hashPassword } from "@/lib/crypto"
 import { destroyAllSessionsForUser } from "@/lib/auth/session"
+import { passwordError } from "@/lib/password"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
 const ResetPasswordSchema = z.object({
   email: z.string().email(),
-  code: z.string().length(6),
+  code: z.string().trim().min(6).max(8),
   newPassword: z.string().min(8),
 })
-
-const MAX_ATTEMPTS = 5
-const GENERIC_ERROR = { error: "Invalid or expired code." }
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   const parsed = ResetPasswordSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json(GENERIC_ERROR, { status: 400 })
+    return NextResponse.json({ error: "Invalid or expired code." }, { status: 400 })
   }
 
-  const { email, code, newPassword } = parsed.data
-  const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } })
-  if (!user) {
-    return NextResponse.json(GENERIC_ERROR, { status: 400 })
+  const strength = passwordError(parsed.data.newPassword)
+  if (strength) {
+    return NextResponse.json({ error: strength }, { status: 400 })
   }
 
-  const otp = await prisma.passwordResetOtp.findFirst({
-    where: { userId: user.id, consumedAt: null, expiresAt: { gt: new Date() } },
-    orderBy: { createdAt: "desc" },
-  })
-
-  if (!otp || otp.attempts >= MAX_ATTEMPTS) {
-    return NextResponse.json(GENERIC_ERROR, { status: 400 })
+  const result = await verifyResetOtp(parsed.data.email, parsed.data.code)
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 400 })
   }
 
-  if (otp.codeHash !== hashToken(code)) {
-    await prisma.passwordResetOtp.update({
-      where: { id: otp.id },
-      data: { attempts: { increment: 1 } },
-    })
-    return NextResponse.json(GENERIC_ERROR, { status: 400 })
-  }
-
-  const passwordHash = await hashPassword(newPassword)
+  const passwordHash = await hashPassword(parsed.data.newPassword)
   await prisma.$transaction([
     prisma.user.update({
-      where: { id: user.id },
+      where: { id: result.user.id },
       data: { passwordHash, failedLoginAttempts: 0, lockedUntil: null },
     }),
     prisma.passwordResetOtp.update({
-      where: { id: otp.id },
+      where: { id: result.otp.id },
       data: { consumedAt: new Date() },
     }),
   ])
 
-  await destroyAllSessionsForUser(user.id)
+  await destroyAllSessionsForUser(result.user.id)
 
   return NextResponse.json({ ok: true })
 }

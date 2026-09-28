@@ -185,3 +185,12 @@ model AccessoryAssignment {
   @@index([employeeId])
   @@map("accessory_assignments")
 }
+
+model AccountabilityFormSettings {
+  id            String   @id
+  hrName        String
+  itOfficerName String
+  updatedAt     DateTime @updatedAt
+
+  @@map("accountability_form_settings")
+}

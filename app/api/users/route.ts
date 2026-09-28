@@ -3,6 +3,11 @@ import { z } from "zod"
 
 import { verifySession } from "@/lib/auth/session"
 import { createUser, listUsers } from "@/lib/user-repository"
+import { sendEmail } from "@/lib/email/brevo"
+import {
+  accountCreatedEmailHtml,
+  accountCreatedEmailText,
+} from "@/lib/email/templates"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -49,5 +54,17 @@ export async function POST(request: Request) {
   }
 
   const user = await createUser(parsed.data)
+  const origin = new URL(request.url).origin
+  const loginUrl = `${process.env.APP_URL?.replace(/\/$/, "") || origin}/login`
+  try {
+    await sendEmail({
+      to: user.email,
+      subject: "Your IT portal account is ready",
+      htmlContent: accountCreatedEmailHtml(user.name, loginUrl),
+      textContent: accountCreatedEmailText(user.name, loginUrl),
+    })
+  } catch (error) {
+    console.error("[email:error] Welcome email failed", error)
+  }
   return NextResponse.json(user, { status: 201 })
 }

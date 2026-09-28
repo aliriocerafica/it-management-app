@@ -1,0 +1,68 @@
+"use client"
+
+import * as React from "react"
+import Link from "next/link"
+import { useSearchParams } from "next/navigation"
+
+import { Button } from "@/components/ui/button"
+
+function normalizeCode(value: string | null) {
+  return (value ?? "").replace(/\D/g, "").slice(0, 6)
+}
+
+export function CopyCodeView() {
+  const searchParams = useSearchParams()
+  const code = normalizeCode(searchParams.get("c"))
+  const [copied, setCopied] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const copy = React.useCallback(async (silent = false) => {
+    if (code.length !== 6) return
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setError(null)
+    } catch {
+      if (!silent) {
+        setError("Select the code and copy it yourself.")
+      }
+    }
+  }, [code])
+
+  React.useEffect(() => {
+    void copy(true)
+  }, [copy])
+
+  if (code.length !== 6) {
+    return (
+      <div className="w-full max-w-sm text-center">
+        <p className="text-sm text-muted-foreground">This copy link is missing a code.</p>
+        <Button asChild className="mt-4" variant="outline">
+          <Link href="/reset-password">Go to reset password</Link>
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full max-w-sm text-center">
+      <p className="text-sm text-muted-foreground">
+        {copied ? "Copied to clipboard." : "Your reset code"}
+      </p>
+      <p className="mt-3 font-mono text-3xl font-semibold tracking-[0.35em]">{code}</p>
+      {error ? (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <div className="mt-6 flex flex-col gap-2">
+        <Button type="button" onClick={() => void copy()}>
+          {copied ? "Copy again" : "Copy code"}
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/reset-password">Continue to reset password</Link>
+        </Button>
+      </div>
+    </div>
+  )
+}

@@ -40,7 +40,9 @@ import {
   createAccessory,
   removeAccessories,
   saveAccessory,
+  saveLaptop,
 } from "@/lib/inventory-api";
+import { returnedToVacant } from "@/lib/inventory-lifecycle";
 import {
   ColumnHeader,
   FilterMenu,
@@ -52,6 +54,10 @@ import {
   ReturnFromRepairDialog,
   type RepairOutcome,
 } from "@/components/return-from-repair-dialog";
+import {
+  ReturnToStockDialog,
+  type AssignedAssets,
+} from "@/components/return-to-stock-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -79,10 +85,10 @@ import {
   parseDate,
   statusStyles,
   statuses,
-  useToday,
   warrantyInfo,
   type LaptopStatus,
 } from "@/lib/laptops";
+import { useToday } from "@/lib/use-today";
 import { cn } from "@/lib/utils";
 
 export const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
@@ -170,6 +176,8 @@ export function AccessoryInventoryTable({
   const [assignOpen, setAssignOpen] = useState(false);
   const [repairing, setRepairing] = useState<Accessory | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
+  const [returning, setReturning] = useState<Accessory | null>(null);
+  const [returnOpen, setReturnOpen] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [undo, setUndo] = useState<{
     snapshot: Accessory[];
@@ -260,6 +268,11 @@ export function AccessoryInventoryTable({
     setRepairOpen(true);
   }
 
+  function openReturnToStock(item: Accessory) {
+    setReturning(item);
+    setReturnOpen(true);
+  }
+
   function updateItem(id: string, update: (item: Accessory) => Accessory) {
     setItems((prev) => {
       const next = prev.map((item) => (item.id === id ? update(item) : item));
@@ -321,6 +334,35 @@ export function AccessoryInventoryTable({
       };
     });
     setRepairOpen(false);
+  }
+
+  function returnToStock(note: string, alsoReturn: AssignedAssets) {
+    const target = returning;
+    if (!target) return;
+    const sameKindIds = new Set([
+      target.id,
+      ...alsoReturn.accessories
+        .filter((accessory) => accessory.kind === kind)
+        .map((accessory) => accessory.id),
+    ]);
+    setItems((prev) => {
+      const next = prev.map((item) =>
+        sameKindIds.has(item.id) ? returnedToVacant(item, note) : item,
+      );
+      for (const item of next) {
+        if (sameKindIds.has(item.id)) void saveAccessory(item);
+      }
+      return next;
+    });
+    for (const accessory of alsoReturn.accessories) {
+      if (accessory.kind === kind) continue;
+      void saveAccessory(returnedToVacant(accessory, note));
+    }
+    for (const laptop of alsoReturn.laptops) {
+      void saveLaptop(returnedToVacant(laptop, note));
+    }
+    setReturnOpen(false);
+    setReturning(null);
   }
 
   function assignItem(id: string, employee: Employee, note: string) {
@@ -700,6 +742,16 @@ export function AccessoryInventoryTable({
                             <Undo2Icon />
                             Return
                           </Button>
+                        ) : item.status === "In use" ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="w-[4.5rem]"
+                            onClick={() => openReturnToStock(item)}
+                          >
+                            <Undo2Icon />
+                            Return
+                          </Button>
                         ) : (
                           <Button
                             variant="ghost"
@@ -724,10 +776,9 @@ export function AccessoryInventoryTable({
                           >
                             <EllipsisIcon />
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuContent align="end" className="w-48">
                             {/* Only what the row's main button doesn't already do. */}
-                            {(item.status === "Vacant" ||
-                              item.status === "In repair") && (
+                            {item.status !== "Retired" && (
                               <DropdownMenuItem onClick={() => openView(item)}>
                                 <EyeIcon />
                                 View details
@@ -891,6 +942,18 @@ export function AccessoryInventoryTable({
         onConfirm={(outcome, note) =>
           repairing && returnFromRepair(repairing.id, outcome, note)
         }
+      />
+
+      <ReturnToStockDialog
+        item={returning}
+        itemId={returning?.id ?? null}
+        noun={noun}
+        open={returnOpen}
+        onOpenChange={(open) => {
+          setReturnOpen(open)
+          if (!open) setReturning(null)
+        }}
+        onConfirm={returnToStock}
       />
 
       <AssignLaptopDialog

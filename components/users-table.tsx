@@ -152,11 +152,16 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
   async function sendPasswordReset(user: UserDto) {
     setError(null)
     setInfo(null)
-    await fetch("/api/auth/forgot-password", {
+    const response = await fetch("/api/auth/forgot-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: user.email }),
     })
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      setError(body?.error ?? `Could not email a reset code to ${user.email}.`)
+      return
+    }
     setInfo(`Password reset code sent to ${user.email}.`)
   }
 

@@ -105,7 +105,7 @@ function AccessoryDetails({
         </div>
       </DialogHeader>
 
-      <div className="grid min-h-0 gap-4 overflow-y-auto px-6 py-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 py-5 [scrollbar-width:none] sm:grid-cols-2 lg:grid-cols-3 [&::-webkit-scrollbar]:hidden">
         <div className="flex flex-col gap-4">
           <Section title="Assignment" icon={UserIcon}>
             {item.handler ? (

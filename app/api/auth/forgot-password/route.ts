@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { generateNumericOtp, hashToken } from "@/lib/crypto"
-import { sendEmail } from "@/lib/email/brevo"
-import { otpEmailHtml } from "@/lib/email/templates"
+import { EmailSendError, sendEmail } from "@/lib/email/brevo"
+import { otpEmailHtml, otpEmailText } from "@/lib/email/templates"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -20,11 +20,10 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   const parsed = ForgotPasswordSchema.safeParse(body)
   if (!parsed.success) {
-    // Still generic — don't reveal validation details tied to enumeration.
     return NextResponse.json(GENERIC_OK)
   }
 
-  const email = parsed.data.email.toLowerCase()
+  const email = parsed.data.email.trim().toLowerCase()
   const user = await prisma.user.findUnique({ where: { email } })
 
   if (user && user.isActive) {
@@ -38,7 +37,7 @@ export async function POST(request: Request) {
 
     if (!withinCooldown) {
       const code = generateNumericOtp()
-      await prisma.passwordResetOtp.create({
+      const otp = await prisma.passwordResetOtp.create({
         data: {
           userId: user.id,
           codeHash: hashToken(code),
@@ -46,14 +45,30 @@ export async function POST(request: Request) {
         },
       })
 
-      await sendEmail({
-        to: user.email,
-        subject: "Your password reset code",
-        htmlContent: otpEmailHtml(code),
-      })
+      const origin =
+        process.env.APP_URL?.replace(/\/$/, "") || new URL(request.url).origin
+      const copyUrl = `${origin}/copy-code?c=${encodeURIComponent(code)}`
+
+      try {
+        await sendEmail({
+          to: user.email,
+          subject: "Your reset code",
+          htmlContent: otpEmailHtml(code, copyUrl),
+          textContent: otpEmailText(code),
+        })
+      } catch (error) {
+        await prisma.passwordResetOtp.delete({ where: { id: otp.id } }).catch(() => null)
+        if (process.env.NODE_ENV !== "production") {
+          console.log(`[otp] ${user.email} ${code}`)
+        }
+        const message =
+          error instanceof EmailSendError
+            ? error.message
+            : "We couldn't send the reset email. Please try again."
+        return NextResponse.json({ error: message }, { status: 502 })
+      }
     }
   }
 
-  // Always the same response, whether or not the email exists.
   return NextResponse.json(GENERIC_OK)
 }

@@ -1,5 +1,4 @@
-import { ChangePasswordForm } from "@/components/change-password-form"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { SettingsActions } from "@/components/settings-actions"
 
 export default function SettingsPage() {
   return (
@@ -13,14 +12,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <Card className="max-w-2xl">
-        <CardHeader>
-          <CardTitle>Security</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ChangePasswordForm />
-        </CardContent>
-      </Card>
+      <SettingsActions />
     </div>
   )
 }

@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string
 }
 
-const SCHEMA_VERSION = "anydesk-1"
+const SCHEMA_VERSION = "accountability-settings-1"
 
 function createPrismaClient() {
   const adapter = new PrismaNeon({

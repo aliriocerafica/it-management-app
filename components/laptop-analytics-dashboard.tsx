@@ -63,11 +63,11 @@ import {
   parseDate,
   statusStyles,
   statuses,
-  useToday,
   warrantyInfo,
   type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops";
+import { useToday } from "@/lib/use-today";
 import { cn } from "@/lib/utils";
 
 const UNASSIGNED = "Unassigned";

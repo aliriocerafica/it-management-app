@@ -1,5 +1,3 @@
-import { useSyncExternalStore } from "react";
-
 export type LaptopStatus = "In use" | "Vacant" | "In repair" | "Retired";
 
 export type ChargerCondition = "Good" | "Worn cable" | "Replaced" | "Missing";
@@ -837,18 +835,6 @@ export const statusStyles: Record<LaptopStatus, { dot: string; text: string }> =
     },
     Retired: { dot: "bg-red-500", text: "text-red-600 dark:text-red-400" },
   };
-
-// Ages are computed in the browser so they always reflect today's date,
-// rather than the date the page was prerendered.
-const noopSubscribe = () => () => {};
-export function useToday() {
-  const key = useSyncExternalStore(
-    noopSubscribe,
-    () => new Date().toDateString(),
-    () => null,
-  );
-  return key ? new Date(key) : null;
-}
 
 export function parseDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);

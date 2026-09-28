@@ -44,11 +44,11 @@ import {
   parseDate,
   statusStyles,
   statuses,
-  useToday,
   warrantyInfo,
   type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops"
+import { useToday } from "@/lib/use-today"
 import type { SessionUser } from "@/lib/auth/dto"
 import type { UserDto } from "@/lib/user-repository"
 import { cn } from "@/lib/utils"

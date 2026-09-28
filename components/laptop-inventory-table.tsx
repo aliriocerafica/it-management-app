@@ -12,6 +12,7 @@ import {
   DownloadIcon,
   EllipsisIcon,
   EyeIcon,
+  FileTextIcon,
   HashIcon,
   HourglassIcon,
   LaptopIcon,
@@ -26,6 +27,7 @@ import {
   XIcon,
 } from "lucide-react";
 
+import { AccountabilityFormPrompt } from "@/components/accountability-form-prompt";
 import { AddLaptopDialog } from "@/components/add-laptop-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
@@ -33,12 +35,18 @@ import { UndoToast } from "@/components/undo-toast";
 import {
   createLaptop,
   removeLaptops,
+  saveAccessory,
   saveLaptop,
 } from "@/lib/inventory-api";
+import { returnedToVacant } from "@/lib/inventory-lifecycle";
 import {
   ReturnFromRepairDialog,
   type RepairOutcome,
 } from "@/components/return-from-repair-dialog";
+import {
+  ReturnToStockDialog,
+  type AssignedAssets,
+} from "@/components/return-to-stock-dialog";
 import { LaptopDetailsDialog } from "@/components/laptop-details-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -63,11 +71,11 @@ import {
   parseDate,
   statusStyles,
   statuses,
-  useToday,
   warrantyInfo,
   type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops";
+import { useToday } from "@/lib/use-today";
 import { type Employee } from "@/lib/employees";
 import { cn } from "@/lib/utils";
 
@@ -251,6 +259,12 @@ export function LaptopInventoryTable({
   const [assignOpen, setAssignOpen] = useState(false);
   const [repairing, setRepairing] = useState<Laptop | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
+  const [returning, setReturning] = useState<Laptop | null>(null);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [formPrompt, setFormPrompt] = useState<{
+    laptopId: string;
+    employeeName: string;
+  } | null>(null);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [undo, setUndo] = useState<{
     snapshot: Laptop[];
@@ -340,6 +354,27 @@ export function LaptopInventoryTable({
     setRepairOpen(true);
   }
 
+  function openReturnToStock(laptop: Laptop) {
+    setReturning(laptop);
+    setReturnOpen(true);
+  }
+
+  function openAccountabilityForm(
+    laptopId: string,
+    names: { hrName: string; itOfficerName: string },
+  ) {
+    const params = new URLSearchParams()
+    const hr = names?.hrName?.trim()
+    const it = names?.itOfficerName?.trim()
+    if (hr && hr !== "undefined") params.set("hr", hr)
+    if (it && it !== "undefined") params.set("it", it)
+    const query = params.toString()
+    window.open(
+      `/api/laptops/${laptopId}/accountability-form${query ? `?${query}` : ""}`,
+      "_blank",
+    )
+  }
+
   function updateLaptop(id: string, update: (laptop: Laptop) => Laptop) {
     setLaptops((prev) => {
       const next = prev.map((l) => (l.id === id ? update(l) : l));
@@ -403,6 +438,29 @@ export function LaptopInventoryTable({
     setRepairOpen(false);
   }
 
+  function returnToStock(note: string, alsoReturn: AssignedAssets) {
+    const target = returning;
+    if (!target) return;
+    const laptopIds = new Set([
+      target.id,
+      ...alsoReturn.laptops.map((laptop) => laptop.id),
+    ]);
+    setLaptops((prev) => {
+      const next = prev.map((laptop) =>
+        laptopIds.has(laptop.id) ? returnedToVacant(laptop, note) : laptop,
+      );
+      for (const laptop of next) {
+        if (laptopIds.has(laptop.id)) void saveLaptop(laptop);
+      }
+      return next;
+    });
+    for (const accessory of alsoReturn.accessories) {
+      void saveAccessory(returnedToVacant(accessory, note));
+    }
+    setReturnOpen(false);
+    setReturning(null);
+  }
+
   function assignLaptop(id: string, employee: Employee, note: string) {
     const todayIso = isoToday();
     updateLaptop(id, (l) => {
@@ -427,6 +485,7 @@ export function LaptopInventoryTable({
       };
     });
     setAssignOpen(false);
+    setFormPrompt({ laptopId: id, employeeName: employee.name });
   }
 
   function deleteLaptops(ids: string[]) {
@@ -777,6 +836,16 @@ export function LaptopInventoryTable({
                             <Undo2Icon />
                             Return
                           </Button>
+                        ) : laptop.status === "In use" ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="w-[4.5rem]"
+                            onClick={() => openReturnToStock(laptop)}
+                          >
+                            <Undo2Icon />
+                            Return
+                          </Button>
                         ) : (
                           <Button
                             variant="ghost"
@@ -801,10 +870,9 @@ export function LaptopInventoryTable({
                           >
                             <EllipsisIcon />
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuContent align="end" className="w-48">
                             {/* Only what the row's main button doesn't already do. */}
-                            {(laptop.status === "Vacant" ||
-                              laptop.status === "In repair") && (
+                            {laptop.status !== "Retired" && (
                               <DropdownMenuItem
                                 onClick={() => openView(laptop)}
                               >
@@ -819,6 +887,19 @@ export function LaptopInventoryTable({
                               >
                                 <WrenchIcon />
                                 Send to repair
+                              </DropdownMenuItem>
+                            )}
+                            {laptop.handler && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setFormPrompt({
+                                    laptopId: laptop.id,
+                                    employeeName: laptop.handler!,
+                                  })
+                                }
+                              >
+                                <FileTextIcon />
+                                Accountability form
                               </DropdownMenuItem>
                             )}
                             {laptop.status !== "Retired" && (
@@ -971,6 +1052,17 @@ export function LaptopInventoryTable({
         }
       />
 
+      <ReturnToStockDialog
+        item={returning}
+        itemId={returning?.id ?? null}
+        open={returnOpen}
+        onOpenChange={(open) => {
+          setReturnOpen(open)
+          if (!open) setReturning(null)
+        }}
+        onConfirm={returnToStock}
+      />
+
       <AssignLaptopDialog
         laptop={assigning}
         laptops={laptops}
@@ -986,6 +1078,15 @@ export function LaptopInventoryTable({
         open={viewOpen}
         onOpenChange={setViewOpen}
         today={today}
+      />
+
+      <AccountabilityFormPrompt
+        open={formPrompt !== null}
+        onOpenChange={(next) => !next && setFormPrompt(null)}
+        employeeName={formPrompt?.employeeName}
+        onGenerate={(names) =>
+          formPrompt && openAccountabilityForm(formPrompt.laptopId, names)
+        }
       />
     </div>
   );

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { EyeIcon, EyeOffIcon, LaptopIcon, LockIcon, MailIcon } from "lucide-react"
+import { EyeIcon, EyeOffIcon, LockIcon, MailIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -56,12 +56,7 @@ export function LoginForm() {
   }
 
   return (
-    <div className="flex w-full max-w-sm flex-col items-center gap-6">
-      <div className="flex size-12 items-center justify-center rounded-2xl bg-neutral-900 text-white shadow-sm dark:bg-white dark:text-neutral-900">
-        <LaptopIcon className="size-6" />
-      </div>
-
-      <Card className="w-full ring-foreground/10 shadow-lg shadow-black/[0.03] dark:shadow-black/20">
+    <Card className="w-full ring-foreground/10 shadow-lg shadow-black/[0.03] dark:shadow-black/20">
         <CardHeader className="gap-1.5 px-6 pt-6 pb-2 text-center">
           <CardTitle className="text-xl">Welcome back</CardTitle>
           <CardDescription>Sign in to access the IT portal</CardDescription>
@@ -145,6 +140,5 @@ export function LoginForm() {
           </Button>
         </CardFooter>
       </Card>
-    </div>
   )
 }
