@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { hashPassword, verifyPassword } from "@/lib/crypto"
+import { prisma } from "@/lib/prisma"
 import {
   currentSessionTokenHash,
   destroyAllSessionsForUser,

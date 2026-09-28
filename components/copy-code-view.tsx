@@ -4,7 +4,8 @@ import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 function normalizeCode(value: string | null) {
   return (value ?? "").replace(/\D/g, "").slice(0, 6)
@@ -37,9 +38,12 @@ export function CopyCodeView() {
     return (
       <div className="w-full max-w-sm text-center">
         <p className="text-sm text-muted-foreground">This copy link is missing a code.</p>
-        <Button asChild className="mt-4" variant="outline">
-          <Link href="/reset-password">Go to reset password</Link>
-        </Button>
+        <Link
+          href="/reset-password"
+          className={cn(buttonVariants({ variant: "outline" }), "mt-4")}
+        >
+          Go to reset password
+        </Link>
       </div>
     )
   }
@@ -59,9 +63,12 @@ export function CopyCodeView() {
         <Button type="button" onClick={() => void copy()}>
           {copied ? "Copy again" : "Copy code"}
         </Button>
-        <Button asChild variant="outline">
-          <Link href="/reset-password">Continue to reset password</Link>
-        </Button>
+        <Link
+          href="/reset-password"
+          className={buttonVariants({ variant: "outline" })}
+        >
+          Continue to reset password
+        </Link>
       </div>
     </div>
   )
