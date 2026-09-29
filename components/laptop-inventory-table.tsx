@@ -688,7 +688,7 @@ export function LaptopInventoryTable({
                 </ColumnHeader>
                 <ColumnHeader
                   icon={PaletteIcon}
-                  className="hidden @6xl:table-cell"
+                  className="hidden @7xl:table-cell"
                 >
                   Color
                 </ColumnHeader>
@@ -780,7 +780,7 @@ export function LaptopInventoryTable({
                         {laptop.ram} · {laptop.storage} · {laptop.os}
                       </div>
                     </td>
-                    <td className={cn(cellClass, "hidden @6xl:table-cell")}>
+                    <td className={cn(cellClass, "hidden @7xl:table-cell")}>
                       <span className="inline-flex items-center gap-1.5">
                         <span
                           className="size-3 shrink-0 rounded-full ring-1 ring-foreground/15"
@@ -826,14 +826,6 @@ export function LaptopInventoryTable({
                         />
                         {laptop.status}
                       </span>
-                      {laptop.status === "In repair" && laptop.repairIssue && (
-                        <div
-                          className="mt-1 max-w-56 truncate text-[11px] text-muted-foreground"
-                          title={laptop.repairIssue}
-                        >
-                          {laptop.repairIssue}
-                        </div>
-                      )}
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       {/* Same layout on every row: one primary action in a
