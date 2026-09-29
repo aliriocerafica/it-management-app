@@ -85,10 +85,10 @@ export const verifySession = cache(async (): Promise<SessionUser | null> => {
   }
 })
 
-/** For Server Components — redirects to /login if there's no valid session. */
+/** For Server Components — sends the user to /login if there's no valid session. */
 export async function requireSession(): Promise<SessionUser> {
   const user = await verifySession()
-  if (!user) redirect("/login")
+  if (!user) redirect("/api/auth/session-expired")
   return user
 }
 
