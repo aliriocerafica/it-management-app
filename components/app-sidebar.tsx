@@ -1,6 +1,6 @@
 "use client"
 
-import type { ComponentType } from "react"
+import { useMemo, useState, type ComponentType } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -80,7 +80,6 @@ const overviewItems: {
     title: "Tickets",
     href: "/dashboard/tickets",
     icon: TicketIcon,
-    badge: "4",
   },
   { title: "Users", href: "/dashboard/users", icon: UsersIcon },
   { title: "Settings", href: "/dashboard/settings", icon: SettingsIcon },
@@ -92,6 +91,15 @@ export function AppSidebar({ user }: { user: SessionUser }) {
   const { state, toggleSidebar } = useSidebar()
   const collapsed = state === "collapsed"
   const initial = user.name.trim()[0]?.toUpperCase() ?? "?"
+  const [search, setSearch] = useState("")
+
+  const filteredItems = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return overviewItems
+    return overviewItems.filter((item) =>
+      item.title.toLowerCase().includes(query)
+    )
+  }, [search])
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" })
@@ -166,13 +174,22 @@ export function AppSidebar({ user }: { user: SessionUser }) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="relative group-data-[collapsible=icon]:hidden">
+        <form
+          role="search"
+          onSubmit={(event) => event.preventDefault()}
+          className="relative group-data-[collapsible=icon]:hidden"
+        >
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search"
+            type="search"
+            placeholder="Search pages"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            autoComplete="off"
+            aria-label="Search pages"
             className="h-10 rounded-xl border-0 bg-muted/70 pl-9 shadow-none focus-visible:ring-2 dark:bg-muted/40"
           />
-        </div>
+        </form>
       </SidebarHeader>
 
       <SidebarContent className="gap-0 px-3 group-data-[collapsible=icon]:px-3">
@@ -181,7 +198,12 @@ export function AppSidebar({ user }: { user: SessionUser }) {
             Overview
           </p>
           <nav className="flex flex-col gap-0.5">
-            {overviewItems.map((item) => {
+            {filteredItems.length === 0 && (
+              <p className="px-3 py-2 text-sm text-muted-foreground">
+                No results for &ldquo;{search}&rdquo;
+              </p>
+            )}
+            {filteredItems.map((item) => {
               const isActive = pathname === item.href
               return (
                 <div key={item.href} className="relative">

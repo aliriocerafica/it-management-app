@@ -263,8 +263,8 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
               <th className="sticky top-0 z-10 h-9 border-r border-border bg-card px-2.5 text-left text-[11px] font-medium text-muted-foreground">
                 Last login
               </th>
-              <th className="sticky top-0 z-10 h-9 bg-card px-2">
-                <span className="sr-only">Actions</span>
+              <th className="sticky top-0 z-10 h-9 min-w-[3.5rem] bg-card px-2 text-left text-[11px] font-medium whitespace-nowrap text-muted-foreground">
+                Actions
               </th>
             </tr>
           </thead>

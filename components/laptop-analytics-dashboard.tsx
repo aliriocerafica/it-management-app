@@ -98,10 +98,24 @@ function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-function recommendation(r: GradedLaptop) {
-  return r.laptop.status === "Retired"
-    ? "Dispose or recycle"
-    : gradeInfo[r.grade].action;
+function recommendation(r: GradedLaptop, today: Date) {
+  if (r.laptop.status === "Retired") return "Dispose or recycle";
+  // D/F actions are time-critical, so derive the wording from the actual
+  // refresh date instead of a fixed per-grade label — otherwise a laptop
+  // due in a few weeks can still read "Replace in 6 months".
+  if (r.grade === "D" || r.grade === "F") {
+    const daysUntil = Math.ceil(
+      (r.refreshDate.getTime() - today.getTime()) / 86_400_000,
+    );
+    if (daysUntil <= 0) return "Replace now";
+    if (daysUntil <= 60) {
+      const weeks = Math.max(1, Math.round(daysUntil / 7));
+      return `Replace in ${weeks} week${weeks === 1 ? "" : "s"}`;
+    }
+    const months = Math.max(1, Math.round(daysUntil / 30));
+    return `Replace in ${months} month${months === 1 ? "" : "s"}`;
+  }
+  return gradeInfo[r.grade].action;
 }
 
 function exportReport(rows: GradedLaptop[], today: Date) {
@@ -140,7 +154,7 @@ function exportReport(rows: GradedLaptop[], today: Date) {
       gradeInfo[r.grade].label,
       formatDate(r.refreshDate),
       warrantyInfo(r.laptop, today).state,
-      recommendation(r),
+      recommendation(r, today),
     ]
       .map((value) => `"${String(value).replaceAll('"', '""')}"`)
       .join(","),
@@ -366,8 +380,10 @@ function GradeTrendCard({
   }, [laptops, today]);
 
   const todayIndex = data.findIndex((d) => d.label === "Today");
+  // "Today" gets its own reference-line label, so exclude it from the
+  // regular tick spacing to keep it from overlapping the nearest month tick.
   const ticks = data
-    .filter((_, i) => (i - todayIndex) % 3 === 0)
+    .filter((_, i) => i !== todayIndex && (i - todayIndex) % 3 === 0)
     .map((d) => d.label);
 
   return (
@@ -387,7 +403,7 @@ function GradeTrendCard({
           config={gradeChartConfig}
           className="aspect-auto h-72 w-full"
         >
-          <LineChart data={data} margin={{ left: -16, right: 12, top: 16 }}>
+          <LineChart data={data} margin={{ left: -16, right: 12, top: 24 }}>
             <CartesianGrid
               className="stroke-border"
               strokeDasharray="3 3"
@@ -417,7 +433,15 @@ function GradeTrendCard({
                 className: "fill-muted-foreground text-[10px]",
               }}
             />
-            <ReferenceLine x="Today" className="stroke-muted-foreground/60" />
+            <ReferenceLine
+              x="Today"
+              className="stroke-muted-foreground/60"
+              label={{
+                value: "Today",
+                position: "top",
+                className: "fill-muted-foreground text-[10px]",
+              }}
+            />
             <ChartTooltip
               cursor={{ className: "stroke-foreground/30" }}
               content={({ active: open, payload }) => {
@@ -449,7 +473,7 @@ function GradeTrendCard({
               <Line
                 key={g}
                 dataKey={g}
-                type="monotone"
+                type="stepAfter"
                 stroke={`var(--color-${g})`}
                 strokeWidth={2}
                 dot={false}
@@ -465,7 +489,7 @@ function GradeTrendCard({
               <Line
                 key={`${g}_p`}
                 dataKey={`${g}_p`}
-                type="monotone"
+                type="stepAfter"
                 stroke={`var(--color-${g})`}
                 strokeWidth={2}
                 strokeDasharray="4 4"
@@ -560,7 +584,7 @@ function AgeUsageCard({ rows }: { rows: GradedLaptop[] }) {
           part is time spent with users
         </CardDescription>
       </CardHeader>
-      <div className="grid grid-cols-[4.5rem_1fr_6.5rem] gap-x-3 border-y border-border bg-muted px-4 py-2 text-[11px] text-muted-foreground">
+      <div className="grid grid-cols-[8.5rem_1fr_6.5rem] gap-x-3 border-y border-border bg-muted px-4 py-2 text-[11px] text-muted-foreground">
         <span>Laptop</span>
         <span className="relative h-4">
           {ticks.map((t) => (
@@ -580,9 +604,11 @@ function AgeUsageCard({ rows }: { rows: GradedLaptop[] }) {
           <div
             key={r.laptop.id}
             title={`${r.laptop.brand} ${r.laptop.model} · ${r.laptop.handler ?? UNASSIGNED} · ${gradeInfo[r.grade].label}`}
-            className="grid grid-cols-[4.5rem_1fr_6.5rem] items-center gap-x-3 px-4 py-1.5 text-xs hover:bg-muted/40"
+            className="grid grid-cols-[8.5rem_1fr_6.5rem] items-center gap-x-3 px-4 py-1.5 text-xs hover:bg-muted/40"
           >
-            <span className="font-medium">{r.laptop.assetTag}</span>
+            <span className="truncate font-medium whitespace-nowrap" title={r.laptop.assetTag}>
+              {r.laptop.assetTag}
+            </span>
             <span className="relative h-3">
               {/* Refresh threshold */}
               <span
@@ -652,9 +678,9 @@ function ColumnCard({
       <CardContent className="mt-auto">
         <ChartContainer
           config={barChartConfig}
-          className="aspect-auto h-64 w-full"
+          className="aspect-auto h-72 w-full"
         >
-          <BarChart data={data} margin={{ left: 0, right: 0, top: 20 }}>
+          <BarChart data={data} margin={{ left: 8, right: 8, top: 20, bottom: 4 }}>
             <CartesianGrid
               className="stroke-border"
               strokeDasharray="3 3"
@@ -664,9 +690,12 @@ function ColumnCard({
               dataKey="label"
               tickLine={false}
               axisLine={false}
-              tickMargin={8}
+              tickMargin={6}
               interval={0}
-              fontSize={11}
+              fontSize={10}
+              angle={-40}
+              textAnchor="end"
+              height={52}
             />
             <ChartTooltip
               cursor={{ className: "fill-muted" }}
@@ -881,6 +910,7 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
   });
 
   const thisYear = today.getFullYear();
+  const yearTick = (year: number) => `'${String(year).slice(-2)}`;
   const forecast: BarRow[] = [
     {
       label: "Overdue",
@@ -888,14 +918,14 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
       alert: true,
     },
     ...[0, 1, 2, 3].map((offset) => ({
-      label: String(thisYear + offset),
+      label: yearTick(thisYear + offset),
       match: (r: GradedLaptop) =>
         r.refreshDate > today &&
         r.refreshDate.getFullYear() === thisYear + offset,
       alert: false,
     })),
     {
-      label: `${thisYear + 4}+`,
+      label: `${yearTick(thisYear + 4)}+`,
       match: (r: GradedLaptop) => r.refreshDate.getFullYear() >= thisYear + 4,
       alert: false,
     },
@@ -1274,10 +1304,15 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
                       <td
                         className={cn(
                           td,
-                          "text-right font-semibold tabular-nums",
+                          "text-right font-semibold whitespace-normal tabular-nums",
                         )}
                       >
                         {r.score}
+                        {r.penalties.length > 0 && (
+                          <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
+                            {r.penalties.join(" · ")}
+                          </span>
+                        )}
                       </td>
                       <td className={td}>
                         <GradeBadge grade={r.grade} />
@@ -1292,7 +1327,7 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
                       >
                         {formatDate(r.refreshDate)}
                       </td>
-                      <td className={td}>{recommendation(r)}</td>
+                      <td className={td}>{recommendation(r, today)}</td>
                     </tr>
                   ))}
                   {reportRows.length === 0 && (
@@ -1314,10 +1349,12 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
 
       <p className="text-[11px] text-muted-foreground">
         How grades work: every laptop starts at 100 and loses 10 points per year
-        of age and 6 points per year spent with a user; laptops in repair lose a
-        further 10 and a missing charger 5. Retired laptops score 0. Grades:
-        Brand new (A) ≥ 80, Good (B) ≥ 65, Fair (C) ≥ 50, Poor (D) ≥ 35, End of
-        life (F) below 35.
+        of age and 6 points per year spent with a user. On top of that, laptops
+        currently in repair lose 10 and a missing charger loses 5 — those
+        deductions are listed under the score when they apply. Retired laptops
+        score 0. Grades: Brand new (A) ≥ 80, Good (B) ≥ 65, Fair (C) ≥ 50,
+        Poor (D) ≥ 35, End of life (F) below 35. Recommendations for poor and
+        end-of-life laptops follow the refresh date, not a fixed grade label.
       </p>
     </div>
   );

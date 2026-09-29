@@ -102,6 +102,7 @@ model Laptop {
   purchaseDate  DateTime    @db.Date
   warrantyYears  Int
   status         AssetStatus
+  repairIssue    String?
   anydeskAddress String?
   createdAt      DateTime    @default(now())
   updatedAt     DateTime    @updatedAt

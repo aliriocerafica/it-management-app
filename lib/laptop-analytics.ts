@@ -46,6 +46,9 @@ export type GradedLaptop = {
   score: number;
   grade: Grade;
   refreshDate: Date;
+  // Human-readable reasons the score was docked beyond age/usage, e.g.
+  // "In repair (-10)" — surfaced in the UI so the penalty isn't a mystery.
+  penalties: string[];
 };
 
 const DAY = 86_400_000;
@@ -80,7 +83,9 @@ function retiredSince(laptop: Laptop) {
 
 // Health score out of 100. Age wears a laptop down by 10 points a year and
 // time in someone's hands by a further 6 points a year, so a heavily used
-// laptop grades lower than an idle one of the same age.
+// laptop grades lower than an idle one of the same age. On top of that,
+// laptops currently "In repair" lose a further 10 points, and a missing
+// charger costs another 5.
 //
 // Grading at another date (`current: false`) uses the history up to that
 // date and skips the penalties that only describe the laptop right now.
@@ -95,8 +100,15 @@ export function gradeLaptop(
   const utilization = ageYears > 0 ? used / ageYears : 0;
 
   let score = 100 - ageYears * 10 - used * 6;
-  if (current && laptop.status === "In repair") score -= 10;
-  if (current && laptop.charger.condition === "Missing") score -= 5;
+  const penalties: string[] = [];
+  if (current && laptop.status === "In repair") {
+    score -= 10;
+    penalties.push("In repair (-10)");
+  }
+  if (current && laptop.charger.condition === "Missing") {
+    score -= 5;
+    penalties.push("Missing charger (-5)");
+  }
   score = Math.round(Math.max(0, Math.min(100, score)));
   const retired = retiredSince(laptop);
   if (current ? laptop.status === "Retired" : retired && asOf >= retired) {
@@ -116,6 +128,7 @@ export function gradeLaptop(
     score,
     grade,
     refreshDate,
+    penalties,
   };
 }
 

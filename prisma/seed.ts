@@ -111,6 +111,7 @@ async function main() {
         purchaseDate: toDate(laptop.purchaseDate),
         warrantyYears: laptop.warrantyYears,
         status: mapStatus(laptop.status),
+        repairIssue: laptop.status === "In repair" ? laptop.repairIssue ?? null : null,
         anydeskAddress: generateAnydeskAddress(laptop.assetTag),
         charger: {
           create: {

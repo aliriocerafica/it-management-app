@@ -117,6 +117,8 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
   const anydeskAddress = encryptSecret(
     laptop.anydeskAddress || generateAnydeskAddress(laptop.assetTag),
   )
+  const repairIssue =
+    laptop.status === "In repair" ? laptop.repairIssue?.trim() || null : null
 
   const saved = await prisma.laptop.upsert({
     where: { id: laptop.id },
@@ -138,6 +140,7 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
       purchaseDate: fromIsoDate(laptop.purchaseDate),
       warrantyYears: laptop.warrantyYears,
       status: statusToDb[laptop.status],
+      repairIssue,
       anydeskAddress,
       charger: { create: charger },
       assignments: { create: assignmentData(laptop.history) },
@@ -159,6 +162,7 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
       purchaseDate: fromIsoDate(laptop.purchaseDate),
       warrantyYears: laptop.warrantyYears,
       status: statusToDb[laptop.status],
+      repairIssue,
       anydeskAddress,
       charger: {
         upsert: {

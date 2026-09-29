@@ -185,15 +185,17 @@ export function DashboardOverview({
   const fleetScore = graded.length ? Math.round(average(graded.map((g) => g.score))) : null
   const dueForReplacement = graded.filter((g) => g.grade === "D" || g.grade === "F").length
 
-  // Warranty, across every laptop and accessory.
+  // Warranty, across active (non-retired) laptops only — matches the fleet
+  // health and replacement stats above it, and the Analytics page's count.
   const warrantyCounts = useMemo(() => {
     const counts = { Active: 0, Expiring: 0, Expired: 0 }
     if (!today) return counts
-    for (const item of [...laptops, ...accessories]) {
-      counts[warrantyInfo(item, today).state] += 1
+    for (const laptop of laptops) {
+      if (laptop.status === "Retired") continue
+      counts[warrantyInfo(laptop, today).state] += 1
     }
     return counts
-  }, [today, laptops, accessories])
+  }, [today, laptops])
 
   // Assets released (assigned to a handler) so far this calendar month.
   const releasedThisMonth = useMemo(() => {
@@ -211,9 +213,15 @@ export function DashboardOverview({
     return count
   }, [today, laptops, accessories])
 
-  // Remote access: laptops with an AnyDesk address configured.
-  const remoteConfigured = laptops.filter((l) => l.anydeskAddress).length
-  const remoteCoverage = laptops.length ? remoteConfigured / laptops.length : 0
+  // Remote access: laptops assigned to someone (matches the Remote Access page,
+  // which is built from employees, so Vacant/Retired laptops never appear there).
+  const assignedLaptops = laptops.filter(
+    (l) => l.status !== "Vacant" && l.status !== "Retired",
+  )
+  const remoteConfigured = assignedLaptops.filter((l) => l.anydeskAddress).length
+  const remoteCoverage = assignedLaptops.length
+    ? remoteConfigured / assignedLaptops.length
+    : 0
 
   // Departments, across laptops and accessories combined.
   const departmentCounts = new Map<string, number>()
@@ -319,7 +327,9 @@ export function DashboardOverview({
         <Tile href="/dashboard/analytics">
           <TileHeader icon={WrenchIcon} label="Due for replacement" />
           <p className="text-3xl font-semibold tracking-tight tabular-nums">{dueForReplacement}</p>
-          <p className="text-sm text-muted-foreground">Grade D or F laptops</p>
+          <p className="text-sm text-muted-foreground">
+            Active Grade D or F laptops
+          </p>
         </Tile>
         <Tile href="/dashboard/laptops">
           <TileHeader icon={ClockIcon} label="Warranty" />
@@ -333,6 +343,9 @@ export function DashboardOverview({
               {warrantyCounts.Expired} expired
             </span>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Active laptops · soon means within 90 days
+          </p>
         </Tile>
         <Tile href="/dashboard/remote-access">
           <TileHeader icon={WifiIcon} label="Remote access coverage" />
@@ -341,7 +354,7 @@ export function DashboardOverview({
           </p>
           <Meter value={remoteCoverage} />
           <p className="text-xs text-muted-foreground">
-            {remoteConfigured} of {laptops.length} laptops configured
+            {remoteConfigured} of {assignedLaptops.length} assigned laptops configured
           </p>
         </Tile>
       </div>

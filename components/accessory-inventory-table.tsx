@@ -589,8 +589,8 @@ export function AccessoryInventoryTable({
                   Warranty
                 </ColumnHeader>
                 <ColumnHeader icon={CircleDotIcon}>Status</ColumnHeader>
-                <th className="sticky top-0 z-10 h-9 bg-card px-2 shadow-[inset_0_-1px_0_var(--color-border)]">
-                  <span className="sr-only">Actions</span>
+                <th className="sticky top-0 z-10 h-9 min-w-[8.5rem] bg-card px-2 text-left text-[11px] font-medium whitespace-nowrap text-muted-foreground shadow-[inset_0_-1px_0_var(--color-border)]">
+                  Actions
                 </th>
               </tr>
             </thead>
@@ -726,7 +726,7 @@ export function AccessoryInventoryTable({
                           <Button
                             variant="outline"
                             size="xs"
-                            className="w-[4.5rem]"
+                            className="min-w-[6.75rem]"
                             onClick={() => openAssign(item)}
                           >
                             <UserPlusIcon />
@@ -736,17 +736,17 @@ export function AccessoryInventoryTable({
                           <Button
                             variant="outline"
                             size="xs"
-                            className="w-[4.5rem]"
+                            className="min-w-[6.75rem]"
                             onClick={() => openReturn(item)}
                           >
                             <Undo2Icon />
-                            Return
+                            Mark repaired
                           </Button>
                         ) : item.status === "In use" ? (
                           <Button
                             variant="outline"
                             size="xs"
-                            className="w-[4.5rem]"
+                            className="min-w-[6.75rem]"
                             onClick={() => openReturnToStock(item)}
                           >
                             <Undo2Icon />
@@ -756,7 +756,7 @@ export function AccessoryInventoryTable({
                           <Button
                             variant="ghost"
                             size="xs"
-                            className="w-[4.5rem] text-muted-foreground hover:text-foreground"
+                            className="min-w-[6.75rem] text-muted-foreground hover:text-foreground"
                             onClick={() => openView(item)}
                           >
                             <EyeIcon />

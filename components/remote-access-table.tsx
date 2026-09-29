@@ -36,20 +36,17 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { anydeskHref, formatAnydeskAddress } from "@/lib/anydesk"
-import {
-  initials,
-  statusStyles,
-  statuses,
-  type LaptopStatus,
-} from "@/lib/laptops"
+import { initials, statusStyles } from "@/lib/laptops"
 import type { RemoteAccessRow } from "@/lib/remote-access"
 import { cn } from "@/lib/utils"
 
-type Tab = "All" | LaptopStatus | "Unassigned"
-const tabs: Tab[] = ["All", ...statuses, "Unassigned"]
+type Tab = "All" | "In use" | "In repair" | "Unassigned"
+const tabs: Tab[] = ["All", "In use", "In repair", "Unassigned"]
 
 function rowStatus(row: RemoteAccessRow): Tab {
-  return row.laptop?.status ?? "Unassigned"
+  const status = row.laptop?.status
+  if (status === "In use" || status === "In repair") return status
+  return "Unassigned"
 }
 
 export function RemoteAccessTable({ rows }: { rows: RemoteAccessRow[] }) {
@@ -131,7 +128,7 @@ export function RemoteAccessTable({ rows }: { rows: RemoteAccessRow[] }) {
       <div
         role="tablist"
         aria-label="Laptop status"
-        className="flex items-end gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex items-end gap-1 overflow-x-auto pr-1 [scrollbar-width:thin]"
       >
         {tabs.map((t) => {
           const active = t === tab
@@ -146,7 +143,7 @@ export function RemoteAccessTable({ rows }: { rows: RemoteAccessRow[] }) {
                 setPage(1)
               }}
               className={cn(
-                "relative flex shrink-0 items-center gap-2 rounded-t-xl border border-b-0 px-4 text-sm font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                "relative flex shrink-0 items-center gap-2 rounded-t-xl border border-b-0 px-3 text-sm font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                 active
                   ? "z-10 -mb-px h-10 border-border bg-card pb-px text-foreground"
                   : "h-9 border-transparent bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -173,6 +170,7 @@ export function RemoteAccessTable({ rows }: { rows: RemoteAccessRow[] }) {
             </button>
           )
         })}
+        <span className="w-2 shrink-0" aria-hidden />
       </div>
 
       <div className="flex min-w-0 flex-col rounded-2xl rounded-tl-none border border-border bg-card text-card-foreground shadow-sm">

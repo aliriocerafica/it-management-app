@@ -47,6 +47,7 @@ import {
   ReturnToStockDialog,
   type AssignedAssets,
 } from "@/components/return-to-stock-dialog";
+import { SendToRepairDialog } from "@/components/send-to-repair-dialog";
 import { LaptopDetailsDialog } from "@/components/laptop-details-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -113,6 +114,7 @@ function exportCsv(rows: Laptop[], today: Date | null) {
     "Age",
     "Warranty ends",
     "Status",
+    "Repair issue",
     "Charger connector",
     "Charger wattage",
     "Charger part no.",
@@ -137,6 +139,7 @@ function exportCsv(rows: Laptop[], today: Date | null) {
       today ? formatAge(l.purchaseDate, today) : "",
       warranty ? formatDate(warranty.end) : "",
       l.status,
+      l.status === "In repair" ? (l.repairIssue ?? "") : "",
       l.charger.connector,
       `${l.charger.wattage} W`,
       l.charger.partNumber,
@@ -259,6 +262,8 @@ export function LaptopInventoryTable({
   const [assignOpen, setAssignOpen] = useState(false);
   const [repairing, setRepairing] = useState<Laptop | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
+  const [sendingToRepair, setSendingToRepair] = useState<Laptop | null>(null);
+  const [sendRepairOpen, setSendRepairOpen] = useState(false);
   const [returning, setReturning] = useState<Laptop | null>(null);
   const [returnOpen, setReturnOpen] = useState(false);
   const [formPrompt, setFormPrompt] = useState<{
@@ -291,6 +296,7 @@ export function LaptopInventoryTable({
         l.handler ?? "",
         l.department ?? "",
         l.color,
+        l.repairIssue ?? "",
       ].some((value) => value.toLowerCase().includes(q));
     });
   }, [laptops, query, brandFilter, tab]);
@@ -384,16 +390,23 @@ export function LaptopInventoryTable({
     });
   }
 
-  function sendToRepair(id: string) {
-    const note = `Sent for repair ${formatDate(new Date())}`;
+  function openSendToRepair(laptop: Laptop) {
+    setSendingToRepair(laptop);
+    setSendRepairOpen(true);
+  }
+
+  function sendToRepair(id: string, issue: string) {
+    const note = `Sent for repair ${formatDate(new Date())}: ${issue}`;
     updateLaptop(id, (l) => ({
       ...l,
       status: "In repair",
+      repairIssue: issue,
       // Ownership doesn't change during a repair; just annotate the current stint.
       history: l.history.map((entry) =>
         entry.to === null ? { ...entry, note } : entry,
       ),
     }));
+    setSendRepairOpen(false);
   }
 
   function returnFromRepair(id: string, outcome: RepairOutcome, note: string) {
@@ -403,6 +416,7 @@ export function LaptopInventoryTable({
         return {
           ...l,
           status: "In use",
+          repairIssue: null,
           history: l.history.map((entry) =>
             entry.to === null
               ? {
@@ -417,6 +431,7 @@ export function LaptopInventoryTable({
       return {
         ...l,
         status: retire ? "Retired" : "Vacant",
+        repairIssue: null,
         handler: null,
         department: null,
         history: [
@@ -684,8 +699,8 @@ export function LaptopInventoryTable({
                   Warranty
                 </ColumnHeader>
                 <ColumnHeader icon={CircleDotIcon}>Status</ColumnHeader>
-                <th className="sticky top-0 z-10 h-9 bg-card px-2 shadow-[inset_0_-1px_0_var(--color-border)]">
-                  <span className="sr-only">Actions</span>
+                <th className="sticky top-0 z-10 h-9 min-w-[8.5rem] bg-card px-2 text-left text-[11px] font-medium whitespace-nowrap text-muted-foreground shadow-[inset_0_-1px_0_var(--color-border)]">
+                  Actions
                 </th>
               </tr>
             </thead>
@@ -811,6 +826,14 @@ export function LaptopInventoryTable({
                         />
                         {laptop.status}
                       </span>
+                      {laptop.status === "In repair" && laptop.repairIssue && (
+                        <div
+                          className="mt-1 max-w-56 truncate text-[11px] text-muted-foreground"
+                          title={laptop.repairIssue}
+                        >
+                          {laptop.repairIssue}
+                        </div>
+                      )}
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       {/* Same layout on every row: one primary action in a
@@ -820,7 +843,7 @@ export function LaptopInventoryTable({
                           <Button
                             variant="outline"
                             size="xs"
-                            className="w-[4.5rem]"
+                            className="min-w-[6.75rem]"
                             onClick={() => openAssign(laptop)}
                           >
                             <UserPlusIcon />
@@ -830,17 +853,17 @@ export function LaptopInventoryTable({
                           <Button
                             variant="outline"
                             size="xs"
-                            className="w-[4.5rem]"
+                            className="min-w-[6.75rem]"
                             onClick={() => openReturn(laptop)}
                           >
                             <Undo2Icon />
-                            Return
+                            Mark repaired
                           </Button>
                         ) : laptop.status === "In use" ? (
                           <Button
                             variant="outline"
                             size="xs"
-                            className="w-[4.5rem]"
+                            className="min-w-[6.75rem]"
                             onClick={() => openReturnToStock(laptop)}
                           >
                             <Undo2Icon />
@@ -850,7 +873,7 @@ export function LaptopInventoryTable({
                           <Button
                             variant="ghost"
                             size="xs"
-                            className="w-[4.5rem] text-muted-foreground hover:text-foreground"
+                            className="min-w-[6.75rem] text-muted-foreground hover:text-foreground"
                             onClick={() => openView(laptop)}
                           >
                             <EyeIcon />
@@ -883,7 +906,7 @@ export function LaptopInventoryTable({
                             {(laptop.status === "In use" ||
                               laptop.status === "Vacant") && (
                               <DropdownMenuItem
-                                onClick={() => sendToRepair(laptop.id)}
+                                onClick={() => openSendToRepair(laptop)}
                               >
                                 <WrenchIcon />
                                 Send to repair
@@ -1041,6 +1064,18 @@ export function LaptopInventoryTable({
             : `Delete ${pendingDelete.length} laptops`
         }
         onConfirm={() => deleteLaptops(pendingDeleteIds)}
+      />
+
+      <SendToRepairDialog
+        laptop={sendingToRepair}
+        open={sendRepairOpen}
+        onOpenChange={(open) => {
+          setSendRepairOpen(open);
+          if (!open) setSendingToRepair(null);
+        }}
+        onConfirm={(issue) =>
+          sendingToRepair && sendToRepair(sendingToRepair.id, issue)
+        }
       />
 
       <ReturnFromRepairDialog

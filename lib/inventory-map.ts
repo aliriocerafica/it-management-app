@@ -131,6 +131,7 @@ export function laptopFromDb(record: LaptopRecord): Laptop {
     purchaseDate: toIsoDate(record.purchaseDate),
     warrantyYears: record.warrantyYears,
     status: statusFromDb[record.status],
+    repairIssue: record.repairIssue,
     anydeskAddress: decryptAnydeskAddress(record.anydeskAddress),
     charger: {
       connector: record.charger.connector,

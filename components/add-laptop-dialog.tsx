@@ -77,8 +77,12 @@ export function FormField({
     <div className={cn("flex flex-col gap-1.5", className)}>
       <Label htmlFor={htmlFor} className="text-xs">
         {label}
-        {optional && (
+        {optional ? (
           <span className="font-normal text-muted-foreground">(optional)</span>
+        ) : (
+          <span className="font-normal text-muted-foreground" aria-hidden>
+            *
+          </span>
         )}
       </Label>
       {children}
@@ -387,20 +391,22 @@ export function AddLaptopDialog({
                 ))}
               </select>
             </FormField>
-            <FormField label="Part number" htmlFor="chargerPartNumber">
+            <FormField label="Part number" htmlFor="chargerPartNumber" optional>
               <Input
                 id="chargerPartNumber"
                 name="chargerPartNumber"
                 className="font-mono"
-                required
               />
             </FormField>
-            <FormField label="Serial number" htmlFor="chargerSerialNumber">
+            <FormField
+              label="Serial number"
+              htmlFor="chargerSerialNumber"
+              optional
+            >
               <Input
                 id="chargerSerialNumber"
                 name="chargerSerialNumber"
                 className="font-mono"
-                required
               />
             </FormField>
           </FormSection>
