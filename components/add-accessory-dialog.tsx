@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { type Accessory, type AccessoryConfig } from "@/lib/accessories";
+import { errorMessage } from "@/lib/inventory-api";
 import { statuses, type LaptopStatus } from "@/lib/laptops";
 
 function nextAssetTag(items: Accessory[], prefix: string) {
@@ -47,16 +48,19 @@ export function AddAccessoryDialog({
 }: {
   config: AccessoryConfig;
   items: Accessory[];
-  onAdd?: (item: Accessory) => void;
+  // Both resolve once the database has the change; a rejection keeps the
+  // dialog open and shows the error.
+  onAdd?: (item: Accessory) => Promise<void>;
   item?: Accessory | null;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  onSave?: (item: Accessory) => void;
+  onSave?: (item: Accessory) => Promise<void>;
 }) {
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
   const setOpen = onOpenChange ?? setOpenState;
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [colorHex, setColorHex] = useState(item?.colorHex ?? "#2b2b2d");
 
   const editing = item != null;
@@ -64,8 +68,25 @@ export function AddAccessoryDialog({
   const brands = [...new Set(items.map((item) => item.brand))].sort();
   const formId = `${editing ? "edit" : "add"}-${config.kind}-form`;
 
+  async function submit(
+    next: Accessory,
+    save?: (item: Accessory) => Promise<void>,
+  ) {
+    setSaving(true);
+    try {
+      await save?.(next);
+      setError(null);
+      setOpen(false);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     const data = new FormData(event.currentTarget);
     const get = (name: string) => String(data.get(name) ?? "").trim();
 
@@ -84,26 +105,38 @@ export function AddAccessoryDialog({
       setError(`Asset tag ${assetTag} is already in use.`);
       return;
     }
+    const serialNumber = get("serialNumber").toUpperCase();
+    if (
+      items.some(
+        (other) =>
+          other.id !== item?.id &&
+          other.serialNumber.toUpperCase() === serialNumber,
+      )
+    ) {
+      setError(`Serial number ${serialNumber} is already in use.`);
+      return;
+    }
 
     const specs = Object.fromEntries(
       config.specFields.map((field) => [field.key, get(`spec-${field.key}`)]),
     );
 
     if (item) {
-      onSave?.({
-        ...item,
-        assetTag,
-        brand: get("brand"),
-        model: get("model"),
-        serialNumber: get("serialNumber").toUpperCase(),
-        color: get("color"),
-        colorHex,
-        purchaseDate,
-        warrantyYears: Number(get("warrantyYears")),
-        specs,
-      });
-      setError(null);
-      setOpen(false);
+      void submit(
+        {
+          ...item,
+          assetTag,
+          brand: get("brand"),
+          model: get("model"),
+          serialNumber,
+          color: get("color"),
+          colorHex,
+          purchaseDate,
+          warrantyYears: Number(get("warrantyYears")),
+          specs,
+        },
+        onSave,
+      );
       return;
     }
     if (status === "In use" && !handler) {
@@ -114,46 +147,47 @@ export function AddAccessoryDialog({
     const assignedHandler = status === "In use" || status === "In repair";
     const today = toIsoDate(new Date());
 
-    onAdd?.({
-      id: crypto.randomUUID(),
-      kind: config.kind,
-      assetTag,
-      brand: get("brand"),
-      model: get("model"),
-      serialNumber: get("serialNumber").toUpperCase(),
-      color: get("color"),
-      colorHex,
-      handler: assignedHandler && handler ? handler : null,
-      department: assignedHandler && handler ? department || null : null,
-      purchaseDate,
-      warrantyYears: Number(get("warrantyYears")),
-      status,
-      specs,
-      history: [
-        assignedHandler && handler
-          ? {
-              handler,
-              department: department || undefined,
-              from: today < purchaseDate ? purchaseDate : today,
-              to: null,
-            }
-          : {
-              handler: null,
-              from: purchaseDate,
-              to: null,
-              note: status === "Retired" ? "Retired" : "Ready to assign",
-            },
-      ],
-    });
-
-    setError(null);
-    setOpen(false);
+    void submit(
+      {
+        id: crypto.randomUUID(),
+        kind: config.kind,
+        assetTag,
+        brand: get("brand"),
+        model: get("model"),
+        serialNumber,
+        color: get("color"),
+        colorHex,
+        handler: assignedHandler && handler ? handler : null,
+        department: assignedHandler && handler ? department || null : null,
+        purchaseDate,
+        warrantyYears: Number(get("warrantyYears")),
+        status,
+        specs,
+        history: [
+          assignedHandler && handler
+            ? {
+                handler,
+                department: department || undefined,
+                from: today < purchaseDate ? purchaseDate : today,
+                to: null,
+              }
+            : {
+                handler: null,
+                from: purchaseDate,
+                to: null,
+                note: status === "Retired" ? "Retired" : "Ready to assign",
+              },
+        ],
+      },
+      onAdd,
+    );
   }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (saving) return;
         setOpen(next);
         if (!next) setError(null);
       }}
@@ -346,9 +380,9 @@ export function AddAccessoryDialog({
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit" form={formId}>
+          <Button type="submit" form={formId} disabled={saving}>
             {editing ? <CheckIcon /> : <PlusIcon />}
-            {editing ? "Save changes" : `Add ${noun}`}
+            {saving ? "Saving…" : editing ? "Save changes" : `Add ${noun}`}
           </Button>
         </DialogFooter>
       </DialogContent>

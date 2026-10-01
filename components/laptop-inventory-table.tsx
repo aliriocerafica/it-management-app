@@ -32,9 +32,11 @@ import { AccountabilityFormPrompt } from "@/components/accountability-form-promp
 import { AddLaptopDialog } from "@/components/add-laptop-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
+import { ErrorToast } from "@/components/error-toast";
 import { UndoToast } from "@/components/undo-toast";
 import {
   createLaptop,
+  errorMessage,
   removeLaptops,
   saveAccessory,
   saveLaptop,
@@ -261,6 +263,10 @@ export function LaptopInventoryTable({
   const [viewOpen, setViewOpen] = useState(false);
   const [editing, setEditing] = useState<Laptop | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  // Remounts the edit dialog on every open so it starts from the row's
+  // current values, even when the same laptop is edited twice.
+  const [editKey, setEditKey] = useState(0);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<Laptop | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [repairing, setRepairing] = useState<Laptop | null>(null);
@@ -355,7 +361,22 @@ export function LaptopInventoryTable({
 
   function openEdit(laptop: Laptop) {
     setEditing(laptop);
+    setEditKey((key) => key + 1);
     setEditOpen(true);
+  }
+
+  // Background saves: the table updates right away, and if the database
+  // rejects the change it's rolled back and the reason shown.
+  function persist(save: Promise<unknown>, rollback?: () => void) {
+    save.catch((error: unknown) => {
+      rollback?.();
+      setSaveError(errorMessage(error));
+    });
+  }
+
+  function restoreLaptops(originals: Laptop[]) {
+    const byId = new Map(originals.map((laptop) => [laptop.id, laptop]));
+    setLaptops((prev) => prev.map((laptop) => byId.get(laptop.id) ?? laptop));
   }
 
   function openAssign(laptop: Laptop) {
@@ -377,25 +398,24 @@ export function LaptopInventoryTable({
     laptopId: string,
     names: { hrName: string; itOfficerName: string },
   ) {
-    const params = new URLSearchParams()
-    const hr = names?.hrName?.trim()
-    const it = names?.itOfficerName?.trim()
-    if (hr && hr !== "undefined") params.set("hr", hr)
-    if (it && it !== "undefined") params.set("it", it)
-    const query = params.toString()
+    const params = new URLSearchParams();
+    const hr = names?.hrName?.trim();
+    const it = names?.itOfficerName?.trim();
+    if (hr && hr !== "undefined") params.set("hr", hr);
+    if (it && it !== "undefined") params.set("it", it);
+    const query = params.toString();
     window.open(
       `/api/laptops/${laptopId}/accountability-form${query ? `?${query}` : ""}`,
       "_blank",
-    )
+    );
   }
 
   function updateLaptop(id: string, update: (laptop: Laptop) => Laptop) {
-    setLaptops((prev) => {
-      const next = prev.map((l) => (l.id === id ? update(l) : l));
-      const saved = next.find((l) => l.id === id);
-      if (saved) void saveLaptop(saved);
-      return next;
-    });
+    const original = laptops.find((l) => l.id === id);
+    if (!original) return;
+    const next = update(original);
+    setLaptops((prev) => prev.map((l) => (l.id === id ? next : l)));
+    persist(saveLaptop(next), () => restoreLaptops([original]));
   }
 
   function openSendToRepair(laptop: Laptop) {
@@ -468,17 +488,16 @@ export function LaptopInventoryTable({
       target.id,
       ...alsoReturn.laptops.map((laptop) => laptop.id),
     ]);
-    setLaptops((prev) => {
-      const next = prev.map((laptop) =>
-        laptopIds.has(laptop.id) ? returnedToVacant(laptop, note) : laptop,
-      );
-      for (const laptop of next) {
-        if (laptopIds.has(laptop.id)) void saveLaptop(laptop);
-      }
-      return next;
-    });
+    const originals = laptops.filter((laptop) => laptopIds.has(laptop.id));
+    const returned = originals.map((laptop) => returnedToVacant(laptop, note));
+    const byId = new Map(returned.map((laptop) => [laptop.id, laptop]));
+    setLaptops((prev) => prev.map((laptop) => byId.get(laptop.id) ?? laptop));
+    for (const laptop of returned) {
+      const original = originals.find((o) => o.id === laptop.id)!;
+      persist(saveLaptop(laptop), () => restoreLaptops([original]));
+    }
     for (const accessory of alsoReturn.accessories) {
-      void saveAccessory(returnedToVacant(accessory, note));
+      persist(saveAccessory(returnedToVacant(accessory, note)));
     }
     setReturnOpen(false);
     setReturning(null);
@@ -527,7 +546,10 @@ export function LaptopInventoryTable({
       for (const id of ids) next.delete(id);
       return next;
     });
-    void removeLaptops(ids);
+    persist(removeLaptops(ids), () => {
+      setUndo(null);
+      setLaptops((prev) => [...removed, ...prev]);
+    });
   }
 
   const pendingDelete = pendingDeleteIds
@@ -654,11 +676,11 @@ export function LaptopInventoryTable({
             </Button>
             <AddLaptopDialog
               laptops={laptops}
-              onAdd={(laptop) => {
-                setLaptops((prev) => [laptop, ...prev]);
+              onAdd={async (laptop) => {
+                const saved = await createLaptop(laptop);
+                setLaptops((prev) => [saved, ...prev]);
                 setTab("All");
                 setPage(1);
-                void createLaptop(laptop);
               }}
             />
           </div>
@@ -903,9 +925,7 @@ export function LaptopInventoryTable({
                                 View details
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem
-                              onClick={() => openEdit(laptop)}
-                            >
+                            <DropdownMenuItem onClick={() => openEdit(laptop)}>
                               <PencilIcon />
                               Edit details
                             </DropdownMenuItem>
@@ -1049,7 +1069,12 @@ export function LaptopInventoryTable({
         onUndo={() => {
           if (!undo) return;
           setLaptops(undo.snapshot);
-          void Promise.all(undo.removed.map((laptop) => createLaptop(laptop)));
+          const removedIds = new Set(undo.removed.map((laptop) => laptop.id));
+          persist(
+            Promise.all(undo.removed.map((laptop) => createLaptop(laptop))),
+            () =>
+              setLaptops((prev) => prev.filter((l) => !removedIds.has(l.id))),
+          );
           setUndo(null);
         }}
         onDismiss={() => setUndo(null)}
@@ -1096,8 +1121,8 @@ export function LaptopInventoryTable({
         itemId={returning?.id ?? null}
         open={returnOpen}
         onOpenChange={(open) => {
-          setReturnOpen(open)
-          if (!open) setReturning(null)
+          setReturnOpen(open);
+          if (!open) setReturning(null);
         }}
         onConfirm={returnToStock}
       />
@@ -1113,13 +1138,20 @@ export function LaptopInventoryTable({
       />
 
       <AddLaptopDialog
-        key={editing?.id}
+        key={editKey}
         laptops={laptops}
         laptop={editing}
         open={editOpen}
         onOpenChange={setEditOpen}
-        onSave={(saved) => updateLaptop(saved.id, () => saved)}
+        onSave={async (next) => {
+          const saved = await saveLaptop(next);
+          setLaptops((prev) =>
+            prev.map((laptop) => (laptop.id === saved.id ? saved : laptop)),
+          );
+        }}
       />
+
+      <ErrorToast message={saveError} onDismiss={() => setSaveError(null)} />
 
       <LaptopDetailsDialog
         laptop={viewing}

@@ -9,6 +9,7 @@ import {
   upsertLaptop,
 } from "@/lib/inventory-repository"
 import type { Laptop } from "@/lib/laptops"
+import { saveErrorResponse } from "@/lib/api-errors"
 import { verifySession } from "@/lib/auth/session"
 
 function refreshInventory() {
@@ -30,9 +31,13 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
 
   const laptop = (await request.json()) as Laptop
-  const saved = await upsertLaptop(laptop)
-  refreshInventory()
-  return NextResponse.json(saved)
+  try {
+    const saved = await upsertLaptop(laptop)
+    refreshInventory()
+    return NextResponse.json(saved)
+  } catch (error) {
+    return saveErrorResponse(error)
+  }
 }
 
 export async function DELETE(request: Request) {

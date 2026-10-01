@@ -7,6 +7,7 @@ import {
   listAccessories,
   upsertAccessory,
 } from "@/lib/inventory-repository"
+import { saveErrorResponse } from "@/lib/api-errors"
 import { verifySession } from "@/lib/auth/session"
 
 const accessoryPaths: Record<AccessoryKind, string> = {
@@ -38,9 +39,13 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
 
   const item = (await request.json()) as Accessory
-  const saved = await upsertAccessory(item)
-  refreshInventory(item.kind)
-  return NextResponse.json(saved)
+  try {
+    const saved = await upsertAccessory(item)
+    refreshInventory(item.kind)
+    return NextResponse.json(saved)
+  } catch (error) {
+    return saveErrorResponse(error)
+  }
 }
 
 export async function DELETE(request: Request) {

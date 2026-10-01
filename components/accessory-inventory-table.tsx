@@ -36,9 +36,11 @@ import { AccessoryDetailsDialog } from "@/components/accessory-details-dialog";
 import { AddAccessoryDialog } from "@/components/add-accessory-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
+import { ErrorToast } from "@/components/error-toast";
 import { UndoToast } from "@/components/undo-toast";
 import {
   createAccessory,
+  errorMessage,
   removeAccessories,
   saveAccessory,
   saveLaptop,
@@ -175,6 +177,10 @@ export function AccessoryInventoryTable({
   const [viewOpen, setViewOpen] = useState(false);
   const [editing, setEditing] = useState<Accessory | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  // Remounts the edit dialog on every open so it starts from the row's
+  // current values, even when the same item is edited twice.
+  const [editKey, setEditKey] = useState(0);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<Accessory | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [repairing, setRepairing] = useState<Accessory | null>(null);
@@ -263,7 +269,22 @@ export function AccessoryInventoryTable({
 
   function openEdit(item: Accessory) {
     setEditing(item);
+    setEditKey((key) => key + 1);
     setEditOpen(true);
+  }
+
+  // Background saves: the table updates right away, and if the database
+  // rejects the change it's rolled back and the reason shown.
+  function persist(save: Promise<unknown>, rollback?: () => void) {
+    save.catch((error: unknown) => {
+      rollback?.();
+      setSaveError(errorMessage(error));
+    });
+  }
+
+  function restoreItems(originals: Accessory[]) {
+    const byId = new Map(originals.map((item) => [item.id, item]));
+    setItems((prev) => prev.map((item) => byId.get(item.id) ?? item));
   }
 
   function openAssign(item: Accessory) {
@@ -282,12 +303,11 @@ export function AccessoryInventoryTable({
   }
 
   function updateItem(id: string, update: (item: Accessory) => Accessory) {
-    setItems((prev) => {
-      const next = prev.map((item) => (item.id === id ? update(item) : item));
-      const saved = next.find((item) => item.id === id);
-      if (saved) void saveAccessory(saved);
-      return next;
-    });
+    const original = items.find((item) => item.id === id);
+    if (!original) return;
+    const next = update(original);
+    setItems((prev) => prev.map((item) => (item.id === id ? next : item)));
+    persist(saveAccessory(next), () => restoreItems([original]));
   }
 
   function sendToRepair(id: string) {
@@ -353,21 +373,20 @@ export function AccessoryInventoryTable({
         .filter((accessory) => accessory.kind === kind)
         .map((accessory) => accessory.id),
     ]);
-    setItems((prev) => {
-      const next = prev.map((item) =>
-        sameKindIds.has(item.id) ? returnedToVacant(item, note) : item,
-      );
-      for (const item of next) {
-        if (sameKindIds.has(item.id)) void saveAccessory(item);
-      }
-      return next;
-    });
+    const originals = items.filter((item) => sameKindIds.has(item.id));
+    const returned = originals.map((item) => returnedToVacant(item, note));
+    const byId = new Map(returned.map((item) => [item.id, item]));
+    setItems((prev) => prev.map((item) => byId.get(item.id) ?? item));
+    for (const item of returned) {
+      const original = originals.find((o) => o.id === item.id)!;
+      persist(saveAccessory(item), () => restoreItems([original]));
+    }
     for (const accessory of alsoReturn.accessories) {
       if (accessory.kind === kind) continue;
-      void saveAccessory(returnedToVacant(accessory, note));
+      persist(saveAccessory(returnedToVacant(accessory, note)));
     }
     for (const laptop of alsoReturn.laptops) {
-      void saveLaptop(returnedToVacant(laptop, note));
+      persist(saveLaptop(returnedToVacant(laptop, note)));
     }
     setReturnOpen(false);
     setReturning(null);
@@ -408,7 +427,10 @@ export function AccessoryInventoryTable({
           : `Deleted ${removed.length} ${nounPlural}`,
     });
     setItems((prev) => prev.filter((item) => !ids.includes(item.id)));
-    void removeAccessories(ids);
+    persist(removeAccessories(ids), () => {
+      setUndo(null);
+      setItems((prev) => [...removed, ...prev]);
+    });
     setSelected((prev) => {
       const next = new Set(prev);
       for (const id of ids) next.delete(id);
@@ -541,11 +563,11 @@ export function AccessoryInventoryTable({
             <AddAccessoryDialog
               config={config}
               items={items}
-              onAdd={(item) => {
-                setItems((prev) => [item, ...prev]);
+              onAdd={async (item) => {
+                const saved = await createAccessory(item);
+                setItems((prev) => [saved, ...prev]);
                 setTab("All");
                 setPage(1);
-                void createAccessory(item);
               }}
             />
           </div>
@@ -923,7 +945,14 @@ export function AccessoryInventoryTable({
         onUndo={() => {
           if (!undo) return;
           setItems(undo.snapshot);
-          void Promise.all(undo.removed.map((item) => createAccessory(item)));
+          const removedIds = new Set(undo.removed.map((item) => item.id));
+          persist(
+            Promise.all(undo.removed.map((item) => createAccessory(item))),
+            () =>
+              setItems((prev) =>
+                prev.filter((item) => !removedIds.has(item.id)),
+              ),
+          );
           setUndo(null);
         }}
         onDismiss={() => setUndo(null)}
@@ -960,8 +989,8 @@ export function AccessoryInventoryTable({
         noun={noun}
         open={returnOpen}
         onOpenChange={(open) => {
-          setReturnOpen(open)
-          if (!open) setReturning(null)
+          setReturnOpen(open);
+          if (!open) setReturning(null);
         }}
         onConfirm={returnToStock}
       />
@@ -979,14 +1008,21 @@ export function AccessoryInventoryTable({
       />
 
       <AddAccessoryDialog
-        key={editing?.id}
+        key={editKey}
         config={config}
         items={items}
         item={editing}
         open={editOpen}
         onOpenChange={setEditOpen}
-        onSave={(saved) => updateItem(saved.id, () => saved)}
+        onSave={async (next) => {
+          const saved = await saveAccessory(next);
+          setItems((prev) =>
+            prev.map((item) => (item.id === saved.id ? saved : item)),
+          );
+        }}
       />
+
+      <ErrorToast message={saveError} onDismiss={() => setSaveError(null)} />
 
       <AccessoryDetailsDialog
         item={viewing}

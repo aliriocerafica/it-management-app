@@ -22,6 +22,7 @@ import {
   type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops";
+import { errorMessage } from "@/lib/inventory-api";
 import { cn } from "@/lib/utils";
 
 const chargerConditions: ChargerCondition[] = [
@@ -120,24 +121,44 @@ export function AddLaptopDialog({
   onSave,
 }: {
   laptops: Laptop[];
-  onAdd?: (laptop: Laptop) => void;
+  // Both resolve once the database has the change; a rejection keeps the
+  // dialog open and shows the error.
+  onAdd?: (laptop: Laptop) => Promise<void>;
   laptop?: Laptop | null;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  onSave?: (laptop: Laptop) => void;
+  onSave?: (laptop: Laptop) => Promise<void>;
 }) {
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
   const setOpen = onOpenChange ?? setOpenState;
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [colorHex, setColorHex] = useState(laptop?.colorHex ?? "#2b2b2d");
 
   const editing = laptop != null;
   const formId = editing ? "edit-laptop-form" : "add-laptop-form";
   const brands = [...new Set(laptops.map((l) => l.brand))].sort();
 
+  async function submit(
+    next: Laptop,
+    save?: (laptop: Laptop) => Promise<void>,
+  ) {
+    setSaving(true);
+    try {
+      await save?.(next);
+      setError(null);
+      setOpen(false);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     const data = new FormData(event.currentTarget);
     const get = (name: string) => String(data.get(name) ?? "").trim();
 
@@ -155,6 +176,16 @@ export function AddLaptopDialog({
       setError(`Asset tag ${assetTag} is already in use.`);
       return;
     }
+    const serialNumber = get("serialNumber").toUpperCase();
+    if (
+      laptops.some(
+        (l) =>
+          l.id !== laptop?.id && l.serialNumber.toUpperCase() === serialNumber,
+      )
+    ) {
+      setError(`Serial number ${serialNumber} is already in use.`);
+      return;
+    }
 
     const charger = {
       connector: get("chargerConnector"),
@@ -165,24 +196,25 @@ export function AddLaptopDialog({
     };
 
     if (laptop) {
-      onSave?.({
-        ...laptop,
-        assetTag,
-        brand: get("brand"),
-        model: get("model"),
-        serialNumber: get("serialNumber").toUpperCase(),
-        cpu: get("cpu"),
-        ram: get("ram"),
-        storage: get("storage"),
-        os: get("os"),
-        color: get("color"),
-        colorHex,
-        purchaseDate,
-        warrantyYears: Number(get("warrantyYears")),
-        charger,
-      });
-      setError(null);
-      setOpen(false);
+      void submit(
+        {
+          ...laptop,
+          assetTag,
+          brand: get("brand"),
+          model: get("model"),
+          serialNumber,
+          cpu: get("cpu"),
+          ram: get("ram"),
+          storage: get("storage"),
+          os: get("os"),
+          color: get("color"),
+          colorHex,
+          purchaseDate,
+          warrantyYears: Number(get("warrantyYears")),
+          charger,
+        },
+        onSave,
+      );
       return;
     }
     if (status === "In use" && !handler) {
@@ -193,49 +225,50 @@ export function AddLaptopDialog({
     const assignedHandler = status === "In use" || status === "In repair";
     const today = toIsoDate(new Date());
 
-    onAdd?.({
-      id: crypto.randomUUID(),
-      assetTag,
-      brand: get("brand"),
-      model: get("model"),
-      serialNumber: get("serialNumber").toUpperCase(),
-      cpu: get("cpu"),
-      ram: get("ram"),
-      storage: get("storage"),
-      os: get("os"),
-      color: get("color"),
-      colorHex,
-      handler: assignedHandler && handler ? handler : null,
-      department: assignedHandler && handler ? department || null : null,
-      purchaseDate,
-      warrantyYears: Number(get("warrantyYears")),
-      status,
-      charger,
-      history: [
-        assignedHandler && handler
-          ? {
-              handler,
-              department: department || undefined,
-              from: today < purchaseDate ? purchaseDate : today,
-              to: null,
-            }
-          : {
-              handler: null,
-              from: purchaseDate,
-              to: null,
-              note: status === "Retired" ? "Retired" : "Ready to assign",
-            },
-      ],
-    });
-
-    setError(null);
-    setOpen(false);
+    void submit(
+      {
+        id: crypto.randomUUID(),
+        assetTag,
+        brand: get("brand"),
+        model: get("model"),
+        serialNumber,
+        cpu: get("cpu"),
+        ram: get("ram"),
+        storage: get("storage"),
+        os: get("os"),
+        color: get("color"),
+        colorHex,
+        handler: assignedHandler && handler ? handler : null,
+        department: assignedHandler && handler ? department || null : null,
+        purchaseDate,
+        warrantyYears: Number(get("warrantyYears")),
+        status,
+        charger,
+        history: [
+          assignedHandler && handler
+            ? {
+                handler,
+                department: department || undefined,
+                from: today < purchaseDate ? purchaseDate : today,
+                to: null,
+              }
+            : {
+                handler: null,
+                from: purchaseDate,
+                to: null,
+                note: status === "Retired" ? "Retired" : "Ready to assign",
+              },
+        ],
+      },
+      onAdd,
+    );
   }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (saving) return;
         setOpen(next);
         if (!next) setError(null);
       }}
@@ -492,9 +525,9 @@ export function AddLaptopDialog({
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit" form={formId}>
+          <Button type="submit" form={formId} disabled={saving}>
             {editing ? <CheckIcon /> : <PlusIcon />}
-            {editing ? "Save changes" : "Add laptop"}
+            {saving ? "Saving…" : editing ? "Save changes" : "Add laptop"}
           </Button>
         </DialogFooter>
       </DialogContent>
