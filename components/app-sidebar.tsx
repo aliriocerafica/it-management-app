@@ -5,6 +5,8 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   BackpackIcon,
+  BatteryIcon,
+  KeyboardIcon,
   ChartColumnIcon,
   ChevronLeftIcon,
   HeadphonesIcon,
@@ -65,12 +67,14 @@ const overviewItems: {
   },
   { title: "Headsets", href: "/dashboard/headsets", icon: HeadphonesIcon },
   { title: "Mice", href: "/dashboard/mice", icon: MouseIcon },
+  { title: "Keyboards", href: "/dashboard/keyboards", icon: KeyboardIcon },
   { title: "Monitors", href: "/dashboard/monitors", icon: TvMinimalIcon },
   {
     title: "Laptop Bags",
     href: "/dashboard/laptop-bags",
     icon: BackpackIcon,
   },
+  { title: "Batteries", href: "/dashboard/batteries", icon: BatteryIcon },
   {
     title: "Laptop Analytics",
     href: "/dashboard/analytics",

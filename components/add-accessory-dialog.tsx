@@ -20,6 +20,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  HistoryEditor,
+  currentHolder,
+  fromDrafts,
+  toDrafts,
+} from "@/components/history-editor";
 import { Input } from "@/components/ui/input";
 import { type Accessory, type AccessoryConfig } from "@/lib/accessories";
 import { errorMessage } from "@/lib/inventory-api";
@@ -62,10 +68,20 @@ export function AddAccessoryDialog({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [colorHex, setColorHex] = useState(item?.colorHex ?? "#2b2b2d");
+  const [historyDrafts, setHistoryDrafts] = useState(() =>
+    toDrafts(item?.history ?? []),
+  );
 
   const editing = item != null;
   const noun = config.singular.toLowerCase();
   const brands = [...new Set(items.map((item) => item.brand))].sort();
+  const handlerNames = [
+    ...new Set(
+      items.flatMap((other) =>
+        other.history.flatMap((entry) => entry.handler ?? []),
+      ),
+    ),
+  ].sort();
   const formId = `${editing ? "edit" : "add"}-${config.kind}-form`;
 
   async function submit(
@@ -105,26 +121,24 @@ export function AddAccessoryDialog({
       setError(`Asset tag ${assetTag} is already in use.`);
       return;
     }
+    // Serials may repeat: accessories often share a batch/lot number.
     const serialNumber = get("serialNumber").toUpperCase();
-    if (
-      items.some(
-        (other) =>
-          other.id !== item?.id &&
-          other.serialNumber.toUpperCase() === serialNumber,
-      )
-    ) {
-      setError(`Serial number ${serialNumber} is already in use.`);
-      return;
-    }
 
     const specs = Object.fromEntries(
       config.specFields.map((field) => [field.key, get(`spec-${field.key}`)]),
     );
 
     if (item) {
+      const edited = fromDrafts(historyDrafts);
+      if ("error" in edited) {
+        setError(edited.error);
+        return;
+      }
       void submit(
         {
           ...item,
+          ...currentHolder(edited.history, item.status),
+          history: edited.history,
           assetTag,
           brand: get("brand"),
           model: get("model"),
@@ -133,6 +147,7 @@ export function AddAccessoryDialog({
           colorHex,
           purchaseDate,
           warrantyYears: Number(get("warrantyYears")),
+          repairIssue: get("repairIssue") || null,
           specs,
         },
         onSave,
@@ -368,7 +383,29 @@ export function AddAccessoryDialog({
                 required
               />
             </FormField>
+            {editing && (
+              <FormField
+                label="Pending repair"
+                htmlFor="repairIssue"
+                optional
+                className="sm:col-span-2 lg:col-span-3"
+              >
+                <Input
+                  id="repairIssue"
+                  name="repairIssue"
+                  defaultValue={item?.repairIssue ?? ""}
+                  placeholder="Fault still to fix. Leave empty if none"
+                />
+              </FormField>
+            )}
           </FormSection>
+          {editing && (
+            <HistoryEditor
+              value={historyDrafts}
+              onChange={setHistoryDrafts}
+              handlerOptions={handlerNames}
+            />
+          )}
         </form>
 
         <DialogFooter className="mx-0 mb-0 items-center px-6 py-4">

@@ -73,14 +73,19 @@ function ReturnForm({
     laptops: [],
     accessories: [],
   })
-  const [loading, setLoading] = useState(false)
-
   const handler = item.handler?.trim() ?? ""
+  const [loading, setLoading] = useState(handler !== "")
+  // Show the spinner as soon as the item changes, before the effect runs.
+  const loadKey = `${handler}|${itemId}`
+  const [loadedKey, setLoadedKey] = useState(loadKey)
+  if (loadKey !== loadedKey) {
+    setLoadedKey(loadKey)
+    setLoading(handler !== "")
+  }
 
   useEffect(() => {
     if (!handler) return
     let cancelled = false
-    setLoading(true)
     void listAssignedAssets(handler)
       .then((assigned) => {
         if (cancelled) return

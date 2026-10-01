@@ -1,6 +1,6 @@
 "use client"
 
-import { Trash2Icon } from "lucide-react"
+import { Trash2Icon, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +19,8 @@ export function ConfirmDeleteDialog({
   title,
   description,
   confirmLabel = "Delete",
+  confirmVariant = "destructive",
+  icon: Icon = Trash2Icon,
   onConfirm,
 }: {
   open: boolean
@@ -26,6 +28,9 @@ export function ConfirmDeleteDialog({
   title: string
   description: string
   confirmLabel?: string
+  // Also used for non-destructive confirmations (e.g. "Mark repaired").
+  confirmVariant?: "destructive" | "default"
+  icon?: LucideIcon
   onConfirm: () => void
 }) {
   return (
@@ -38,13 +43,13 @@ export function ConfirmDeleteDialog({
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
           <Button
-            variant="destructive"
+            variant={confirmVariant}
             onClick={() => {
               onConfirm()
               onOpenChange(false)
             }}
           >
-            <Trash2Icon />
+            <Icon />
             {confirmLabel}
           </Button>
         </DialogFooter>

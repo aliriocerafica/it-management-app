@@ -1,7 +1,8 @@
 import { employees } from "@/lib/employees";
 import { type LaptopStatus, type OwnershipEntry } from "@/lib/laptops";
 
-export type AccessoryKind = "headset" | "mouse" | "monitor" | "bag";
+export type AccessoryKind =
+  "headset" | "mouse" | "monitor" | "bag" | "battery" | "keyboard";
 
 export type Accessory = {
   id: string;
@@ -19,6 +20,8 @@ export type Accessory = {
   status: LaptopStatus;
   // Kind-specific details, keyed by the kind's spec field keys.
   specs: Record<string, string>;
+  // Fault still waiting to be fixed, as for laptops.
+  repairIssue?: string | null;
   history: OwnershipEntry[];
 };
 
@@ -181,6 +184,60 @@ export const accessoryConfigs: Record<AccessoryKind, AccessoryConfig> = {
       secondary: s.material,
     }),
   },
+  battery: {
+    kind: "battery",
+    singular: "Battery",
+    plural: "Batteries",
+    tagPrefix: "BT",
+    brandPlaceholder: "e.g. Ace",
+    modelPlaceholder: "e.g. AA",
+    specFields: [
+      {
+        key: "size",
+        label: "Size",
+        options: ["AA", "AAA", "C", "D", "9V", "CR2032"],
+      },
+      {
+        key: "chemistry",
+        label: "Chemistry",
+        options: ["Alkaline", "Rechargeable NiMH", "Lithium", "Carbon-zinc"],
+      },
+    ],
+    summary: (s) => ({
+      primary: s.size,
+      secondary: s.chemistry,
+    }),
+  },
+  keyboard: {
+    kind: "keyboard",
+    singular: "Keyboard",
+    plural: "Keyboards",
+    tagPrefix: "KB",
+    brandPlaceholder: "e.g. Logitech",
+    modelPlaceholder: "e.g. K120",
+    specFields: [
+      {
+        key: "type",
+        label: "Type",
+        options: ["Full-size", "Tenkeyless", "Compact", "Ergonomic"],
+      },
+      {
+        key: "connection",
+        label: "Connection",
+        options: ["Wired USB", "USB receiver", "Bluetooth"],
+      },
+      {
+        key: "switches",
+        label: "Switches",
+        options: ["Membrane", "Mechanical", "Scissor"],
+      },
+      { key: "layout", label: "Layout", placeholder: "e.g. US English" },
+    ],
+    summary: (s) => ({
+      primary: `${s.type} · ${s.connection}`,
+      secondary: `${s.switches} · ${s.layout}`,
+    }),
+  },
 };
 
 // -- Seed data ---------------------------------------------------------------
@@ -257,10 +314,14 @@ const headsets = build("headset", []);
 const mice = build("mouse", []);
 const monitors = build("monitor", []);
 const bags = build("bag", []);
+const batteries = build("battery", []);
+const keyboards = build("keyboard", []);
 
 export const initialAccessories: Record<AccessoryKind, Accessory[]> = {
   headset: headsets,
   mouse: mice,
   monitor: monitors,
   bag: bags,
+  battery: batteries,
+  keyboard: keyboards,
 };

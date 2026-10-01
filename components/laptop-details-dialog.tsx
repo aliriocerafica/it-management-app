@@ -305,11 +305,13 @@ function LaptopDetails({
       </DialogHeader>
 
       <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 py-5 [scrollbar-width:none] sm:grid-cols-2 lg:grid-cols-3 [&::-webkit-scrollbar]:hidden">
-        {laptop.status === "In repair" && (
+        {(laptop.status === "In repair" || laptop.repairIssue) && (
           <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 sm:col-span-2 lg:col-span-3">
             <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em] text-amber-700 uppercase dark:text-amber-400">
               <WrenchIcon className="size-3.5" />
-              Repair details
+              {laptop.status === "In repair"
+                ? "Repair details"
+                : "Pending repair"}
             </h3>
             <p className="text-sm">
               {laptop.repairIssue || (

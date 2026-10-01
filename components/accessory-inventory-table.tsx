@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import {
   BackpackIcon,
+  BatteryIcon,
+  KeyboardIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -27,6 +29,7 @@ import {
   Undo2Icon,
   UserIcon,
   UserPlusIcon,
+  CircleCheckIcon,
   WrenchIcon,
   XIcon,
   type LucideIcon,
@@ -37,6 +40,11 @@ import { AddAccessoryDialog } from "@/components/add-accessory-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { ErrorToast } from "@/components/error-toast";
+import {
+  PendingRepairIcon,
+  RepairedButton,
+} from "@/components/pending-repair-badge";
+import { SendToRepairDialog } from "@/components/send-to-repair-dialog";
 import { UndoToast } from "@/components/undo-toast";
 import {
   createAccessory,
@@ -99,6 +107,8 @@ export const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
   mouse: MouseIcon,
   monitor: TvMinimalIcon,
   bag: BackpackIcon,
+  battery: BatteryIcon,
+  keyboard: KeyboardIcon,
 };
 
 type Tab = "All" | LaptopStatus;
@@ -184,10 +194,18 @@ export function AccessoryInventoryTable({
   const [assigning, setAssigning] = useState<Accessory | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [repairing, setRepairing] = useState<Accessory | null>(null);
+  const [sendingToRepair, setSendingToRepair] = useState<Accessory | null>(
+    null,
+  );
+  const [sendRepairOpen, setSendRepairOpen] = useState(false);
   const [repairOpen, setRepairOpen] = useState(false);
   const [returning, setReturning] = useState<Accessory | null>(null);
   const [returnOpen, setReturnOpen] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  // Asks before clearing a pending-repair alert.
+  const [confirmRepaired, setConfirmRepaired] = useState<Accessory | null>(
+    null,
+  );
   const [undo, setUndo] = useState<{
     snapshot: Accessory[];
     removed: Accessory[];
@@ -213,6 +231,7 @@ export function AccessoryInventoryTable({
         item.handler ?? "",
         item.department ?? "",
         item.color,
+        item.repairIssue ?? "",
         ...Object.values(item.specs),
       ].some((value) => value.toLowerCase().includes(q));
     });
@@ -310,11 +329,18 @@ export function AccessoryInventoryTable({
     persist(saveAccessory(next), () => restoreItems([original]));
   }
 
-  function sendToRepair(id: string) {
-    const note = `Sent for repair ${formatDate(new Date())}`;
+  function openSendToRepair(item: Accessory) {
+    setSendingToRepair(item);
+    setSendRepairOpen(true);
+  }
+
+  function sendToRepair(id: string, issue: string) {
+    const note = `Sent for repair ${formatDate(new Date())}: ${issue}`;
+    setSendRepairOpen(false);
     updateItem(id, (item) => ({
       ...item,
       status: "In repair",
+      repairIssue: issue,
       // Ownership doesn't change during a repair; just annotate the current stint.
       history: item.history.map((entry) =>
         entry.to === null ? { ...entry, note } : entry,
@@ -322,19 +348,25 @@ export function AccessoryInventoryTable({
     }));
   }
 
-  function returnFromRepair(id: string, outcome: RepairOutcome, note: string) {
+  function returnFromRepair(
+    id: string,
+    outcome: RepairOutcome,
+    note: string,
+    pendingIssue: string | null,
+  ) {
     const todayIso = isoToday();
+    const repaired = pendingIssue
+      ? `Released ${formatDate(new Date())} with repair pending: ${pendingIssue}`
+      : `Repaired ${formatDate(new Date())}`;
     updateItem(id, (item) => {
       if (outcome === "handler") {
         return {
           ...item,
           status: "In use",
+          repairIssue: pendingIssue,
           history: item.history.map((entry) =>
             entry.to === null
-              ? {
-                  ...entry,
-                  note: `Repaired ${formatDate(new Date())}${note ? `: ${note}` : ""}`,
-                }
+              ? { ...entry, note: `${repaired}${note ? `. ${note}` : ""}` }
               : entry,
           ),
         };
@@ -343,6 +375,7 @@ export function AccessoryInventoryTable({
       return {
         ...item,
         status: retire ? "Retired" : "Vacant",
+        repairIssue: retire ? null : pendingIssue,
         handler: null,
         department: null,
         history: [
@@ -356,12 +389,31 @@ export function AccessoryInventoryTable({
             note:
               (retire
                 ? "Retired, beyond repair"
-                : "Repaired, ready to assign") + (note ? `: ${note}` : ""),
+                : pendingIssue
+                  ? `Back in stock, repair pending: ${pendingIssue}`
+                  : "Repaired, ready to assign") + (note ? `. ${note}` : ""),
           },
         ],
       };
     });
     setRepairOpen(false);
+  }
+
+  // Clears a pending-repair alert once the outstanding fault is fixed.
+  function markRepairDone(id: string) {
+    const note = `Pending repair completed ${formatDate(new Date())}`;
+    updateItem(id, (item) => ({
+      ...item,
+      history: item.history.map((entry) =>
+        entry.to === null
+          ? {
+              ...entry,
+              note: entry.note ? `${entry.note}. ${note}` : note,
+            }
+          : entry,
+      ),
+      repairIssue: null,
+    }));
   }
 
   function returnToStock(note: string, alsoReturn: AssignedAssets) {
@@ -397,7 +449,7 @@ export function AccessoryInventoryTable({
     updateItem(id, (item) => ({
       ...item,
       handler: employee.name,
-      department: employee.department,
+      department: employee.department || null,
       status: "In use",
       // Close out the current "with IT" stint and open one for the new owner.
       history: [
@@ -406,7 +458,7 @@ export function AccessoryInventoryTable({
         ),
         {
           handler: employee.name,
-          department: employee.department,
+          department: employee.department || undefined,
           from: todayIso,
           to: null,
           note: note || undefined,
@@ -736,17 +788,28 @@ export function AccessoryInventoryTable({
                       )}
                     </td>
                     <td className={cellClass}>
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[11px] font-medium",
-                          status.text,
-                        )}
-                      >
+                      <div className="flex items-center gap-0.5">
                         <span
-                          className={cn("size-1.5 rounded-full", status.dot)}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[11px] font-medium",
+                            status.text,
+                          )}
+                        >
+                          <span
+                            className={cn("size-1.5 rounded-full", status.dot)}
+                          />
+                          {item.status}
+                        </span>
+                        {item.repairIssue && item.status !== "In repair" && (
+                          <PendingRepairIcon issue={item.repairIssue} />
+                        )}
+                      </div>
+                      {item.repairIssue && item.status !== "In repair" && (
+                        <RepairedButton
+                          className="mt-1"
+                          onClick={() => setConfirmRepaired(item)}
                         />
-                        {item.status}
-                      </span>
+                      )}
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       {/* Same layout on every row: one primary action in a
@@ -770,7 +833,7 @@ export function AccessoryInventoryTable({
                             onClick={() => openReturn(item)}
                           >
                             <Undo2Icon />
-                            Mark repaired
+                            Release
                           </Button>
                         ) : item.status === "In use" ? (
                           <Button
@@ -818,10 +881,19 @@ export function AccessoryInventoryTable({
                               <PencilIcon />
                               Edit details
                             </DropdownMenuItem>
+                            {item.repairIssue &&
+                              item.status !== "In repair" && (
+                                <DropdownMenuItem
+                                  onClick={() => setConfirmRepaired(item)}
+                                >
+                                  <CircleCheckIcon />
+                                  Mark repair done
+                                </DropdownMenuItem>
+                              )}
                             {(item.status === "In use" ||
                               item.status === "Vacant") && (
                               <DropdownMenuItem
-                                onClick={() => sendToRepair(item.id)}
+                                onClick={() => openSendToRepair(item)}
                               >
                                 <WrenchIcon />
                                 Send to repair
@@ -959,6 +1031,23 @@ export function AccessoryInventoryTable({
       />
 
       <ConfirmDeleteDialog
+        open={confirmRepaired !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRepaired(null);
+        }}
+        title="Mark as repaired?"
+        description={
+          confirmRepaired
+            ? `${confirmRepaired.assetTag} still has a pending repair: “${confirmRepaired.repairIssue}”. Only confirm once that's fixed. This removes the alert.`
+            : ""
+        }
+        confirmLabel="Mark repaired"
+        confirmVariant="default"
+        icon={CircleCheckIcon}
+        onConfirm={() => confirmRepaired && markRepairDone(confirmRepaired.id)}
+      />
+
+      <ConfirmDeleteDialog
         open={pendingDeleteIds.length > 0}
         onOpenChange={(open) => {
           if (!open) setPendingDeleteIds([]);
@@ -973,13 +1062,23 @@ export function AccessoryInventoryTable({
         onConfirm={() => deleteItems(pendingDeleteIds)}
       />
 
+      <SendToRepairDialog
+        laptop={sendingToRepair}
+        open={sendRepairOpen}
+        onOpenChange={setSendRepairOpen}
+        onConfirm={(issue) =>
+          sendingToRepair && sendToRepair(sendingToRepair.id, issue)
+        }
+      />
+
       <ReturnFromRepairDialog
         laptop={repairing}
         noun={noun}
         open={repairOpen}
         onOpenChange={setRepairOpen}
-        onConfirm={(outcome, note) =>
-          repairing && returnFromRepair(repairing.id, outcome, note)
+        onConfirm={(outcome, note, pendingIssue) =>
+          repairing &&
+          returnFromRepair(repairing.id, outcome, note, pendingIssue)
         }
       />
 

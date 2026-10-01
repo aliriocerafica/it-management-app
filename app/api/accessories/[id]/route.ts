@@ -13,6 +13,8 @@ const accessoryPaths = {
   mouse: "/dashboard/mice",
   monitor: "/dashboard/monitors",
   bag: "/dashboard/laptop-bags",
+  battery: "/dashboard/batteries",
+  keyboard: "/dashboard/keyboards",
 } as const
 
 export async function PUT(

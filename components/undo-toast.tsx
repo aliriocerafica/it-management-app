@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useLayoutEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { Undo2Icon, XIcon } from "lucide-react"
 
@@ -18,7 +18,9 @@ export function UndoToast({
   duration?: number
 }) {
   const onDismissRef = useRef(onDismiss)
-  onDismissRef.current = onDismiss
+  useLayoutEffect(() => {
+    onDismissRef.current = onDismiss
+  })
 
   useEffect(() => {
     if (!message) return

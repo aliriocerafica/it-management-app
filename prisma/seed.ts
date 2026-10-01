@@ -1,7 +1,6 @@
 import "dotenv/config"
 
 import { PrismaNeon } from "@prisma/adapter-neon"
-import { generateAnydeskAddress } from "../lib/anydesk"
 import {
   initialAccessories,
   type AccessoryKind,
@@ -66,6 +65,10 @@ function mapKind(kind: AccessoryKind) {
       return "MONITOR" as const
     case "bag":
       return "BAG" as const
+    case "battery":
+      return "BATTERY" as const
+    case "keyboard":
+      return "KEYBOARD" as const
   }
 }
 
@@ -112,7 +115,7 @@ async function main() {
         warrantyYears: laptop.warrantyYears,
         status: mapStatus(laptop.status),
         repairIssue: laptop.status === "In repair" ? laptop.repairIssue ?? null : null,
-        anydeskAddress: generateAnydeskAddress(laptop.assetTag),
+        anydeskAddress: null,
         charger: {
           create: {
             connector: laptop.charger.connector,

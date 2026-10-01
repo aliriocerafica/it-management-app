@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   CheckIcon,
   LaptopIcon,
+  PenLineIcon,
   SearchIcon,
   UserPlusIcon,
   type LucideIcon,
@@ -25,6 +26,8 @@ import { Label } from "@/components/ui/label";
 import { employees, type Employee } from "@/lib/employees";
 import { initials, type TrackedItem } from "@/lib/laptops";
 import { cn } from "@/lib/utils";
+
+const MANUAL = "manual";
 
 export function AssignLaptopDialog({
   laptop,
@@ -74,7 +77,9 @@ function AssignForm({
   onAssign: (employee: Employee, note: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  // An employee id, or MANUAL for the name typed in the search box.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [manualDepartment, setManualDepartment] = useState("");
   const [note, setNote] = useState("");
 
   // Asset tags each employee currently holds, so IT can spot people who
@@ -105,7 +110,24 @@ function AssignForm({
       });
   }, [query, heldBy]);
 
-  const selected = employees.find((e) => e.id === selectedId) ?? null;
+  // Until the employee API is connected the directory is empty, so a typed
+  // name is the main way to assign.
+  const typedName = query.trim().replace(/\s+/g, " ");
+  const inDirectory = employees.some(
+    (e) => e.name.toLowerCase() === typedName.toLowerCase(),
+  );
+  const canTypeName = typedName.length > 0 && !inDirectory;
+  const manualSelected = selectedId === MANUAL && canTypeName;
+
+  const selected: Employee | null = manualSelected
+    ? {
+        id: "",
+        name: typedName,
+        department: manualDepartment.trim(),
+        title: "",
+        email: "",
+      }
+    : (employees.find((e) => e.id === selectedId) ?? null);
 
   return (
     <>
@@ -127,7 +149,11 @@ function AssignForm({
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by name, department or role"
+            placeholder={
+              employees.length
+                ? "Search, or type a full name"
+                : "Type the employee's full name"
+            }
             className="pl-8"
             autoFocus
           />
@@ -138,6 +164,47 @@ function AssignForm({
           aria-label="Employees"
           className="-mx-2 flex max-h-80 min-h-0 flex-col gap-1 overflow-y-auto px-2 pb-1"
         >
+          {canTypeName && (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={manualSelected}
+              onClick={() => setSelectedId(MANUAL)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                manualSelected
+                  ? "border-foreground/30 bg-muted"
+                  : "border-dashed border-border hover:bg-muted/60",
+              )}
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+                <PenLineIcon className="size-4 text-muted-foreground" />
+              </span>
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="truncate text-sm font-medium">
+                  Assign to &ldquo;{typedName}&rdquo;
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  Typed manually, not in the employee directory
+                </div>
+              </div>
+              {heldBy.has(typedName) && (
+                <span className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-700 dark:text-amber-400">
+                  Has {heldBy.get(typedName)!.join(", ")}
+                </span>
+              )}
+              <span
+                className={cn(
+                  "flex size-5 shrink-0 items-center justify-center rounded-full border",
+                  manualSelected
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-input",
+                )}
+              >
+                {manualSelected && <CheckIcon className="size-3" />}
+              </span>
+            </button>
+          )}
           {list.map((employee) => {
             const isSelected = employee.id === selectedId;
             const held = heldBy.get(employee.name);
@@ -190,12 +257,31 @@ function AssignForm({
               </button>
             );
           })}
-          {list.length === 0 && (
+          {list.length === 0 && !canTypeName && (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No employees match &ldquo;{query}&rdquo;.
+              {employees.length
+                ? "No employees match your search."
+                : "The employee directory isn't connected yet. Type the person's full name above."}
             </p>
           )}
         </div>
+
+        {manualSelected && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="assign-department" className="text-xs">
+              Department
+              <span className="font-normal text-muted-foreground">
+                (optional)
+              </span>
+            </Label>
+            <Input
+              id="assign-department"
+              value={manualDepartment}
+              onChange={(event) => setManualDepartment(event.target.value)}
+              placeholder="e.g. Operations"
+            />
+          </div>
+        )}
 
         <div className="flex flex-col gap-1.5 border-t border-border pt-3 pb-4">
           <Label htmlFor="assign-note" className="text-xs">

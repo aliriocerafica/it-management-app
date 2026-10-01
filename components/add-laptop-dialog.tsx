@@ -14,6 +14,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  HistoryEditor,
+  currentHolder,
+  fromDrafts,
+  toDrafts,
+} from "@/components/history-editor";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -22,6 +28,7 @@ import {
   type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops";
+import { parseAnydeskAddress } from "@/lib/anydesk";
 import { errorMessage } from "@/lib/inventory-api";
 import { cn } from "@/lib/utils";
 
@@ -135,10 +142,18 @@ export function AddLaptopDialog({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [colorHex, setColorHex] = useState(laptop?.colorHex ?? "#2b2b2d");
+  const [historyDrafts, setHistoryDrafts] = useState(() =>
+    toDrafts(laptop?.history ?? []),
+  );
 
   const editing = laptop != null;
   const formId = editing ? "edit-laptop-form" : "add-laptop-form";
   const brands = [...new Set(laptops.map((l) => l.brand))].sort();
+  const handlerNames = [
+    ...new Set(
+      laptops.flatMap((l) => l.history.flatMap((entry) => entry.handler ?? [])),
+    ),
+  ].sort();
 
   async function submit(
     next: Laptop,
@@ -167,6 +182,14 @@ export function AddLaptopDialog({
     const handler = get("handler");
     const department = get("department");
     const purchaseDate = get("purchaseDate");
+    const anydeskInput = get("anydeskAddress");
+    const anydeskAddress = anydeskInput
+      ? parseAnydeskAddress(anydeskInput)
+      : null;
+    if (anydeskInput && !anydeskAddress) {
+      setError("AnyDesk address must be 9 or 10 digits.");
+      return;
+    }
 
     if (
       laptops.some(
@@ -196,9 +219,16 @@ export function AddLaptopDialog({
     };
 
     if (laptop) {
+      const edited = fromDrafts(historyDrafts);
+      if ("error" in edited) {
+        setError(edited.error);
+        return;
+      }
       void submit(
         {
           ...laptop,
+          ...currentHolder(edited.history, laptop.status),
+          history: edited.history,
           assetTag,
           brand: get("brand"),
           model: get("model"),
@@ -211,7 +241,9 @@ export function AddLaptopDialog({
           colorHex,
           purchaseDate,
           warrantyYears: Number(get("warrantyYears")),
+          repairIssue: get("repairIssue") || null,
           charger,
+          anydeskAddress,
         },
         onSave,
       );
@@ -244,6 +276,7 @@ export function AddLaptopDialog({
         warrantyYears: Number(get("warrantyYears")),
         status,
         charger,
+        anydeskAddress,
         history: [
           assignedHandler && handler
             ? {
@@ -396,6 +429,20 @@ export function AddLaptopDialog({
                 required
               />
             </FormField>
+            <FormField
+              label="AnyDesk address"
+              htmlFor="anydeskAddress"
+              optional
+            >
+              <Input
+                id="anydeskAddress"
+                name="anydeskAddress"
+                inputMode="numeric"
+                defaultValue={laptop?.anydeskAddress ?? ""}
+                placeholder="e.g. 123 456 789"
+                className="font-mono"
+              />
+            </FormField>
           </FormSection>
 
           <FormSection title={editing ? "Purchase" : "Assignment & purchase"}>
@@ -448,6 +495,21 @@ export function AddLaptopDialog({
                 required
               />
             </FormField>
+            {editing && (
+              <FormField
+                label="Pending repair"
+                htmlFor="repairIssue"
+                optional
+                className="sm:col-span-2 lg:col-span-3"
+              >
+                <Input
+                  id="repairIssue"
+                  name="repairIssue"
+                  defaultValue={laptop?.repairIssue ?? ""}
+                  placeholder="Fault still to fix. Leave empty if none"
+                />
+              </FormField>
+            )}
           </FormSection>
 
           <FormSection title="Charger">
@@ -514,6 +576,13 @@ export function AddLaptopDialog({
               />
             </FormField>
           </FormSection>
+          {editing && (
+            <HistoryEditor
+              value={historyDrafts}
+              onChange={setHistoryDrafts}
+              handlerOptions={handlerNames}
+            />
+          )}
         </form>
 
         <DialogFooter className="mx-0 mb-0 items-center px-6 py-4">

@@ -6,13 +6,16 @@ import { useTheme } from "next-themes"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 
+const subscribeNever = () => () => {}
+
 export function ThemeSwitch({ className }: { className?: string }) {
   const { resolvedTheme, setTheme } = useTheme()
-  const [mounted, setMounted] = React.useState(false)
-
-  React.useEffect(() => {
-    setMounted(true)
-  }, [])
+  // True after hydration; the theme is only known on the client.
+  const mounted = React.useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false
+  )
 
   const isDark = mounted && resolvedTheme === "dark"
 

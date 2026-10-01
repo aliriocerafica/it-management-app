@@ -13,6 +13,8 @@ import {
   ExternalLinkIcon,
   LaptopIcon,
   MonitorPlayIcon,
+  PencilIcon,
+  PlusIcon,
   SearchIcon,
   UserIcon,
   XIcon,
@@ -35,7 +37,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { anydeskHref, formatAnydeskAddress } from "@/lib/anydesk"
+import {
+  anydeskHref,
+  formatAnydeskAddress,
+  parseAnydeskAddress,
+} from "@/lib/anydesk"
+import { errorMessage, saveLaptop } from "@/lib/inventory-api"
 import { initials, statusStyles } from "@/lib/laptops"
 import type { RemoteAccessRow } from "@/lib/remote-access"
 import { cn } from "@/lib/utils"
@@ -49,7 +56,17 @@ function rowStatus(row: RemoteAccessRow): Tab {
   return "Unassigned"
 }
 
-export function RemoteAccessTable({ rows }: { rows: RemoteAccessRow[] }) {
+export function RemoteAccessTable({
+  rows: initialRows,
+}: {
+  rows: RemoteAccessRow[]
+}) {
+  const [rows, setRows] = useState(initialRows)
+  // The laptop whose AnyDesk address is being typed in, if any.
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft] = useState("")
+  const [editError, setEditError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const [query, setQuery] = useState("")
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([])
   const [brandFilter, setBrandFilter] = useState<string[]>([])
@@ -113,6 +130,41 @@ export function RemoteAccessTable({ rows }: { rows: RemoteAccessRow[] }) {
     setDepartmentFilter([])
     setBrandFilter([])
     setPage(1)
+  }
+
+  function startEditing(laptopId: string, current: string | null) {
+    setEditingId(laptopId)
+    setDraft(current ? formatAnydeskAddress(current) : "")
+    setEditError(null)
+  }
+
+  function cancelEditing() {
+    setEditingId(null)
+    setEditError(null)
+  }
+
+  async function saveAddress(row: RemoteAccessRow) {
+    const laptop = row.laptop
+    if (!laptop || saving) return
+    const input = draft.trim()
+    const address = input ? parseAnydeskAddress(input) : null
+    if (input && !address) {
+      setEditError("Enter the 9 or 10 digit AnyDesk address.")
+      return
+    }
+    setSaving(true)
+    try {
+      const saved = await saveLaptop({ ...laptop, anydeskAddress: address })
+      setRows((prev) =>
+        prev.map((r) => (r.laptop?.id === saved.id ? { ...r, laptop: saved } : r)),
+      )
+      setEditingId(null)
+      setEditError(null)
+    } catch (error) {
+      setEditError(errorMessage(error))
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function copyAddress(address: string) {
@@ -230,12 +282,14 @@ export function RemoteAccessTable({ rows }: { rows: RemoteAccessRow[] }) {
               </tr>
             </thead>
             <tbody>
-              {pageRows.map(({ employee, laptop }) => {
+              {pageRows.map((row) => {
+                const { employee, laptop } = row
                 const status = laptop ? statusStyles[laptop.status] : null
                 const address = laptop?.anydeskAddress ?? null
+                const isEditing = laptop != null && editingId === laptop.id
                 return (
                   <tr
-                    key={employee.id}
+                    key={laptop?.id ?? employee.id}
                     className="border-b border-border transition-colors hover:bg-muted/50"
                   >
                     <td className={cellClass}>
@@ -248,7 +302,9 @@ export function RemoteAccessTable({ rows }: { rows: RemoteAccessRow[] }) {
                         <div>
                           <div className="font-medium">{employee.name}</div>
                           <div className="text-[11px] text-muted-foreground">
-                            {employee.title} · {employee.department}
+                            {[employee.title, employee.department]
+                              .filter(Boolean)
+                              .join(" · ") || "No department"}
                           </div>
                         </div>
                       </div>
@@ -286,7 +342,49 @@ export function RemoteAccessTable({ rows }: { rows: RemoteAccessRow[] }) {
                     </td>
                     <td className={cn(cellClass, "w-full")}>
                       <div className="flex w-full items-center justify-between gap-3">
-                        {address ? (
+                        {isEditing ? (
+                          <form
+                            className="flex w-full flex-col gap-1"
+                            onSubmit={(event) => {
+                              event.preventDefault()
+                              void saveAddress(row)
+                            }}
+                          >
+                            <div className="flex items-center gap-1">
+                              <Input
+                                value={draft}
+                                onChange={(event) => setDraft(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Escape") cancelEditing()
+                                }}
+                                placeholder="123 456 789"
+                                inputMode="numeric"
+                                aria-label={`AnyDesk address for ${employee.name}`}
+                                aria-invalid={editError ? true : undefined}
+                                className="h-7 max-w-40 font-mono text-sm"
+                                autoFocus
+                              />
+                              <Button type="submit" size="xs" disabled={saving}>
+                                <CheckIcon />
+                                {saving ? "Saving…" : "Save"}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="xs"
+                                disabled={saving}
+                                onClick={cancelEditing}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                            {editError && (
+                              <p role="alert" className="text-[11px] text-destructive">
+                                {editError}
+                              </p>
+                            )}
+                          </form>
+                        ) : address ? (
                           <>
                             <span className="font-mono text-sm tabular-nums">
                               {formatAnydeskAddress(address)}
@@ -325,7 +423,31 @@ export function RemoteAccessTable({ rows }: { rows: RemoteAccessRow[] }) {
                                 <ExternalLinkIcon />
                                 Open
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label={`Edit AnyDesk address for ${employee.name}`}
+                                className="text-muted-foreground hover:text-foreground"
+                                onClick={() => startEditing(laptop!.id, address)}
+                              >
+                                <PencilIcon />
+                              </Button>
                             </div>
+                          </>
+                        ) : laptop ? (
+                          <>
+                            <span className="text-muted-foreground italic">
+                              No address
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              className="shrink-0"
+                              onClick={() => startEditing(laptop.id, null)}
+                            >
+                              <PlusIcon />
+                              Add address
+                            </Button>
                           </>
                         ) : (
                           <span className="text-muted-foreground">—</span>

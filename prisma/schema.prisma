@@ -23,6 +23,8 @@ enum AccessoryKind {
   MOUSE
   MONITOR
   BAG
+  BATTERY
+  KEYBOARD
 }
 
 enum ChargerCondition {
@@ -102,6 +104,8 @@ model Laptop {
   purchaseDate  DateTime    @db.Date
   warrantyYears  Int
   status         AssetStatus
+  // What's wrong and still needs fixing. Kept after the laptop leaves
+  // repair, so it can go back into use with a repair still pending.
   repairIssue    String?
   anydeskAddress String?
   createdAt      DateTime    @default(now())
@@ -150,7 +154,9 @@ model Accessory {
   assetTag      String        @unique
   brand         String
   model         String
-  serialNumber  String        @unique
+  // Not unique: consumables like mice and batteries often carry a shared
+  // batch/lot number. Asset tags stay unique per unit.
+  serialNumber  String
   color         String
   colorHex      String
   employeeId    String?
@@ -160,11 +166,14 @@ model Accessory {
   warrantyYears Int
   status        AssetStatus
   specs         Json
+  // Fault still waiting to be fixed; may be set while the item is in use.
+  repairIssue   String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   assignments   AccessoryAssignment[]
 
   @@index([kind])
+  @@index([serialNumber])
   @@index([employeeId])
   @@index([status])
   @@map("accessories")

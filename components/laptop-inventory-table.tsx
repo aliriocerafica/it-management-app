@@ -24,6 +24,7 @@ import {
   UserIcon,
   Undo2Icon,
   UserPlusIcon,
+  CircleCheckIcon,
   WrenchIcon,
   XIcon,
 } from "lucide-react";
@@ -33,6 +34,10 @@ import { AddLaptopDialog } from "@/components/add-laptop-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { ErrorToast } from "@/components/error-toast";
+import {
+  PendingRepairIcon,
+  RepairedButton,
+} from "@/components/pending-repair-badge";
 import { UndoToast } from "@/components/undo-toast";
 import {
   createLaptop,
@@ -117,7 +122,7 @@ function exportCsv(rows: Laptop[], today: Date | null) {
     "Age",
     "Warranty ends",
     "Status",
-    "Repair issue",
+    "Pending repair",
     "Charger connector",
     "Charger wattage",
     "Charger part no.",
@@ -142,7 +147,7 @@ function exportCsv(rows: Laptop[], today: Date | null) {
       today ? formatAge(l.purchaseDate, today) : "",
       warranty ? formatDate(warranty.end) : "",
       l.status,
-      l.status === "In repair" ? (l.repairIssue ?? "") : "",
+      l.repairIssue ?? "",
       l.charger.connector,
       `${l.charger.wattage} W`,
       l.charger.partNumber,
@@ -280,6 +285,8 @@ export function LaptopInventoryTable({
     employeeName: string;
   } | null>(null);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  // Asks before clearing a pending-repair alert.
+  const [confirmRepaired, setConfirmRepaired] = useState<Laptop | null>(null);
   const [undo, setUndo] = useState<{
     snapshot: Laptop[];
     removed: Laptop[];
@@ -418,6 +425,23 @@ export function LaptopInventoryTable({
     persist(saveLaptop(next), () => restoreLaptops([original]));
   }
 
+  // Clears a pending-repair alert once the outstanding fault is fixed.
+  function markRepairDone(id: string) {
+    const note = `Pending repair completed ${formatDate(new Date())}`;
+    updateLaptop(id, (l) => ({
+      ...l,
+      history: l.history.map((entry) =>
+        entry.to === null
+          ? {
+              ...entry,
+              note: entry.note ? `${entry.note}. ${note}` : note,
+            }
+          : entry,
+      ),
+      repairIssue: null,
+    }));
+  }
+
   function openSendToRepair(laptop: Laptop) {
     setSendingToRepair(laptop);
     setSendRepairOpen(true);
@@ -437,20 +461,25 @@ export function LaptopInventoryTable({
     setSendRepairOpen(false);
   }
 
-  function returnFromRepair(id: string, outcome: RepairOutcome, note: string) {
+  function returnFromRepair(
+    id: string,
+    outcome: RepairOutcome,
+    note: string,
+    pendingIssue: string | null,
+  ) {
     const todayIso = isoToday();
+    const repaired = pendingIssue
+      ? `Released ${formatDate(new Date())} with repair pending: ${pendingIssue}`
+      : `Repaired ${formatDate(new Date())}`;
     updateLaptop(id, (l) => {
       if (outcome === "handler") {
         return {
           ...l,
           status: "In use",
-          repairIssue: null,
+          repairIssue: pendingIssue,
           history: l.history.map((entry) =>
             entry.to === null
-              ? {
-                  ...entry,
-                  note: `Repaired ${formatDate(new Date())}${note ? `: ${note}` : ""}`,
-                }
+              ? { ...entry, note: `${repaired}${note ? `. ${note}` : ""}` }
               : entry,
           ),
         };
@@ -459,7 +488,7 @@ export function LaptopInventoryTable({
       return {
         ...l,
         status: retire ? "Retired" : "Vacant",
-        repairIssue: null,
+        repairIssue: retire ? null : pendingIssue,
         handler: null,
         department: null,
         history: [
@@ -473,7 +502,9 @@ export function LaptopInventoryTable({
             note:
               (retire
                 ? "Retired, beyond repair"
-                : "Repaired, ready to assign") + (note ? `: ${note}` : ""),
+                : pendingIssue
+                  ? `Back in stock, repair pending: ${pendingIssue}`
+                  : "Repaired, ready to assign") + (note ? `. ${note}` : ""),
           },
         ],
       };
@@ -512,13 +543,13 @@ export function LaptopInventoryTable({
       return {
         ...l,
         handler: employee.name,
-        department: employee.department,
+        department: employee.department || null,
         status: "In use",
         history: [
           ...history,
           {
             handler: employee.name,
-            department: employee.department,
+            department: employee.department || undefined,
             from: todayIso,
             to: null,
             note: note || undefined,
@@ -845,17 +876,29 @@ export function LaptopInventoryTable({
                       )}
                     </td>
                     <td className={cellClass}>
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[11px] font-medium",
-                          status.text,
-                        )}
-                      >
+                      <div className="flex items-center gap-0.5">
                         <span
-                          className={cn("size-1.5 rounded-full", status.dot)}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[11px] font-medium",
+                            status.text,
+                          )}
+                        >
+                          <span
+                            className={cn("size-1.5 rounded-full", status.dot)}
+                          />
+                          {laptop.status}
+                        </span>
+                        {laptop.repairIssue &&
+                          laptop.status !== "In repair" && (
+                            <PendingRepairIcon issue={laptop.repairIssue} />
+                          )}
+                      </div>
+                      {laptop.repairIssue && laptop.status !== "In repair" && (
+                        <RepairedButton
+                          className="mt-1"
+                          onClick={() => setConfirmRepaired(laptop)}
                         />
-                        {laptop.status}
-                      </span>
+                      )}
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       {/* Same layout on every row: one primary action in a
@@ -879,7 +922,7 @@ export function LaptopInventoryTable({
                             onClick={() => openReturn(laptop)}
                           >
                             <Undo2Icon />
-                            Mark repaired
+                            Release
                           </Button>
                         ) : laptop.status === "In use" ? (
                           <Button
@@ -929,6 +972,15 @@ export function LaptopInventoryTable({
                               <PencilIcon />
                               Edit details
                             </DropdownMenuItem>
+                            {laptop.repairIssue &&
+                              laptop.status !== "In repair" && (
+                                <DropdownMenuItem
+                                  onClick={() => setConfirmRepaired(laptop)}
+                                >
+                                  <CircleCheckIcon />
+                                  Mark repair done
+                                </DropdownMenuItem>
+                              )}
                             {(laptop.status === "In use" ||
                               laptop.status === "Vacant") && (
                               <DropdownMenuItem
@@ -1081,6 +1133,23 @@ export function LaptopInventoryTable({
       />
 
       <ConfirmDeleteDialog
+        open={confirmRepaired !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRepaired(null);
+        }}
+        title="Mark as repaired?"
+        description={
+          confirmRepaired
+            ? `${confirmRepaired.assetTag} still has a pending repair: “${confirmRepaired.repairIssue}”. Only confirm once that's fixed. This removes the alert.`
+            : ""
+        }
+        confirmLabel="Mark repaired"
+        confirmVariant="default"
+        icon={CircleCheckIcon}
+        onConfirm={() => confirmRepaired && markRepairDone(confirmRepaired.id)}
+      />
+
+      <ConfirmDeleteDialog
         open={pendingDeleteIds.length > 0}
         onOpenChange={(open) => {
           if (!open) setPendingDeleteIds([]);
@@ -1111,8 +1180,9 @@ export function LaptopInventoryTable({
         laptop={repairing}
         open={repairOpen}
         onOpenChange={setRepairOpen}
-        onConfirm={(outcome, note) =>
-          repairing && returnFromRepair(repairing.id, outcome, note)
+        onConfirm={(outcome, note, pendingIssue) =>
+          repairing &&
+          returnFromRepair(repairing.id, outcome, note, pendingIssue)
         }
       />
 

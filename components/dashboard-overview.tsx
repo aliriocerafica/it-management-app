@@ -17,6 +17,8 @@ import {
 } from "recharts"
 import {
   BackpackIcon,
+  BatteryIcon,
+  KeyboardIcon,
   BarChart3Icon,
   Building2Icon,
   ClockIcon,
@@ -59,6 +61,8 @@ const accessoryRoutes: Record<AccessoryKind, string> = {
   mouse: "/dashboard/mice",
   monitor: "/dashboard/monitors",
   bag: "/dashboard/laptop-bags",
+  battery: "/dashboard/batteries",
+  keyboard: "/dashboard/keyboards",
 }
 
 const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
@@ -66,6 +70,8 @@ const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
   mouse: MouseIcon,
   monitor: TvMinimalIcon,
   bag: BackpackIcon,
+  battery: BatteryIcon,
+  keyboard: KeyboardIcon,
 }
 
 const warrantyStyles = {

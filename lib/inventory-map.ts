@@ -7,16 +7,22 @@ import type {
   OwnershipEntry,
 } from "@/lib/laptops"
 import type { Prisma } from "@/lib/generated/prisma"
+import { legacyPlaceholderAddress } from "@/lib/anydesk"
 import { decryptSecret } from "@/lib/crypto"
 
-function decryptAnydeskAddress(value: string | null): string | null {
-  if (!value) return value
+function decryptAnydeskAddress(
+  value: string | null,
+  assetTag: string,
+): string | null {
+  if (!value) return null
+  let address = value
   try {
-    return decryptSecret(value)
+    address = decryptSecret(value)
   } catch {
     console.warn("Failed to decrypt anydeskAddress; returning raw stored value")
-    return value
   }
+  // Earlier versions filled empty addresses with a made-up number.
+  return address === legacyPlaceholderAddress(assetTag) ? null : address
 }
 
 export type StatusCounts = Record<LaptopStatus, number> & { total: number }
@@ -27,6 +33,8 @@ export type InventorySummary = {
   mouse: StatusCounts
   monitor: StatusCounts
   bag: StatusCounts
+  battery: StatusCounts
+  keyboard: StatusCounts
 }
 
 export const statusFromDb: Record<
@@ -66,6 +74,8 @@ export const kindFromDb = {
   MOUSE: "mouse",
   MONITOR: "monitor",
   BAG: "bag",
+  BATTERY: "battery",
+  KEYBOARD: "keyboard",
 } as const satisfies Record<string, AccessoryKind>
 
 export const kindToDb: Record<AccessoryKind, keyof typeof kindFromDb> = {
@@ -73,6 +83,8 @@ export const kindToDb: Record<AccessoryKind, keyof typeof kindFromDb> = {
   mouse: "MOUSE",
   monitor: "MONITOR",
   bag: "BAG",
+  battery: "BATTERY",
+  keyboard: "KEYBOARD",
 }
 
 export function employeeIdFor(name: string | null | undefined) {
@@ -132,7 +144,7 @@ export function laptopFromDb(record: LaptopRecord): Laptop {
     warrantyYears: record.warrantyYears,
     status: statusFromDb[record.status],
     repairIssue: record.repairIssue,
-    anydeskAddress: decryptAnydeskAddress(record.anydeskAddress),
+    anydeskAddress: decryptAnydeskAddress(record.anydeskAddress, record.assetTag),
     charger: {
       connector: record.charger.connector,
       wattage: record.charger.wattage,
@@ -160,6 +172,7 @@ export function accessoryFromDb(record: AccessoryRecord): Accessory {
     warrantyYears: record.warrantyYears,
     status: statusFromDb[record.status],
     specs: (record.specs ?? {}) as Record<string, string>,
+    repairIssue: record.repairIssue,
     history: toHistory(record.assignments),
   }
 }

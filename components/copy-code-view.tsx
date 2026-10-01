@@ -30,9 +30,14 @@ export function CopyCodeView() {
     }
   }, [code])
 
+  // Try to copy on arrival; browsers may refuse without a click.
   React.useEffect(() => {
-    void copy(true)
-  }, [copy])
+    if (code.length !== 6) return
+    navigator.clipboard
+      .writeText(code)
+      .then(() => setCopied(true))
+      .catch(() => {})
+  }, [code])
 
   if (code.length !== 6) {
     return (

@@ -29,12 +29,17 @@ export function AccountabilityFormPrompt({
 }) {
   const [hrName, setHrName] = useState("")
   const [itOfficerName, setItOfficerName] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(open)
+  // Show the spinner as soon as the dialog opens, before the effect runs.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setLoading(true)
+  }
 
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    setLoading(true)
     void Promise.all([
       fetch("/api/accountability-form-settings").then(async (response) => {
         if (!response.ok) throw new Error("Failed to load")

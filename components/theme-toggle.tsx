@@ -6,13 +6,16 @@ import { useTheme } from "next-themes"
 
 import { Button } from "@/components/ui/button"
 
+const subscribeNever = () => () => {}
+
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
-  const [mounted, setMounted] = React.useState(false)
-
-  React.useEffect(() => {
-    setMounted(true)
-  }, [])
+  // True after hydration; the theme is only known on the client.
+  const mounted = React.useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false
+  )
 
   if (!mounted) {
     return (

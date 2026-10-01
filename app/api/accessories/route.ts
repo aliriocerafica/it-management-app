@@ -15,6 +15,8 @@ const accessoryPaths: Record<AccessoryKind, string> = {
   mouse: "/dashboard/mice",
   monitor: "/dashboard/monitors",
   bag: "/dashboard/laptop-bags",
+  battery: "/dashboard/batteries",
+  keyboard: "/dashboard/keyboards",
 }
 
 function refreshInventory(kind?: AccessoryKind) {
@@ -27,8 +29,8 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
 
   const kind = new URL(request.url).searchParams.get("kind") as AccessoryKind | null
-  if (!kind) {
-    return NextResponse.json({ error: "kind is required" }, { status: 400 })
+  if (!kind || !Object.hasOwn(accessoryPaths, kind)) {
+    return NextResponse.json({ error: "A valid kind is required" }, { status: 400 })
   }
   const items = await listAccessories(kind)
   return NextResponse.json(items)

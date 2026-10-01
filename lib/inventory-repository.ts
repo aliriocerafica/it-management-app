@@ -10,7 +10,7 @@ import {
   statusFromDb,
   statusToDb,
 } from "@/lib/inventory-map"
-import { generateAnydeskAddress } from "@/lib/anydesk"
+import { digitsOnly } from "@/lib/anydesk"
 import { encryptSecret } from "@/lib/crypto"
 import { employees } from "@/lib/employees"
 import type { Laptop } from "@/lib/laptops"
@@ -83,6 +83,8 @@ export async function getInventorySummary(): Promise<InventorySummary> {
     mouse: emptyCounts(),
     monitor: emptyCounts(),
     bag: emptyCounts(),
+    battery: emptyCounts(),
+    keyboard: emptyCounts(),
   }
 
   for (const row of accessoryRows) {
@@ -92,6 +94,8 @@ export async function getInventorySummary(): Promise<InventorySummary> {
         MOUSE: "mouse",
         MONITOR: "monitor",
         BAG: "bag",
+        BATTERY: "battery",
+        KEYBOARD: "keyboard",
       } as const
     )[row.kind]
     const status = statusFromDb[row.status]
@@ -114,11 +118,11 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
     serialNumber: laptop.charger.serialNumber,
     condition: chargerToDb[laptop.charger.condition],
   }
-  const anydeskAddress = encryptSecret(
-    laptop.anydeskAddress || generateAnydeskAddress(laptop.assetTag),
-  )
-  const repairIssue =
-    laptop.status === "In repair" ? laptop.repairIssue?.trim() || null : null
+  const address = digitsOnly(laptop.anydeskAddress ?? "")
+  const anydeskAddress = address ? encryptSecret(address) : null
+  // Kept whatever the status: a laptop can be back in use with a repair
+  // still pending.
+  const repairIssue = laptop.repairIssue?.trim() || null
 
   const saved = await prisma.laptop.upsert({
     where: { id: laptop.id },
@@ -201,6 +205,7 @@ export async function upsertAccessory(item: Accessory): Promise<Accessory> {
       warrantyYears: item.warrantyYears,
       status: statusToDb[item.status],
       specs: item.specs,
+      repairIssue: item.repairIssue?.trim() || null,
       assignments: { create: assignmentData(item.history) },
     },
     update: {
@@ -218,6 +223,7 @@ export async function upsertAccessory(item: Accessory): Promise<Accessory> {
       warrantyYears: item.warrantyYears,
       status: statusToDb[item.status],
       specs: item.specs,
+      repairIssue: item.repairIssue?.trim() || null,
       assignments: {
         deleteMany: {},
         create: assignmentData(item.history),
@@ -240,14 +246,33 @@ export async function deleteAccessories(ids: string[]) {
 export async function listRemoteAccessRows(): Promise<RemoteAccessRow[]> {
   const laptops = await listLaptops()
 
-  return employees
-    .map((employee) => {
-      const assigned = laptops.filter((laptop) => laptop.handler === employee.name)
-      const laptop =
-        assigned.find((item) => item.status === "In use") ?? assigned[0] ?? null
-      return { employee, laptop }
+  // One row per issued laptop, keyed by its handler. Handlers are typed names
+  // until the employee API is connected, so fill in what the directory knows.
+  const issued: RemoteAccessRow[] = laptops
+    .filter((laptop) => laptop.handler)
+    .map((laptop) => {
+      const name = laptop.handler!
+      const known = employees.find((employee) => employee.name === name)
+      return {
+        employee: known ?? {
+          id: `handler:${name}`,
+          name,
+          department: laptop.department ?? "",
+          title: "",
+          email: "",
+        },
+        laptop,
+      }
     })
-    .sort((a, b) => a.employee.name.localeCompare(b.employee.name))
+
+  // Directory employees without a laptop still get a row.
+  const withoutLaptop: RemoteAccessRow[] = employees
+    .filter((employee) => !laptops.some((laptop) => laptop.handler === employee.name))
+    .map((employee) => ({ employee, laptop: null }))
+
+  return [...issued, ...withoutLaptop].sort((a, b) =>
+    a.employee.name.localeCompare(b.employee.name),
+  )
 }
 
 export async function getLaptopById(id: string): Promise<Laptop | null> {
@@ -270,18 +295,4 @@ export async function listAssignedAssets(
     laptops: laptopRows.map(laptopFromDb),
     accessories: accessoryRows.map(accessoryFromDb),
   }
-}
-
-export async function backfillAnydeskAddresses() {
-  const laptops = await prisma.laptop.findMany({
-    where: { OR: [{ anydeskAddress: null }, { anydeskAddress: "" }] },
-    select: { id: true, assetTag: true },
-  })
-  for (const laptop of laptops) {
-    await prisma.laptop.update({
-      where: { id: laptop.id },
-      data: { anydeskAddress: encryptSecret(generateAnydeskAddress(laptop.assetTag)) },
-    })
-  }
-  return laptops.length
 }

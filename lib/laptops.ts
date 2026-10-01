@@ -27,7 +27,9 @@ export type Laptop = {
   purchaseDate: string;
   warrantyYears: number;
   status: LaptopStatus;
-  // What's wrong and the planned fix, while the laptop is "In repair".
+  // What's wrong and still needs fixing. Set while "In repair", and kept
+  // when the laptop goes back into use before the repair is complete
+  // (shown as "Pending repair").
   repairIssue?: string | null;
   anydeskAddress?: string | null;
   charger: Charger;
