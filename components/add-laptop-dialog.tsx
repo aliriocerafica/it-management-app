@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PlusIcon } from "lucide-react";
+import { CheckIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -107,17 +107,33 @@ export function FormSection({
   );
 }
 
+// Without `laptop` this is the "Add" dialog with its own trigger button. With
+// `laptop` it edits that laptop's details and is opened by the parent.
+// Status, handler and history are left alone: those change through the
+// assign / return / repair actions.
 export function AddLaptopDialog({
   laptops,
   onAdd,
+  laptop,
+  open: openProp,
+  onOpenChange,
+  onSave,
 }: {
   laptops: Laptop[];
-  onAdd: (laptop: Laptop) => void;
+  onAdd?: (laptop: Laptop) => void;
+  laptop?: Laptop | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onSave?: (laptop: Laptop) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = onOpenChange ?? setOpenState;
   const [error, setError] = useState<string | null>(null);
-  const [colorHex, setColorHex] = useState("#2b2b2d");
+  const [colorHex, setColorHex] = useState(laptop?.colorHex ?? "#2b2b2d");
 
+  const editing = laptop != null;
+  const formId = editing ? "edit-laptop-form" : "add-laptop-form";
   const brands = [...new Set(laptops.map((l) => l.brand))].sort();
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -131,8 +147,42 @@ export function AddLaptopDialog({
     const department = get("department");
     const purchaseDate = get("purchaseDate");
 
-    if (laptops.some((l) => l.assetTag.toUpperCase() === assetTag)) {
+    if (
+      laptops.some(
+        (l) => l.id !== laptop?.id && l.assetTag.toUpperCase() === assetTag,
+      )
+    ) {
       setError(`Asset tag ${assetTag} is already in use.`);
+      return;
+    }
+
+    const charger = {
+      connector: get("chargerConnector"),
+      wattage: Number(get("chargerWattage")),
+      partNumber: get("chargerPartNumber"),
+      serialNumber: get("chargerSerialNumber").toUpperCase(),
+      condition: get("chargerCondition") as ChargerCondition,
+    };
+
+    if (laptop) {
+      onSave?.({
+        ...laptop,
+        assetTag,
+        brand: get("brand"),
+        model: get("model"),
+        serialNumber: get("serialNumber").toUpperCase(),
+        cpu: get("cpu"),
+        ram: get("ram"),
+        storage: get("storage"),
+        os: get("os"),
+        color: get("color"),
+        colorHex,
+        purchaseDate,
+        warrantyYears: Number(get("warrantyYears")),
+        charger,
+      });
+      setError(null);
+      setOpen(false);
       return;
     }
     if (status === "In use" && !handler) {
@@ -143,7 +193,7 @@ export function AddLaptopDialog({
     const assignedHandler = status === "In use" || status === "In repair";
     const today = toIsoDate(new Date());
 
-    onAdd({
+    onAdd?.({
       id: crypto.randomUUID(),
       assetTag,
       brand: get("brand"),
@@ -160,13 +210,7 @@ export function AddLaptopDialog({
       purchaseDate,
       warrantyYears: Number(get("warrantyYears")),
       status,
-      charger: {
-        connector: get("chargerConnector"),
-        wattage: Number(get("chargerWattage")),
-        partNumber: get("chargerPartNumber"),
-        serialNumber: get("chargerSerialNumber").toUpperCase(),
-        condition: get("chargerCondition") as ChargerCondition,
-      },
+      charger,
       history: [
         assignedHandler && handler
           ? {
@@ -196,22 +240,26 @@ export function AddLaptopDialog({
         if (!next) setError(null);
       }}
     >
-      <DialogTrigger render={<Button />}>
-        <PlusIcon />
-        Add laptop
-      </DialogTrigger>
+      {openProp === undefined && (
+        <DialogTrigger render={<Button />}>
+          <PlusIcon />
+          Add laptop
+        </DialogTrigger>
+      )}
       <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-6xl">
         <DialogHeader className="border-b border-border px-6 py-5 pr-12">
           <DialogTitle className="text-lg font-semibold">
-            Add laptop
+            {editing ? "Edit laptop" : "Add laptop"}
           </DialogTitle>
           <DialogDescription>
-            Register a laptop and its charger in the inventory.
+            {editing
+              ? `Update the details of ${laptop.assetTag}.`
+              : "Register a laptop and its charger in the inventory."}
           </DialogDescription>
         </DialogHeader>
 
         <form
-          id="add-laptop-form"
+          id={formId}
           onSubmit={handleSubmit}
           className="flex min-h-0 flex-col gap-6 overflow-y-auto px-6 py-5"
         >
@@ -220,6 +268,7 @@ export function AddLaptopDialog({
               <Input
                 id="brand"
                 name="brand"
+                defaultValue={laptop?.brand}
                 list="brand-options"
                 placeholder="e.g. Lenovo"
                 required
@@ -234,6 +283,7 @@ export function AddLaptopDialog({
               <Input
                 id="model"
                 name="model"
+                defaultValue={laptop?.model}
                 placeholder="e.g. ThinkPad T14 Gen 5"
                 required
               />
@@ -242,6 +292,7 @@ export function AddLaptopDialog({
               <Input
                 id="serialNumber"
                 name="serialNumber"
+                defaultValue={laptop?.serialNumber}
                 className="font-mono"
                 required
               />
@@ -250,7 +301,7 @@ export function AddLaptopDialog({
               <Input
                 id="assetTag"
                 name="assetTag"
-                defaultValue={nextAssetTag(laptops)}
+                defaultValue={laptop?.assetTag ?? nextAssetTag(laptops)}
                 className="font-mono"
                 required
               />
@@ -267,6 +318,7 @@ export function AddLaptopDialog({
                 <Input
                   id="color"
                   name="color"
+                  defaultValue={laptop?.color}
                   placeholder="e.g. Space Black"
                   required
                 />
@@ -279,17 +331,25 @@ export function AddLaptopDialog({
               <Input
                 id="cpu"
                 name="cpu"
+                defaultValue={laptop?.cpu}
                 placeholder="e.g. Intel Core i7-1365U"
                 required
               />
             </FormField>
             <FormField label="Memory" htmlFor="ram">
-              <Input id="ram" name="ram" placeholder="e.g. 16 GB" required />
+              <Input
+                id="ram"
+                name="ram"
+                defaultValue={laptop?.ram}
+                placeholder="e.g. 16 GB"
+                required
+              />
             </FormField>
             <FormField label="Storage" htmlFor="storage">
               <Input
                 id="storage"
                 name="storage"
+                defaultValue={laptop?.storage}
                 placeholder="e.g. 512 GB SSD"
                 required
               />
@@ -298,42 +358,48 @@ export function AddLaptopDialog({
               <Input
                 id="os"
                 name="os"
+                defaultValue={laptop?.os}
                 placeholder="e.g. Windows 11 Pro"
                 required
               />
             </FormField>
           </FormSection>
 
-          <FormSection title="Assignment & purchase">
-            <FormField label="Status" htmlFor="status">
-              <select
-                id="status"
-                name="status"
-                defaultValue="Vacant"
-                className={selectClass}
-              >
-                {statuses.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Handler" htmlFor="handler" optional>
-              <Input id="handler" name="handler" placeholder="Full name" />
-            </FormField>
-            <FormField label="Department" htmlFor="department" optional>
-              <Input
-                id="department"
-                name="department"
-                placeholder="e.g. Engineering"
-              />
-            </FormField>
+          <FormSection title={editing ? "Purchase" : "Assignment & purchase"}>
+            {!editing && (
+              <>
+                <FormField label="Status" htmlFor="status">
+                  <select
+                    id="status"
+                    name="status"
+                    defaultValue="Vacant"
+                    className={selectClass}
+                  >
+                    {statuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Handler" htmlFor="handler" optional>
+                  <Input id="handler" name="handler" placeholder="Full name" />
+                </FormField>
+                <FormField label="Department" htmlFor="department" optional>
+                  <Input
+                    id="department"
+                    name="department"
+                    placeholder="e.g. Engineering"
+                  />
+                </FormField>
+              </>
+            )}
             <FormField label="Purchase date" htmlFor="purchaseDate">
               <Input
                 id="purchaseDate"
                 name="purchaseDate"
                 type="date"
+                defaultValue={laptop?.purchaseDate}
                 max={toIsoDate(new Date())}
                 required
               />
@@ -345,7 +411,7 @@ export function AddLaptopDialog({
                 type="number"
                 min={0}
                 max={10}
-                defaultValue={3}
+                defaultValue={laptop?.warrantyYears ?? 3}
                 required
               />
             </FormField>
@@ -356,10 +422,13 @@ export function AddLaptopDialog({
               <select
                 id="chargerConnector"
                 name="chargerConnector"
-                defaultValue="USB-C"
+                defaultValue={laptop?.charger.connector ?? "USB-C"}
                 className={selectClass}
               >
-                {connectors.map((connector) => (
+                {(laptop && !connectors.includes(laptop.charger.connector)
+                  ? [laptop.charger.connector, ...connectors]
+                  : connectors
+                ).map((connector) => (
                   <option key={connector} value={connector}>
                     {connector}
                   </option>
@@ -373,7 +442,7 @@ export function AddLaptopDialog({
                 type="number"
                 min={5}
                 max={400}
-                defaultValue={65}
+                defaultValue={laptop?.charger.wattage ?? 65}
                 required
               />
             </FormField>
@@ -381,7 +450,7 @@ export function AddLaptopDialog({
               <select
                 id="chargerCondition"
                 name="chargerCondition"
-                defaultValue="Good"
+                defaultValue={laptop?.charger.condition ?? "Good"}
                 className={selectClass}
               >
                 {chargerConditions.map((condition) => (
@@ -395,6 +464,7 @@ export function AddLaptopDialog({
               <Input
                 id="chargerPartNumber"
                 name="chargerPartNumber"
+                defaultValue={laptop?.charger.partNumber}
                 className="font-mono"
               />
             </FormField>
@@ -406,6 +476,7 @@ export function AddLaptopDialog({
               <Input
                 id="chargerSerialNumber"
                 name="chargerSerialNumber"
+                defaultValue={laptop?.charger.serialNumber}
                 className="font-mono"
               />
             </FormField>
@@ -421,9 +492,9 @@ export function AddLaptopDialog({
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit" form="add-laptop-form">
-            <PlusIcon />
-            Add laptop
+          <Button type="submit" form={formId}>
+            {editing ? <CheckIcon /> : <PlusIcon />}
+            {editing ? "Save changes" : "Add laptop"}
           </Button>
         </DialogFooter>
       </DialogContent>

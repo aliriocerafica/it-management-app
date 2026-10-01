@@ -18,6 +18,7 @@ import {
   TvMinimalIcon,
   MouseIcon,
   PaletteIcon,
+  PencilIcon,
   SearchIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
@@ -172,6 +173,8 @@ export function AccessoryInventoryTable({
   const [page, setPage] = useState(1);
   const [viewing, setViewing] = useState<Accessory | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  const [editing, setEditing] = useState<Accessory | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [assigning, setAssigning] = useState<Accessory | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [repairing, setRepairing] = useState<Accessory | null>(null);
@@ -256,6 +259,11 @@ export function AccessoryInventoryTable({
   function openView(item: Accessory) {
     setViewing(item);
     setViewOpen(true);
+  }
+
+  function openEdit(item: Accessory) {
+    setEditing(item);
+    setEditOpen(true);
   }
 
   function openAssign(item: Accessory) {
@@ -784,6 +792,10 @@ export function AccessoryInventoryTable({
                                 View details
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem onClick={() => openEdit(item)}>
+                              <PencilIcon />
+                              Edit details
+                            </DropdownMenuItem>
                             {(item.status === "In use" ||
                               item.status === "Vacant") && (
                               <DropdownMenuItem
@@ -793,9 +805,7 @@ export function AccessoryInventoryTable({
                                 Send to repair
                               </DropdownMenuItem>
                             )}
-                            {item.status !== "Retired" && (
-                              <DropdownMenuSeparator />
-                            )}
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
                               variant="destructive"
                               onClick={() => setPendingDeleteIds([item.id])}
@@ -966,6 +976,16 @@ export function AccessoryInventoryTable({
         onAssign={(employee, note) =>
           assigning && assignItem(assigning.id, employee, note)
         }
+      />
+
+      <AddAccessoryDialog
+        key={editing?.id}
+        config={config}
+        items={items}
+        item={editing}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSave={(saved) => updateItem(saved.id, () => saved)}
       />
 
       <AccessoryDetailsDialog

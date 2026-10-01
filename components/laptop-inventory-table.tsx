@@ -17,6 +17,7 @@ import {
   HourglassIcon,
   LaptopIcon,
   PaletteIcon,
+  PencilIcon,
   SearchIcon,
   ShieldCheckIcon,
   Trash2Icon,
@@ -258,6 +259,8 @@ export function LaptopInventoryTable({
   const [page, setPage] = useState(1);
   const [viewing, setViewing] = useState<Laptop | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  const [editing, setEditing] = useState<Laptop | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [assigning, setAssigning] = useState<Laptop | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [repairing, setRepairing] = useState<Laptop | null>(null);
@@ -348,6 +351,11 @@ export function LaptopInventoryTable({
   function openView(laptop: Laptop) {
     setViewing(laptop);
     setViewOpen(true);
+  }
+
+  function openEdit(laptop: Laptop) {
+    setEditing(laptop);
+    setEditOpen(true);
   }
 
   function openAssign(laptop: Laptop) {
@@ -895,6 +903,12 @@ export function LaptopInventoryTable({
                                 View details
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem
+                              onClick={() => openEdit(laptop)}
+                            >
+                              <PencilIcon />
+                              Edit details
+                            </DropdownMenuItem>
                             {(laptop.status === "In use" ||
                               laptop.status === "Vacant") && (
                               <DropdownMenuItem
@@ -917,9 +931,7 @@ export function LaptopInventoryTable({
                                 Accountability form
                               </DropdownMenuItem>
                             )}
-                            {laptop.status !== "Retired" && (
-                              <DropdownMenuSeparator />
-                            )}
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
                               variant="destructive"
                               onClick={() => setPendingDeleteIds([laptop.id])}
@@ -1098,6 +1110,15 @@ export function LaptopInventoryTable({
         onAssign={(employee, note) =>
           assigning && assignLaptop(assigning.id, employee, note)
         }
+      />
+
+      <AddLaptopDialog
+        key={editing?.id}
+        laptops={laptops}
+        laptop={editing}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSave={(saved) => updateLaptop(saved.id, () => saved)}
       />
 
       <LaptopDetailsDialog

@@ -62,7 +62,14 @@ export const accessoryConfigs: Record<AccessoryKind, AccessoryConfig> = {
       {
         key: "connection",
         label: "Connection",
-        options: ["USB-A", "USB-C", "Bluetooth", "Wireless dongle", "3.5 mm"],
+        options: [
+          "USB-A",
+          "USB-C",
+          "USB-A + USB-C",
+          "Bluetooth",
+          "Wireless dongle",
+          "3.5 mm",
+        ],
       },
       {
         key: "microphone",

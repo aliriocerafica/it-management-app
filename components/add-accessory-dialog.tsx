@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PlusIcon } from "lucide-react";
+import { CheckIcon, PlusIcon } from "lucide-react";
 
 import {
   FormField,
@@ -32,21 +32,37 @@ function nextAssetTag(items: Accessory[], prefix: string) {
   return `${prefix}-${String(max + 1).padStart(4, "0")}`;
 }
 
+// Without `item` this is the "Add" dialog with its own trigger button. With
+// `item` it edits that accessory's details and is opened by the parent.
+// Status, handler and history are left alone: those change through the
+// assign / return / repair actions.
 export function AddAccessoryDialog({
   config,
   items,
   onAdd,
+  item,
+  open: openProp,
+  onOpenChange,
+  onSave,
 }: {
   config: AccessoryConfig;
   items: Accessory[];
-  onAdd: (item: Accessory) => void;
+  onAdd?: (item: Accessory) => void;
+  item?: Accessory | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onSave?: (item: Accessory) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = onOpenChange ?? setOpenState;
   const [error, setError] = useState<string | null>(null);
-  const [colorHex, setColorHex] = useState("#2b2b2d");
+  const [colorHex, setColorHex] = useState(item?.colorHex ?? "#2b2b2d");
 
+  const editing = item != null;
   const noun = config.singular.toLowerCase();
   const brands = [...new Set(items.map((item) => item.brand))].sort();
+  const formId = `${editing ? "edit" : "add"}-${config.kind}-form`;
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,8 +75,35 @@ export function AddAccessoryDialog({
     const department = get("department");
     const purchaseDate = get("purchaseDate");
 
-    if (items.some((item) => item.assetTag.toUpperCase() === assetTag)) {
+    if (
+      items.some(
+        (other) =>
+          other.id !== item?.id && other.assetTag.toUpperCase() === assetTag,
+      )
+    ) {
       setError(`Asset tag ${assetTag} is already in use.`);
+      return;
+    }
+
+    const specs = Object.fromEntries(
+      config.specFields.map((field) => [field.key, get(`spec-${field.key}`)]),
+    );
+
+    if (item) {
+      onSave?.({
+        ...item,
+        assetTag,
+        brand: get("brand"),
+        model: get("model"),
+        serialNumber: get("serialNumber").toUpperCase(),
+        color: get("color"),
+        colorHex,
+        purchaseDate,
+        warrantyYears: Number(get("warrantyYears")),
+        specs,
+      });
+      setError(null);
+      setOpen(false);
       return;
     }
     if (status === "In use" && !handler) {
@@ -71,7 +114,7 @@ export function AddAccessoryDialog({
     const assignedHandler = status === "In use" || status === "In repair";
     const today = toIsoDate(new Date());
 
-    onAdd({
+    onAdd?.({
       id: crypto.randomUUID(),
       kind: config.kind,
       assetTag,
@@ -85,9 +128,7 @@ export function AddAccessoryDialog({
       purchaseDate,
       warrantyYears: Number(get("warrantyYears")),
       status,
-      specs: Object.fromEntries(
-        config.specFields.map((field) => [field.key, get(`spec-${field.key}`)]),
-      ),
+      specs,
       history: [
         assignedHandler && handler
           ? {
@@ -117,22 +158,26 @@ export function AddAccessoryDialog({
         if (!next) setError(null);
       }}
     >
-      <DialogTrigger render={<Button />}>
-        <PlusIcon />
-        Add {noun}
-      </DialogTrigger>
+      {openProp === undefined && (
+        <DialogTrigger render={<Button />}>
+          <PlusIcon />
+          Add {noun}
+        </DialogTrigger>
+      )}
       <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-6xl">
         <DialogHeader className="border-b border-border px-6 py-5 pr-12">
           <DialogTitle className="text-lg font-semibold">
-            Add {noun}
+            {editing ? `Edit ${noun}` : `Add ${noun}`}
           </DialogTitle>
           <DialogDescription>
-            Register a {noun} in the inventory.
+            {editing
+              ? `Update the details of ${item.assetTag}.`
+              : `Register a ${noun} in the inventory.`}
           </DialogDescription>
         </DialogHeader>
 
         <form
-          id={`add-${config.kind}-form`}
+          id={formId}
           onSubmit={handleSubmit}
           className="flex min-h-0 flex-col gap-6 overflow-y-auto px-6 py-5"
         >
@@ -142,6 +187,7 @@ export function AddAccessoryDialog({
                 id="brand"
                 name="brand"
                 list={`${config.kind}-brand-options`}
+                defaultValue={item?.brand}
                 placeholder={config.brandPlaceholder}
                 required
               />
@@ -155,6 +201,7 @@ export function AddAccessoryDialog({
               <Input
                 id="model"
                 name="model"
+                defaultValue={item?.model}
                 placeholder={config.modelPlaceholder}
                 required
               />
@@ -163,6 +210,7 @@ export function AddAccessoryDialog({
               <Input
                 id="serialNumber"
                 name="serialNumber"
+                defaultValue={item?.serialNumber}
                 className="font-mono"
                 required
               />
@@ -171,7 +219,9 @@ export function AddAccessoryDialog({
               <Input
                 id="assetTag"
                 name="assetTag"
-                defaultValue={nextAssetTag(items, config.tagPrefix)}
+                defaultValue={
+                  item?.assetTag ?? nextAssetTag(items, config.tagPrefix)
+                }
                 className="font-mono"
                 required
               />
@@ -188,6 +238,7 @@ export function AddAccessoryDialog({
                 <Input
                   id="color"
                   name="color"
+                  defaultValue={item?.color}
                   placeholder="e.g. Black"
                   required
                 />
@@ -198,16 +249,22 @@ export function AddAccessoryDialog({
           <FormSection title="Specifications">
             {config.specFields.map((field) => {
               const id = `spec-${field.key}`;
+              const current = item?.specs[field.key];
+              // Keep a stored value that's no longer in the option list.
+              const options =
+                field.options && current && !field.options.includes(current)
+                  ? [current, ...field.options]
+                  : field.options;
               return (
                 <FormField key={field.key} label={field.label} htmlFor={id}>
-                  {field.options ? (
+                  {options ? (
                     <select
                       id={id}
                       name={id}
-                      defaultValue={field.options[0]}
+                      defaultValue={current || options[0]}
                       className={selectClass}
                     >
-                      {field.options.map((option) => (
+                      {options.map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>
@@ -217,6 +274,7 @@ export function AddAccessoryDialog({
                     <Input
                       id={id}
                       name={id}
+                      defaultValue={current}
                       placeholder={field.placeholder}
                       required
                     />
@@ -226,36 +284,41 @@ export function AddAccessoryDialog({
             })}
           </FormSection>
 
-          <FormSection title="Assignment & purchase">
-            <FormField label="Status" htmlFor="status">
-              <select
-                id="status"
-                name="status"
-                defaultValue="Vacant"
-                className={selectClass}
-              >
-                {statuses.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Handler" htmlFor="handler" optional>
-              <Input id="handler" name="handler" placeholder="Full name" />
-            </FormField>
-            <FormField label="Department" htmlFor="department" optional>
-              <Input
-                id="department"
-                name="department"
-                placeholder="e.g. Engineering"
-              />
-            </FormField>
+          <FormSection title={editing ? "Purchase" : "Assignment & purchase"}>
+            {!editing && (
+              <>
+                <FormField label="Status" htmlFor="status">
+                  <select
+                    id="status"
+                    name="status"
+                    defaultValue="Vacant"
+                    className={selectClass}
+                  >
+                    {statuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Handler" htmlFor="handler" optional>
+                  <Input id="handler" name="handler" placeholder="Full name" />
+                </FormField>
+                <FormField label="Department" htmlFor="department" optional>
+                  <Input
+                    id="department"
+                    name="department"
+                    placeholder="e.g. Engineering"
+                  />
+                </FormField>
+              </>
+            )}
             <FormField label="Purchase date" htmlFor="purchaseDate">
               <Input
                 id="purchaseDate"
                 name="purchaseDate"
                 type="date"
+                defaultValue={item?.purchaseDate}
                 max={toIsoDate(new Date())}
                 required
               />
@@ -267,7 +330,7 @@ export function AddAccessoryDialog({
                 type="number"
                 min={0}
                 max={25}
-                defaultValue={2}
+                defaultValue={item?.warrantyYears ?? 2}
                 required
               />
             </FormField>
@@ -283,9 +346,9 @@ export function AddAccessoryDialog({
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit" form={`add-${config.kind}-form`}>
-            <PlusIcon />
-            Add {noun}
+          <Button type="submit" form={formId}>
+            {editing ? <CheckIcon /> : <PlusIcon />}
+            {editing ? "Save changes" : `Add ${noun}`}
           </Button>
         </DialogFooter>
       </DialogContent>
