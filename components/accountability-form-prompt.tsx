@@ -29,12 +29,16 @@ export function AccountabilityFormPrompt({
 }) {
   const [hrName, setHrName] = useState("")
   const [itOfficerName, setItOfficerName] = useState("")
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(open)
   // Show the spinner as soon as the dialog opens, before the effect runs.
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
     setWasOpen(open)
-    if (open) setLoading(true)
+    if (open) {
+      setLoading(true)
+      setLoadError(null)
+    }
   }
 
   useEffect(() => {
@@ -58,8 +62,9 @@ export function AccountabilityFormPrompt({
       })
       .catch(() => {
         if (cancelled) return
-        setHrName("CAMILLE TUIBEO")
+        setHrName("")
         setItOfficerName("")
+        setLoadError("Couldn't load the saved names. Close this and try again.")
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -100,6 +105,11 @@ export function AccountabilityFormPrompt({
               disabled={loading}
             />
           </div>
+          {loadError && (
+            <p role="alert" className="text-sm text-destructive">
+              {loadError}
+            </p>
+          )}
         </div>
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>Not now</DialogClose>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
 import {
   BuildingIcon,
   CheckIcon,
@@ -43,7 +43,7 @@ import {
   parseAnydeskAddress,
 } from "@/lib/anydesk"
 import { errorMessage, saveLaptop } from "@/lib/inventory-api"
-import { initials, statusStyles } from "@/lib/laptops"
+import { initials, statusStyles, type Laptop } from "@/lib/laptops"
 import type { RemoteAccessRow } from "@/lib/remote-access"
 import { cn } from "@/lib/utils"
 
@@ -51,8 +51,8 @@ type Tab = "All" | "In use" | "In repair" | "Unassigned"
 const tabs: Tab[] = ["All", "In use", "In repair", "Unassigned"]
 
 function rowStatus(row: RemoteAccessRow): Tab {
-  const status = row.laptop?.status
-  if (status === "In use" || status === "In repair") return status
+  if (row.laptops.some((laptop) => laptop.status === "In repair")) return "In repair"
+  if (row.laptops.some((laptop) => laptop.status === "In use")) return "In use"
   return "Unassigned"
 }
 
@@ -80,21 +80,24 @@ export function RemoteAccessTable({
     [rows],
   )
   const brands = useMemo(
-    () =>
-      [...new Set(rows.map((row) => row.laptop?.brand).filter(Boolean))].sort() as string[],
+    () => [...new Set(rows.flatMap((row) => row.laptops.map((laptop) => laptop.brand)))].sort(),
     [rows],
   )
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return rows.filter(({ employee, laptop }) => {
+    return rows.filter((row) => {
+      const { employee, laptops } = row
       if (departmentFilter.length && !departmentFilter.includes(employee.department)) {
         return false
       }
-      if (brandFilter.length && (!laptop || !brandFilter.includes(laptop.brand))) {
+      if (
+        brandFilter.length &&
+        !laptops.some((laptop) => brandFilter.includes(laptop.brand))
+      ) {
         return false
       }
-      if (tab !== "All" && rowStatus({ employee, laptop }) !== tab) {
+      if (tab !== "All" && rowStatus(row) !== tab) {
         return false
       }
       if (!q) return true
@@ -103,11 +106,14 @@ export function RemoteAccessTable({
         employee.department,
         employee.title,
         employee.email,
-        laptop?.assetTag ?? "",
-        laptop?.brand ?? "",
-        laptop?.model ?? "",
-        laptop?.anydeskAddress ?? "",
-        laptop?.status ?? "Unassigned",
+        ...laptops.flatMap((laptop) => [
+          laptop.assetTag,
+          laptop.brand,
+          laptop.model,
+          laptop.anydeskAddress ?? "",
+          laptop.status,
+        ]),
+        laptops.length === 0 ? "Unassigned" : "",
       ].some((value) => value.toLowerCase().includes(q))
     })
   }, [brandFilter, departmentFilter, query, rows, tab])
@@ -143,9 +149,8 @@ export function RemoteAccessTable({
     setEditError(null)
   }
 
-  async function saveAddress(row: RemoteAccessRow) {
-    const laptop = row.laptop
-    if (!laptop || saving) return
+  async function saveAddress(laptop: Laptop) {
+    if (saving) return
     const input = draft.trim()
     const address = input ? parseAnydeskAddress(input) : null
     if (input && !address) {
@@ -156,7 +161,10 @@ export function RemoteAccessTable({
     try {
       const saved = await saveLaptop({ ...laptop, anydeskAddress: address })
       setRows((prev) =>
-        prev.map((r) => (r.laptop?.id === saved.id ? { ...r, laptop: saved } : r)),
+        prev.map((row) => ({
+          ...row,
+          laptops: row.laptops.map((item) => (item.id === saved.id ? saved : item)),
+        })),
       )
       setEditingId(null)
       setEditError(null)
@@ -269,7 +277,7 @@ export function RemoteAccessTable({
           </div>
         </div>
 
-        <div className="@container max-h-[calc(100svh-17rem)] min-h-80 overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="@container max-h-[calc(100svh-17rem)] min-h-80 overflow-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
@@ -283,16 +291,21 @@ export function RemoteAccessTable({
             </thead>
             <tbody>
               {pageRows.map((row) => {
-                const { employee, laptop } = row
-                const status = laptop ? statusStyles[laptop.status] : null
-                const address = laptop?.anydeskAddress ?? null
-                const isEditing = laptop != null && editingId === laptop.id
+                const { employee, laptops } = row
+                const lines = laptops.length > 0 ? laptops : [null]
                 return (
+                  <Fragment key={employee.id}>
+                    {lines.map((laptop, index) => {
+                      const status = laptop ? statusStyles[laptop.status] : null
+                      const address = laptop?.anydeskAddress ?? null
+                      const isEditing = laptop != null && editingId === laptop.id
+                      return (
                   <tr
                     key={laptop?.id ?? employee.id}
                     className="border-b border-border transition-colors hover:bg-muted/50"
                   >
-                    <td className={cellClass}>
+                    {index === 0 && (
+                      <td rowSpan={lines.length} className={cn(cellClass, "align-top")}>
                       <div className="flex items-center gap-2.5">
                         <Avatar className="size-7">
                           <AvatarFallback className="text-[10px]">
@@ -308,7 +321,8 @@ export function RemoteAccessTable({
                           </div>
                         </div>
                       </div>
-                    </td>
+                      </td>
+                    )}
                     <td className={cellClass}>
                       {laptop ? (
                         <div>
@@ -347,7 +361,7 @@ export function RemoteAccessTable({
                             className="flex w-full flex-col gap-1"
                             onSubmit={(event) => {
                               event.preventDefault()
-                              void saveAddress(row)
+                              if (laptop) void saveAddress(laptop)
                             }}
                           >
                             <div className="flex items-center gap-1">
@@ -455,6 +469,9 @@ export function RemoteAccessTable({
                       </div>
                     </td>
                   </tr>
+                      )
+                    })}
+                  </Fragment>
                 )
               })}
               {pageRows.length === 0 && (

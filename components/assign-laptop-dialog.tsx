@@ -23,7 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { employees, type Employee } from "@/lib/employees";
+import { type Employee } from "@/lib/employees";
+import { useEmployeeDirectory } from "@/lib/use-employee-directory";
 import { initials, type TrackedItem } from "@/lib/laptops";
 import { cn } from "@/lib/utils";
 
@@ -49,8 +50,9 @@ export function AssignLaptopDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-        {laptop && (
+        {open && laptop && (
           <AssignForm
+            key={laptop.assetTag}
             laptop={laptop}
             laptops={laptops}
             onAssign={onAssign}
@@ -76,6 +78,7 @@ function AssignForm({
   icon: LucideIcon;
   onAssign: (employee: Employee, note: string) => void;
 }) {
+  const { employees, status } = useEmployeeDirectory();
   const [query, setQuery] = useState("");
   // An employee id, or MANUAL for the name typed in the search box.
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -99,7 +102,7 @@ function AssignForm({
       .filter(
         (e) =>
           !q ||
-          [e.name, e.department, e.title, e.email].some((value) =>
+          [e.name, e.id, e.department, e.title, e.email].some((value) =>
             value.toLowerCase().includes(q),
           ),
       )
@@ -108,10 +111,9 @@ function AssignForm({
         const bHas = heldBy.has(b.name) ? 1 : 0;
         return aHas - bHas || a.name.localeCompare(b.name);
       });
-  }, [query, heldBy]);
+  }, [employees, query, heldBy]);
 
-  // Until the employee API is connected the directory is empty, so a typed
-  // name is the main way to assign.
+  // People missing from HRIS (or HRIS being down) can still be typed in.
   const typedName = query.trim().replace(/\s+/g, " ");
   const inDirectory = employees.some(
     (e) => e.name.toLowerCase() === typedName.toLowerCase(),
@@ -162,6 +164,7 @@ function AssignForm({
         <div
           role="radiogroup"
           aria-label="Employees"
+          aria-busy={status === "loading"}
           className="-mx-2 flex max-h-80 min-h-0 flex-col gap-1 overflow-y-auto px-2 pb-1"
         >
           {canTypeName && (
@@ -232,7 +235,9 @@ function AssignForm({
                     {employee.name}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {employee.title} · {employee.department}
+                    {[employee.id, employee.title, employee.department]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </div>
                 </div>
                 {held ? (
@@ -259,9 +264,13 @@ function AssignForm({
           })}
           {list.length === 0 && !canTypeName && (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              {employees.length
-                ? "No employees match your search."
-                : "The employee directory isn't connected yet. Type the person's full name above."}
+              {status === "loading"
+                ? "Loading employees from HRIS…"
+                : status === "error"
+                  ? "Couldn't reach the HRIS employee directory. Type the person's full name above."
+                  : employees.length
+                    ? "No employees match your search."
+                    : "No employees found in HRIS. Type the person's full name above."}
             </p>
           )}
         </div>

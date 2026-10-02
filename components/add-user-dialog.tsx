@@ -4,6 +4,7 @@ import { useState } from "react"
 import { CheckIcon, PlusIcon } from "lucide-react"
 
 import { FormField, selectClass } from "@/components/add-laptop-dialog"
+import { PasswordRules } from "@/components/password-rules"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -16,6 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { isStrongPassword, passwordError } from "@/lib/password"
 import type { UserDto, UserRole } from "@/lib/user-repository"
 
 const initialForm = { name: "", email: "", password: "", role: "ADMIN" as UserRole }
@@ -38,6 +40,11 @@ export function AddUserDialog({ onAdd }: { onAdd: (user: UserDto) => void }) {
     event.preventDefault()
     if (!event.currentTarget.checkValidity()) {
       event.currentTarget.reportValidity()
+      return
+    }
+    const strength = passwordError(form.password)
+    if (!isStrongPassword(form.password) || strength) {
+      setError(strength)
       return
     }
     setError(null)
@@ -118,16 +125,16 @@ export function AddUserDialog({ onAdd }: { onAdd: (user: UserDto) => void }) {
                   required
                 />
               </FormField>
-              <FormField label="Password" htmlFor="password">
+              <FormField label="Password" htmlFor="password" className="sm:col-span-2">
                 <Input
                   id="password"
                   type="password"
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                   autoComplete="new-password"
-                  minLength={8}
                   required
                 />
+                <PasswordRules password={form.password} />
               </FormField>
               <FormField label="Role" htmlFor="role">
                 <select
@@ -140,6 +147,11 @@ export function AddUserDialog({ onAdd }: { onAdd: (user: UserDto) => void }) {
                   <option value="STAFF">Staff</option>
                 </select>
               </FormField>
+              {error && step === "form" && (
+                <p role="alert" className="text-sm text-destructive sm:col-span-2">
+                  {error}
+                </p>
+              )}
             </form>
 
             <DialogFooter className="mx-0 mb-0 items-center px-6 py-4">

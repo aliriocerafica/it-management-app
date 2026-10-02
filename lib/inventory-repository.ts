@@ -3,8 +3,8 @@ import {
   accessoryFromDb,
   assignmentData,
   chargerToDb,
-  employeeIdFor,
   fromIsoDate,
+  type EmployeeIdLookup,
   kindToDb,
   laptopFromDb,
   statusFromDb,
@@ -13,6 +13,7 @@ import {
 import { digitsOnly } from "@/lib/anydesk"
 import { encryptSecret } from "@/lib/crypto"
 import { employees } from "@/lib/employees"
+import { fetchHrisEmployees } from "@/lib/hris"
 import type { Laptop } from "@/lib/laptops"
 import type { InventorySummary, StatusCounts } from "@/lib/inventory-map"
 import { prisma } from "@/lib/prisma"
@@ -109,7 +110,32 @@ export async function getInventorySummary(): Promise<InventorySummary> {
   }
 }
 
+// Handlers are stored by name; this links each name to its HRIS employee
+// number. Separated employees are included so past holders still match. If
+// HRIS is unreachable, falls back to the links already saved in this database.
+async function employeeIdLookup(): Promise<EmployeeIdLookup> {
+  const ids = new Map<string, string>()
+  try {
+    for (const employee of await fetchHrisEmployees("all")) {
+      ids.set(employee.name.toLowerCase(), employee.id)
+    }
+  } catch (error) {
+    console.warn("HRIS unavailable; using saved employee links", error)
+    const where = { employeeId: { not: null }, handlerName: { not: null } }
+    const select = { employeeId: true, handlerName: true }
+    const rows = (
+      await Promise.all([
+        prisma.laptopAssignment.findMany({ where, select }),
+        prisma.accessoryAssignment.findMany({ where, select }),
+      ])
+    ).flat()
+    for (const row of rows) ids.set(row.handlerName!.toLowerCase(), row.employeeId!)
+  }
+  return (name) => (name ? (ids.get(name.trim().toLowerCase()) ?? null) : null)
+}
+
 export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
+  const employeeIdFor = await employeeIdLookup()
   const employeeId = employeeIdFor(laptop.handler)
   const charger = {
     connector: laptop.charger.connector,
@@ -147,7 +173,7 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
       repairIssue,
       anydeskAddress,
       charger: { create: charger },
-      assignments: { create: assignmentData(laptop.history) },
+      assignments: { create: assignmentData(laptop.history, employeeIdFor) },
     },
     update: {
       assetTag: laptop.assetTag,
@@ -176,7 +202,7 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
       },
       assignments: {
         deleteMany: {},
-        create: assignmentData(laptop.history),
+        create: assignmentData(laptop.history, employeeIdFor),
       },
     },
     include: laptopInclude,
@@ -186,6 +212,7 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
 }
 
 export async function upsertAccessory(item: Accessory): Promise<Accessory> {
+  const employeeIdFor = await employeeIdLookup()
   const employeeId = employeeIdFor(item.handler)
   const saved = await prisma.accessory.upsert({
     where: { id: item.id },
@@ -206,7 +233,7 @@ export async function upsertAccessory(item: Accessory): Promise<Accessory> {
       status: statusToDb[item.status],
       specs: item.specs,
       repairIssue: item.repairIssue?.trim() || null,
-      assignments: { create: assignmentData(item.history) },
+      assignments: { create: assignmentData(item.history, employeeIdFor) },
     },
     update: {
       kind: kindToDb[item.kind],
@@ -226,7 +253,7 @@ export async function upsertAccessory(item: Accessory): Promise<Accessory> {
       repairIssue: item.repairIssue?.trim() || null,
       assignments: {
         deleteMany: {},
-        create: assignmentData(item.history),
+        create: assignmentData(item.history, employeeIdFor),
       },
     },
     include: accessoryInclude,
@@ -245,32 +272,38 @@ export async function deleteAccessories(ids: string[]) {
 
 export async function listRemoteAccessRows(): Promise<RemoteAccessRow[]> {
   const laptops = await listLaptops()
+  const byName = new Map<string, RemoteAccessRow>()
 
-  // One row per issued laptop, keyed by its handler. Handlers are typed names
-  // until the employee API is connected, so fill in what the directory knows.
-  const issued: RemoteAccessRow[] = laptops
-    .filter((laptop) => laptop.handler)
-    .map((laptop) => {
-      const name = laptop.handler!
-      const known = employees.find((employee) => employee.name === name)
-      return {
-        employee: known ?? {
-          id: `handler:${name}`,
-          name,
-          department: laptop.department ?? "",
-          title: "",
-          email: "",
-        },
-        laptop,
-      }
+  // One row per person. Several laptops can share a handler, and each keeps
+  // its own AnyDesk address on that row.
+  for (const laptop of laptops) {
+    if (!laptop.handler) continue
+    const name = laptop.handler
+    const key = name.toLowerCase()
+    const existing = byName.get(key)
+    if (existing) {
+      existing.laptops.push(laptop)
+      continue
+    }
+    const known = employees.find((employee) => employee.name.toLowerCase() === key)
+    byName.set(key, {
+      employee: known ?? {
+        id: `handler:${name}`,
+        name,
+        department: laptop.department ?? "",
+        title: "",
+        email: "",
+      },
+      laptops: [laptop],
     })
+  }
 
-  // Directory employees without a laptop still get a row.
-  const withoutLaptop: RemoteAccessRow[] = employees
-    .filter((employee) => !laptops.some((laptop) => laptop.handler === employee.name))
-    .map((employee) => ({ employee, laptop: null }))
+  for (const employee of employees) {
+    const key = employee.name.toLowerCase()
+    if (!byName.has(key)) byName.set(key, { employee, laptops: [] })
+  }
 
-  return [...issued, ...withoutLaptop].sort((a, b) =>
+  return [...byName.values()].sort((a, b) =>
     a.employee.name.localeCompare(b.employee.name),
   )
 }

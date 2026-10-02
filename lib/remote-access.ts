@@ -3,5 +3,5 @@ import type { Laptop } from "@/lib/laptops"
 
 export type RemoteAccessRow = {
   employee: Employee
-  laptop: Laptop | null
+  laptops: Laptop[]
 }

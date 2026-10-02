@@ -8,6 +8,7 @@ import {
   accountCreatedEmailHtml,
   accountCreatedEmailText,
 } from "@/lib/email/templates"
+import { passwordError } from "@/lib/password"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic"
 const CreateUserSchema = z.object({
   name: z.string().trim().min(1),
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z.string(),
   role: z.enum(["ADMIN", "STAFF"]).optional(),
 })
 
@@ -44,6 +45,11 @@ export async function POST(request: Request) {
   const parsed = CreateUserSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 })
+  }
+
+  const strength = passwordError(parsed.data.password)
+  if (strength) {
+    return NextResponse.json({ error: strength }, { status: 400 })
   }
 
   const existing = await prisma.user.findUnique({

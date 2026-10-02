@@ -599,7 +599,7 @@ function AgeUsageCard({ rows }: { rows: GradedLaptop[] }) {
         </span>
         <span className="text-right">Used / age</span>
       </div>
-      <div className="max-h-80 overflow-auto [scrollbar-width:none] print:max-h-none [&::-webkit-scrollbar]:hidden print:overflow-visible">
+      <div className="max-h-80 overflow-auto scrollbar-none print:max-h-none [&::-webkit-scrollbar]:hidden print:overflow-visible">
         {sorted.map((r) => (
           <div
             key={r.laptop.id}
@@ -1168,7 +1168,7 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
                 Sorted by average health score, lowest first
               </CardDescription>
             </CardHeader>
-            <div className="max-h-80 overflow-auto [scrollbar-width:none] print:max-h-none [&::-webkit-scrollbar]:hidden print:overflow-visible">
+            <div className="max-h-80 overflow-auto scrollbar-none print:max-h-none [&::-webkit-scrollbar]:hidden print:overflow-visible">
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>
@@ -1250,7 +1250,7 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
                 ))}
               </CardAction>
             </CardHeader>
-            <div className="max-h-[28rem] overflow-auto [scrollbar-width:none] print:max-h-none [&::-webkit-scrollbar]:hidden print:overflow-visible">
+            <div className="max-h-[28rem] overflow-auto scrollbar-none print:max-h-none [&::-webkit-scrollbar]:hidden print:overflow-visible">
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>

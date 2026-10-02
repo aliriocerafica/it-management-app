@@ -17,6 +17,7 @@ import {
   HashIcon,
   HeadphonesIcon,
   HourglassIcon,
+  Loader2Icon,
   TvMinimalIcon,
   MouseIcon,
   PaletteIcon,
@@ -36,6 +37,7 @@ import {
 } from "lucide-react";
 
 import { AccessoryDetailsDialog } from "@/components/accessory-details-dialog";
+import { revalidateInventory } from "@/app/actions/revalidate-inventory";
 import { AddAccessoryDialog } from "@/components/add-accessory-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
@@ -99,6 +101,7 @@ import {
   warrantyInfo,
   type LaptopStatus,
 } from "@/lib/laptops";
+import { usePendingSaves } from "@/lib/save-queue";
 import { useToday } from "@/lib/use-today";
 import { cn } from "@/lib/utils";
 
@@ -206,11 +209,12 @@ export function AccessoryInventoryTable({
   const [confirmRepaired, setConfirmRepaired] = useState<Accessory | null>(
     null,
   );
+  // The last change, and how to reverse it, for the Undo toast.
   const [undo, setUndo] = useState<{
-    snapshot: Accessory[];
-    removed: Accessory[];
     message: string;
+    run: () => void;
   } | null>(null);
+  const pendingSaves = usePendingSaves();
 
   const brands = useMemo(
     () => [...new Set(items.map((item) => item.brand))].sort(),
@@ -295,7 +299,7 @@ export function AccessoryInventoryTable({
   // Background saves: the table updates right away, and if the database
   // rejects the change it's rolled back and the reason shown.
   function persist(save: Promise<unknown>, rollback?: () => void) {
-    save.catch((error: unknown) => {
+    return save.catch((error: unknown) => {
       rollback?.();
       setSaveError(errorMessage(error));
     });
@@ -321,12 +325,31 @@ export function AccessoryInventoryTable({
     setReturnOpen(true);
   }
 
-  function updateItem(id: string, update: (item: Accessory) => Accessory) {
+  // Puts items back the way they were and saves that, for Undo.
+  function revertItems(originals: Accessory[]) {
+    const current = items.filter((item) =>
+      originals.some((o) => o.id === item.id),
+    );
+    restoreItems(originals);
+    return originals.map((original) =>
+      persist(saveAccessory(original), () => restoreItems(current)),
+    );
+  }
+
+  function updateItem(
+    id: string,
+    update: (item: Accessory) => Accessory,
+    message: (item: Accessory) => string,
+  ) {
     const original = items.find((item) => item.id === id);
     if (!original) return;
     const next = update(original);
     setItems((prev) => prev.map((item) => (item.id === id ? next : item)));
     persist(saveAccessory(next), () => restoreItems([original]));
+    setUndo({
+      message: message(original),
+      run: () => revertItems([original]),
+    });
   }
 
   function openSendToRepair(item: Accessory) {
@@ -345,7 +368,7 @@ export function AccessoryInventoryTable({
       history: item.history.map((entry) =>
         entry.to === null ? { ...entry, note } : entry,
       ),
-    }));
+    }), (item) => `Sent ${item.assetTag} to repair`);
   }
 
   function returnFromRepair(
@@ -395,7 +418,13 @@ export function AccessoryInventoryTable({
           },
         ],
       };
-    });
+    }, (item) =>
+      outcome === "handler"
+        ? `Released ${item.assetTag} back to ${item.handler}`
+        : outcome === "retire"
+          ? `Retired ${item.assetTag}`
+          : `${item.assetTag} is back in stock`,
+    );
     setRepairOpen(false);
   }
 
@@ -413,7 +442,7 @@ export function AccessoryInventoryTable({
           : entry,
       ),
       repairIssue: null,
-    }));
+    }), (item) => `Marked ${item.assetTag} repaired`);
   }
 
   function returnToStock(note: string, alsoReturn: AssignedAssets) {
@@ -429,17 +458,35 @@ export function AccessoryInventoryTable({
     const returned = originals.map((item) => returnedToVacant(item, note));
     const byId = new Map(returned.map((item) => [item.id, item]));
     setItems((prev) => prev.map((item) => byId.get(item.id) ?? item));
+    const saves: Promise<unknown>[] = [];
     for (const item of returned) {
       const original = originals.find((o) => o.id === item.id)!;
-      persist(saveAccessory(item), () => restoreItems([original]));
+      saves.push(persist(saveAccessory(item), () => restoreItems([original])));
     }
     for (const accessory of alsoReturn.accessories) {
       if (accessory.kind === kind) continue;
-      persist(saveAccessory(returnedToVacant(accessory, note)));
+      saves.push(persist(saveAccessory(returnedToVacant(accessory, note))));
     }
     for (const laptop of alsoReturn.laptops) {
-      persist(saveLaptop(returnedToVacant(laptop, note)));
+      saves.push(persist(saveLaptop(returnedToVacant(laptop, note))));
     }
+    void Promise.all(saves).then(() => revalidateInventory());
+    const otherAccessories = alsoReturn.accessories.filter(
+      (accessory) => accessory.kind !== kind,
+    );
+    const extra =
+      returned.length - 1 + otherAccessories.length + alsoReturn.laptops.length;
+    setUndo({
+      message: `Returned ${target.assetTag}${extra > 0 ? ` and ${extra} more` : ""} to stock`,
+      run: () => {
+        const undos = [
+          ...revertItems(originals),
+          ...otherAccessories.map((accessory) => persist(saveAccessory(accessory))),
+          ...alsoReturn.laptops.map((laptop) => persist(saveLaptop(laptop))),
+        ];
+        void Promise.all(undos).then(() => revalidateInventory());
+      },
+    });
     setReturnOpen(false);
     setReturning(null);
   }
@@ -464,19 +511,29 @@ export function AccessoryInventoryTable({
           note: note || undefined,
         },
       ],
-    }));
+    }), (item) => `Assigned ${item.assetTag} to ${employee.name}`);
     setAssignOpen(false);
   }
 
   function deleteItems(ids: string[]) {
     const removed = items.filter((item) => ids.includes(item.id));
+    const snapshot = items;
     setUndo({
-      snapshot: items,
-      removed,
       message:
         removed.length === 1
           ? `Deleted ${removed[0].assetTag}`
           : `Deleted ${removed.length} ${nounPlural}`,
+      run: () => {
+        setItems(snapshot);
+        const removedIds = new Set(removed.map((item) => item.id));
+        persist(
+          Promise.all(removed.map((item) => createAccessory(item))),
+          () =>
+            setItems((prev) =>
+              prev.filter((item) => !removedIds.has(item.id)),
+            ),
+        );
+      },
     });
     setItems((prev) => prev.filter((item) => !ids.includes(item.id)));
     persist(removeAccessories(ids), () => {
@@ -514,7 +571,7 @@ export function AccessoryInventoryTable({
       <div
         role="tablist"
         aria-label={`${config.singular} status`}
-        className="flex items-end gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex items-end gap-1 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((t) => {
           const active = t === tab;
@@ -626,7 +683,7 @@ export function AccessoryInventoryTable({
         </div>
 
         {/* Table: rows scroll under a sticky header; columns drop out by priority as the card narrows */}
-        <div className="@container max-h-[calc(100svh-17rem)] min-h-80 overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="@container max-h-[calc(100svh-17rem)] min-h-80 overflow-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
@@ -671,7 +728,7 @@ export function AccessoryInventoryTable({
                   Warranty
                 </ColumnHeader>
                 <ColumnHeader icon={CircleDotIcon}>Status</ColumnHeader>
-                <th className="sticky top-0 z-10 h-9 min-w-[8.5rem] bg-card px-2 text-left text-[11px] font-medium whitespace-nowrap text-muted-foreground shadow-[inset_0_-1px_0_var(--color-border)]">
+                <th className="sticky top-0 z-10 h-9 min-w-34 bg-card px-2 text-left text-[11px] font-medium whitespace-nowrap text-muted-foreground shadow-[inset_0_-1px_0_var(--color-border)]">
                   Actions
                 </th>
               </tr>
@@ -681,6 +738,7 @@ export function AccessoryInventoryTable({
                 const isSelected = selected.has(item.id);
                 const warranty = today ? warrantyInfo(item, today) : null;
                 const status = statusStyles[item.status];
+                const saving = pendingSaves.has(item.id);
                 const summary = config.summary(item.specs);
                 return (
                   <tr
@@ -789,6 +847,12 @@ export function AccessoryInventoryTable({
                     </td>
                     <td className={cellClass}>
                       <div className="flex items-center gap-0.5">
+                        {saving && (
+                          <Loader2Icon
+                            aria-label="Saving"
+                            className="mr-1 size-3 animate-spin text-muted-foreground"
+                          />
+                        )}
                         <span
                           className={cn(
                             "inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[11px] font-medium",
@@ -813,13 +877,18 @@ export function AccessoryInventoryTable({
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       {/* Same layout on every row: one primary action in a
-                          fixed-width slot, everything else in the menu. */}
-                      <div className="flex items-center justify-end gap-1">
+                          fixed-width slot, everything else in the menu.
+                          Locked while the row's last change is saving. */}
+                      <fieldset
+                        disabled={saving}
+                        aria-busy={saving}
+                        className="flex items-center justify-end gap-1 disabled:opacity-60"
+                      >
                         {item.status === "Vacant" ? (
                           <Button
                             variant="outline"
                             size="xs"
-                            className="min-w-[6.75rem]"
+                            className="min-w-27"
                             onClick={() => openAssign(item)}
                           >
                             <UserPlusIcon />
@@ -829,7 +898,7 @@ export function AccessoryInventoryTable({
                           <Button
                             variant="outline"
                             size="xs"
-                            className="min-w-[6.75rem]"
+                            className="min-w-27"
                             onClick={() => openReturn(item)}
                           >
                             <Undo2Icon />
@@ -839,7 +908,7 @@ export function AccessoryInventoryTable({
                           <Button
                             variant="outline"
                             size="xs"
-                            className="min-w-[6.75rem]"
+                            className="min-w-27"
                             onClick={() => openReturnToStock(item)}
                           >
                             <Undo2Icon />
@@ -849,7 +918,7 @@ export function AccessoryInventoryTable({
                           <Button
                             variant="ghost"
                             size="xs"
-                            className="min-w-[6.75rem] text-muted-foreground hover:text-foreground"
+                            className="min-w-27 text-muted-foreground hover:text-foreground"
                             onClick={() => openView(item)}
                           >
                             <EyeIcon />
@@ -909,7 +978,7 @@ export function AccessoryInventoryTable({
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
+                      </fieldset>
                     </td>
                   </tr>
                 );
@@ -1015,16 +1084,7 @@ export function AccessoryInventoryTable({
       <UndoToast
         message={undo?.message ?? null}
         onUndo={() => {
-          if (!undo) return;
-          setItems(undo.snapshot);
-          const removedIds = new Set(undo.removed.map((item) => item.id));
-          persist(
-            Promise.all(undo.removed.map((item) => createAccessory(item))),
-            () =>
-              setItems((prev) =>
-                prev.filter((item) => !removedIds.has(item.id)),
-              ),
-          );
+          undo?.run();
           setUndo(null);
         }}
         onDismiss={() => setUndo(null)}
@@ -1044,7 +1104,9 @@ export function AccessoryInventoryTable({
         confirmLabel="Mark repaired"
         confirmVariant="default"
         icon={CircleCheckIcon}
-        onConfirm={() => confirmRepaired && markRepairDone(confirmRepaired.id)}
+        onConfirm={() => {
+          if (confirmRepaired) markRepairDone(confirmRepaired.id)
+        }}
       />
 
       <ConfirmDeleteDialog
@@ -1114,10 +1176,17 @@ export function AccessoryInventoryTable({
         open={editOpen}
         onOpenChange={setEditOpen}
         onSave={async (next) => {
+          const original = items.find((item) => item.id === next.id);
           const saved = await saveAccessory(next);
           setItems((prev) =>
             prev.map((item) => (item.id === saved.id ? saved : item)),
           );
+          if (original) {
+            setUndo({
+              message: `Updated ${saved.assetTag}`,
+              run: () => revertItems([original]),
+            });
+          }
         }}
       />
 

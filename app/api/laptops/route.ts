@@ -16,6 +16,7 @@ function refreshInventory() {
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/laptops")
   revalidatePath("/dashboard/analytics")
+  revalidatePath("/dashboard/remote-access")
 }
 
 export async function GET() {

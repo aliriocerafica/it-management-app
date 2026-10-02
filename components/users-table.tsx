@@ -10,27 +10,22 @@ import {
   CircleDotIcon,
   EllipsisIcon,
   KeyRoundIcon,
+  Loader2Icon,
   MailIcon,
   PowerIcon,
   SearchIcon,
   ShieldIcon,
   UserIcon,
+  type LucideIcon,
 } from "lucide-react"
 
 import { AddUserDialog } from "@/components/add-user-dialog"
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
+import { UndoToast } from "@/components/undo-toast"
 import { FilterMenu, rowsPerPageOptions } from "@/components/laptop-inventory-table"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,7 +59,19 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [rowsPerPage, setRowsPerPage] = useState(rowsPerPageOptions[0])
   const [page, setPage] = useState(1)
-  const [pendingToggle, setPendingToggle] = useState<UserDto | null>(null)
+  // Every action asks first; this is the pending one.
+  const [confirm, setConfirm] = useState<{
+    title: string
+    description: string
+    label: string
+    destructive?: boolean
+    icon: LucideIcon
+    run: () => void | Promise<void>
+  } | null>(null)
+  // Users with a change in flight: spinner + locked menu.
+  const [working, setWorking] = useState<Set<string>>(new Set())
+  // The last change, and how to reverse it, for the Undo toast.
+  const [undo, setUndo] = useState<{ message: string; run: () => void } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
 
@@ -127,58 +134,140 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
     return (await response.json()) as UserDto
   }
 
-  async function toggleActive(user: UserDto) {
-    setError(null)
+  async function track(ids: string[], task: () => Promise<void>) {
+    setWorking((prev) => new Set([...prev, ...ids]))
     try {
-      const updated = await patchUser(user.id, { isActive: !user.isActive })
-      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
-    } catch (e) {
-      setError((e as Error).message)
+      await task()
     } finally {
-      setPendingToggle(null)
+      setWorking((prev) => {
+        const next = new Set(prev)
+        for (const id of ids) next.delete(id)
+        return next
+      })
     }
   }
 
-  async function changeRole(user: UserDto, role: UserRole) {
+  // Patches each user; returns the ones that changed so Undo can flip them back.
+  async function patchUsers(ids: string[], patch: { isActive?: boolean; role?: UserRole }) {
     setError(null)
-    try {
-      const updated = await patchUser(user.id, { role })
-      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
-    } catch (e) {
-      setError((e as Error).message)
-    }
+    const changed: string[] = []
+    const errors: string[] = []
+    await track(ids, async () => {
+      for (const id of ids) {
+        try {
+          const updated = await patchUser(id, patch)
+          setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
+          changed.push(id)
+        } catch (e) {
+          errors.push((e as Error).message)
+        }
+      }
+    })
+    if (errors.length > 0) setError(errors[0])
+    return changed
+  }
+
+  async function setActive(targets: UserDto[], isActive: boolean) {
+    const changed = await patchUsers(
+      targets.map((u) => u.id),
+      { isActive },
+    )
+    if (changed.length === 0) return
+    const verb = isActive ? "Reactivated" : "Deactivated"
+    setUndo({
+      message:
+        changed.length === 1
+          ? `${verb} ${targets.find((u) => u.id === changed[0])?.name}`
+          : `${verb} ${changed.length} users`,
+      run: () => void patchUsers(changed, { isActive: !isActive }),
+    })
+  }
+
+  async function changeRole(user: UserDto, role: UserRole) {
+    const changed = await patchUsers([user.id], { role })
+    if (changed.length === 0) return
+    setUndo({
+      message: `${user.name} is now ${role === "ADMIN" ? "an Admin" : "Staff"}`,
+      run: () => void patchUsers([user.id], { role: user.role }),
+    })
   }
 
   async function sendPasswordReset(user: UserDto) {
     setError(null)
     setInfo(null)
-    const response = await fetch("/api/auth/forgot-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: user.email }),
+    await track([user.id], async () => {
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email }),
+      })
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null
+        setError(body?.error ?? `Could not email a reset code to ${user.email}.`)
+        return
+      }
+      setInfo(`Password reset code sent to ${user.email}.`)
     })
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as { error?: string } | null
-      setError(body?.error ?? `Could not email a reset code to ${user.email}.`)
-      return
-    }
-    setInfo(`Password reset code sent to ${user.email}.`)
   }
 
-  async function deactivateSelected() {
-    setError(null)
-    const ids = [...selected]
-    const errors: string[] = []
-    for (const id of ids) {
-      try {
-        const updated = await patchUser(id, { isActive: false })
-        setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
-      } catch (e) {
-        errors.push((e as Error).message)
-      }
+  function confirmToggle(user: UserDto) {
+    setConfirm({
+      title: `${user.isActive ? "Deactivate" : "Reactivate"} ${user.name}?`,
+      description: user.isActive
+        ? "They will no longer be able to sign in until reactivated. You can undo this afterward."
+        : "They will be able to sign in again. You can undo this afterward.",
+      label: user.isActive ? "Deactivate" : "Reactivate",
+      destructive: user.isActive,
+      icon: user.isActive ? PowerIcon : KeyRoundIcon,
+      run: () => setActive([user], !user.isActive),
+    })
+  }
+
+  function confirmDeactivateSelected() {
+    const targets = users.filter((u) => selected.has(u.id) && u.isActive)
+    if (targets.length === 0) {
+      setInfo("The selected users are already deactivated.")
+      return
     }
-    setSelected(new Set())
-    if (errors.length > 0) setError(errors[0])
+    setConfirm({
+      title:
+        targets.length === 1
+          ? `Deactivate ${targets[0].name}?`
+          : `Deactivate ${targets.length} users?`,
+      description:
+        "They will no longer be able to sign in until reactivated. You can undo this afterward.",
+      label: targets.length === 1 ? "Deactivate" : `Deactivate ${targets.length}`,
+      destructive: true,
+      icon: PowerIcon,
+      run: () => {
+        setSelected(new Set())
+        return setActive(targets, false)
+      },
+    })
+  }
+
+  function confirmRole(user: UserDto, role: UserRole) {
+    if (role === user.role) return
+    setConfirm({
+      title: `Make ${user.name} ${role === "ADMIN" ? "an Admin" : "Staff"}?`,
+      description:
+        role === "ADMIN"
+          ? "Admins can manage users and every setting. You can undo this afterward."
+          : "They will lose access to user management and settings. You can undo this afterward.",
+      label: role === "ADMIN" ? "Make Admin" : "Make Staff",
+      icon: role === "ADMIN" ? ShieldIcon : UserIcon,
+      run: () => changeRole(user, role),
+    })
+  }
+
+  function confirmPasswordReset(user: UserDto) {
+    setConfirm({
+      title: `Send a password reset to ${user.name}?`,
+      description: `A reset code will be emailed to ${user.email}. Emails can't be unsent.`,
+      label: "Send reset",
+      icon: MailIcon,
+      run: () => sendPasswordReset(user),
+    })
   }
 
   return (
@@ -187,8 +276,17 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
         {selected.size > 0 && (
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground">{selected.size} selected</span>
-            <Button variant="outline" size="sm" onClick={deactivateSelected}>
-              <PowerIcon />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={[...selected].some((id) => working.has(id))}
+              onClick={confirmDeactivateSelected}
+            >
+              {[...selected].some((id) => working.has(id)) ? (
+                <Loader2Icon className="animate-spin" />
+              ) : (
+                <PowerIcon />
+              )}
               Deactivate
             </Button>
           </div>
@@ -288,6 +386,12 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
                   <td className={cellClass}>{user.email}</td>
                   <td className={cellClass}>{user.role === "ADMIN" ? "Admin" : "Staff"}</td>
                   <td className={cellClass}>
+                    {working.has(user.id) && (
+                      <Loader2Icon
+                        aria-label="Saving"
+                        className="mr-1 inline size-3 animate-spin text-muted-foreground"
+                      />
+                    )}
                     <span
                       className={cn(
                         "inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[11px] font-medium",
@@ -316,6 +420,7 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
                             variant="ghost"
                             size="icon-xs"
                             aria-label={`More actions for ${user.name}`}
+                            disabled={working.has(user.id)}
                             className="text-muted-foreground hover:text-foreground"
                           />
                         }
@@ -325,7 +430,7 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
                       <DropdownMenuContent align="end" className="w-48">
                         <DropdownMenuRadioGroup
                           value={user.role}
-                          onValueChange={(value) => changeRole(user, value as UserRole)}
+                          onValueChange={(value) => confirmRole(user, value as UserRole)}
                         >
                           <DropdownMenuRadioItem value="ADMIN">
                             <ShieldIcon />
@@ -337,14 +442,14 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
                           </DropdownMenuRadioItem>
                         </DropdownMenuRadioGroup>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => sendPasswordReset(user)}>
+                        <DropdownMenuItem onClick={() => confirmPasswordReset(user)}>
                           <MailIcon />
                           Send password reset
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           variant={user.isActive ? "destructive" : undefined}
-                          onClick={() => setPendingToggle(user)}
+                          onClick={() => confirmToggle(user)}
                         >
                           {user.isActive ? <PowerIcon /> : <KeyRoundIcon />}
                           {user.isActive ? "Deactivate" : "Reactivate"}
@@ -446,29 +551,25 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
         </div>
       </div>
 
-      <Dialog open={pendingToggle !== null} onOpenChange={(next) => !next && setPendingToggle(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {pendingToggle?.isActive ? "Deactivate" : "Reactivate"} {pendingToggle?.name}?
-            </DialogTitle>
-            <DialogDescription>
-              {pendingToggle?.isActive
-                ? "They will no longer be able to sign in until reactivated."
-                : "They will be able to sign in again."}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mx-0 mb-0 px-6 py-4">
-            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-            <Button
-              variant={pendingToggle?.isActive ? "destructive" : "default"}
-              onClick={() => pendingToggle && toggleActive(pendingToggle)}
-            >
-              {pendingToggle?.isActive ? "Deactivate" : "Reactivate"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDeleteDialog
+        open={confirm !== null}
+        onOpenChange={(next) => !next && setConfirm(null)}
+        title={confirm?.title ?? ""}
+        description={confirm?.description ?? ""}
+        confirmLabel={confirm?.label}
+        confirmVariant={confirm?.destructive ? "destructive" : "default"}
+        icon={confirm?.icon}
+        onConfirm={() => confirm?.run()}
+      />
+
+      <UndoToast
+        message={undo?.message ?? null}
+        onUndo={() => {
+          undo?.run()
+          setUndo(null)
+        }}
+        onDismiss={() => setUndo(null)}
+      />
     </div>
   )
 }

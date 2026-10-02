@@ -43,8 +43,9 @@ export function ReturnToStockDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
-        {item && itemId && (
+        {open && item && itemId && (
           <ReturnForm
+            key={itemId}
             item={item}
             itemId={itemId}
             noun={noun}
@@ -75,6 +76,7 @@ function ReturnForm({
   })
   const handler = item.handler?.trim() ?? ""
   const [loading, setLoading] = useState(handler !== "")
+  const [loadError, setLoadError] = useState<string | null>(null)
   // Show the spinner as soon as the item changes, before the effect runs.
   const loadKey = `${handler}|${itemId}`
   const [loadedKey, setLoadedKey] = useState(loadKey)
@@ -97,6 +99,7 @@ function ReturnForm({
       .catch(() => {
         if (cancelled) return
         setOthers({ laptops: [], accessories: [] })
+        setLoadError("Couldn't check this person's other assets.")
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -172,6 +175,12 @@ function ReturnForm({
           <p className="text-xs text-muted-foreground">Checking other assigned assets…</p>
         )}
 
+        {loadError && (
+          <p role="alert" className="text-xs text-destructive">
+            {loadError} You can still return this {noun} on its own.
+          </p>
+        )}
+
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="return-note" className="text-xs">
             Note
@@ -189,10 +198,11 @@ function ReturnForm({
       <DialogFooter className="mx-0 mb-0 px-6 py-4">
         <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
         <Button
+          disabled={loading}
           onClick={() =>
             onConfirm(
               note.trim(),
-              alsoReturn ? others : { laptops: [], accessories: [] },
+              alsoReturn && !loadError ? others : { laptops: [], accessories: [] },
             )
           }
         >

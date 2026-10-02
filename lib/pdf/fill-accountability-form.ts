@@ -52,9 +52,9 @@ const TABLE = {
   left: MARGIN_X,
   right: CONTENT_RIGHT,
   columns: COL_RATIOS.map((ratio) => MARGIN_X + CONTENT_WIDTH * ratio),
-  titleHeight: 18,
-  headerHeight: 24,
-  rowHeight: 36,
+  titleHeight: 22,
+  headerHeight: 28,
+  rowHeight: 42,
 }
 
 const ADDRESS = [
@@ -190,13 +190,13 @@ function drawCellText(
   bottom: number,
   width: number,
   height: number,
-  size = 8,
+  size = 10,
 ) {
   const value = winAnsi(text).trim()
   if (!value) return
   const maxWidth = Math.max(8, width - 8)
   const lines = wrapText(font, value, size, maxWidth).slice(0, 3)
-  const leading = size + 1.6
+  const leading = size + 2
   const block = lines.length * leading
   let y = bottom + (height - block) / 2 + (lines.length - 1) * leading + 1
   for (const line of lines) {
@@ -281,8 +281,8 @@ class FormLayout {
       height: this.logoSize.height,
     })
 
-    const addressSize = 9
-    let addressY = top - 12
+    const addressSize = 10
+    let addressY = top - 13
     for (const line of ADDRESS) {
       const width = this.fonts.regular.widthOfTextAtSize(line, addressSize)
       this.page.drawText(line, {
@@ -292,7 +292,7 @@ class FormLayout {
         font: this.fonts.regular,
         color: INK,
       })
-      addressY -= 12
+      addressY -= 13
     }
     const site = "www.ardentparalegal.com"
     const siteWidth = this.fonts.regular.widthOfTextAtSize(site, addressSize)
@@ -325,7 +325,7 @@ class FormLayout {
   }
 
   drawTitle(text: string) {
-    this.ensureSpace(20)
+    this.ensureSpace(24)
     drawCenteredText(
       this.page,
       this.fonts.bold,
@@ -333,9 +333,9 @@ class FormLayout {
       MARGIN_X,
       this.y,
       CONTENT_WIDTH,
-      12,
+      15,
     )
-    this.y -= 18
+    this.y -= 24
   }
 
   drawAccountabilityTable(rows: EquipmentRow[]) {
@@ -358,9 +358,9 @@ class FormLayout {
       this.fonts.bold,
       "Description of Equipment of Property Issued to the Employee",
       TABLE.left,
-      this.y + 5,
+      this.y + 7,
       CONTENT_WIDTH,
-      9,
+      11,
     )
 
     this.y -= TABLE.headerHeight
@@ -382,9 +382,9 @@ class FormLayout {
           this.fonts.bold,
           "Unit",
           x,
-          this.y + 13,
+          this.y + 15,
           width,
-          8,
+          10,
         )
         drawCenteredText(
           this.page,
@@ -393,7 +393,7 @@ class FormLayout {
           x,
           this.y + 4,
           width,
-          8,
+          10,
         )
       } else {
         drawCenteredText(
@@ -401,9 +401,9 @@ class FormLayout {
           this.fonts.bold,
           header.text,
           x,
-          this.y + 8,
+          this.y + 10,
           width,
-          8,
+          10,
         )
       }
     }
@@ -428,9 +428,9 @@ class FormLayout {
             this.fonts.regular,
             value,
             x,
-            this.y + 13,
+            this.y + 17,
             width,
-            8,
+            10,
           )
         } else {
           drawCellText(
@@ -441,32 +441,32 @@ class FormLayout {
             this.y,
             width,
             TABLE.rowHeight,
-            8,
+            10,
           )
         }
       })
     }
 
-    this.y -= 14
+    this.y -= 18
   }
 
   drawTerms(items: string[]) {
-    const size = 9
-    const leading = 11.5
-    const indent = 14
+    const size = 11
+    const leading = 14
+    const indent = 16
     const bulletX = MARGIN_X + 6
     const textX = MARGIN_X + indent
     const textWidth = CONTENT_WIDTH - indent
 
-    this.ensureSpace(16)
+    this.ensureSpace(20)
     this.page.drawText("Terms and Conditions", {
       x: MARGIN_X,
       y: this.y,
-      size: 11,
+      size: 13,
       font: this.fonts.bold,
       color: INK,
     })
-    this.y -= 16
+    this.y -= 20
 
     for (const item of items) {
       const lines = wrapText(this.fonts.regular, item, size, textWidth)
@@ -476,8 +476,8 @@ class FormLayout {
         if (first) {
           this.page.drawCircle({
             x: bulletX,
-            y: this.y + 2.4,
-            size: 1.7,
+            y: this.y + 3,
+            size: 2,
             color: INK,
           })
           first = false
@@ -491,11 +491,11 @@ class FormLayout {
         })
         this.y -= leading
       }
-      this.y -= 1.4
+      this.y -= 2
     }
   }
 
-  drawParagraph(text: string, size = 9) {
+  drawParagraph(text: string, size = 11) {
     const leading = size + 2.5
     const lines = wrapText(this.fonts.regular, text, size, CONTENT_WIDTH)
     for (const line of lines) {
@@ -516,7 +516,7 @@ class FormLayout {
     this.y -= 4
     this.drawParagraph(
       "My signature below indicates I have thoroughly read and understood the above information.",
-      9,
+      11,
     )
     this.y -= 18
 
@@ -534,12 +534,12 @@ class FormLayout {
       "",
     )
     this.y -= 22
-    this.drawParagraph(RECEIVED_NOTE, 9)
+    this.drawParagraph(RECEIVED_NOTE, 11)
     this.y -= 8
   }
 
   private drawSignRow(name: string, caption: string, dateValue: string) {
-    this.ensureSpace(52)
+    this.ensureSpace(60)
     const nameLineX = MARGIN_X
     const nameLineWidth = CONTENT_WIDTH * 0.48
     const dateLineWidth = CONTENT_WIDTH * 0.32
@@ -555,7 +555,7 @@ class FormLayout {
         nameLineX,
         lineY + 4,
         nameLineWidth,
-        10,
+        12,
       )
     }
 
@@ -580,7 +580,7 @@ class FormLayout {
         dateLineX,
         lineY + 4,
         dateLineWidth,
-        9,
+        11,
       )
     }
 
@@ -589,9 +589,9 @@ class FormLayout {
       this.fonts.regular,
       caption,
       nameLineX,
-      lineY - 12,
+      lineY - 14,
       nameLineWidth,
-      8,
+      10,
       MUTED,
     )
     drawCenteredText(
@@ -599,13 +599,13 @@ class FormLayout {
       this.fonts.regular,
       "Date",
       dateLineX,
-      lineY - 12,
+      lineY - 14,
       dateLineWidth,
-      8,
+      10,
       MUTED,
     )
 
-    this.y = lineY - 16
+    this.y = lineY - 20
   }
 }
 

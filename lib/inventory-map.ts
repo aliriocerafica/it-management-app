@@ -1,5 +1,4 @@
 import type { Accessory, AccessoryKind } from "@/lib/accessories"
-import { employees } from "@/lib/employees"
 import type {
   ChargerCondition,
   Laptop,
@@ -87,10 +86,8 @@ export const kindToDb: Record<AccessoryKind, keyof typeof kindFromDb> = {
   keyboard: "KEYBOARD",
 }
 
-export function employeeIdFor(name: string | null | undefined) {
-  if (!name) return null
-  return employees.find((employee) => employee.name === name)?.id ?? null
-}
+// Maps a handler name to their HRIS employee number (see employeeIdLookup).
+export type EmployeeIdLookup = (name: string | null | undefined) => string | null
 
 export function toIsoDate(value: Date) {
   return value.toISOString().slice(0, 10)
@@ -177,7 +174,10 @@ export function accessoryFromDb(record: AccessoryRecord): Accessory {
   }
 }
 
-export function assignmentData(history: OwnershipEntry[]) {
+export function assignmentData(
+  history: OwnershipEntry[],
+  employeeIdFor: EmployeeIdLookup,
+) {
   return history.map((entry) => ({
     employeeId: employeeIdFor(entry.handler),
     handlerName: entry.handler,

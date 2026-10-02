@@ -204,3 +204,81 @@ model AccountabilityFormSettings {
 
   @@map("accountability_form_settings")
 }
+
+enum AssetRequestStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+  DENIED
+}
+
+enum AssetRequestPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+// An employee's request for IT equipment. Approved requests show as
+// "Ongoing" until IT hands the item over; denied ones as "Cancelled".
+model AssetRequest {
+  id            String               @id @default(cuid())
+  requestNo     Int                  @unique @default(autoincrement())
+  employeeId    String?
+  requesterName String
+  department    String?
+  assetType     String
+  quantity      Int                  @default(1)
+  reason        String
+  priority      AssetRequestPriority @default(NORMAL)
+  status        AssetRequestStatus   @default(PENDING)
+  neededBy      DateTime?            @db.Date
+  // Why it was denied, or what was handed over when completed.
+  resolutionNote String?
+  approvedAt    DateTime?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([status])
+  @@index([employeeId])
+  @@map("asset_requests")
+}
+
+// One generated accountability form. Each holder gets a new version when
+// their assigned equipment changes; the PDF is re-rendered from this
+// snapshot, so every version downloads exactly as it was issued.
+model AccountabilityForm {
+  id            String   @id @default(cuid())
+  holderName    String
+  employeeId    String?
+  department    String?
+  version       Int
+  hrName        String
+  itOfficerName String
+  generatedOn   String
+  // EquipmentRow[] as printed on the form.
+  equipment     Json
+  // Sorted equipment fingerprint, to tell when a form is out of date.
+  signature     String
+  createdByName String?
+  createdAt     DateTime @default(now())
+  sends         AccountabilityFormSend[]
+
+  @@unique([holderName, version])
+  @@index([holderName])
+  @@map("accountability_forms")
+}
+
+model AccountabilityFormSend {
+  id         String             @id @default(cuid())
+  formId     String
+  form       AccountabilityForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  toEmail    String
+  sentByName String?
+  sentAt     DateTime           @default(now())
+
+  @@index([formId])
+  @@map("accountability_form_sends")
+}

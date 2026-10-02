@@ -3,6 +3,8 @@ type SendEmailInput = {
   subject: string
   htmlContent: string
   textContent?: string
+  // Base64-encoded files, e.g. a PDF.
+  attachments?: { name: string; content: string }[]
 }
 
 export class EmailSendError extends Error {
@@ -33,6 +35,7 @@ export async function sendEmail({
   subject,
   htmlContent,
   textContent,
+  attachments,
 }: SendEmailInput): Promise<void> {
   const apiKey = process.env.BREVO_API_KEY?.trim()
 
@@ -65,6 +68,7 @@ export async function sendEmail({
         textContent:
           textContent ??
           htmlContent.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+        ...(attachments?.length ? { attachment: attachments } : {}),
       }),
     })
   } catch (error) {

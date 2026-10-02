@@ -87,3 +87,38 @@ export function accountCreatedEmailText(name: string, loginUrl: string): string 
     "If you don't have a password yet, use Forgot password on the sign-in page.",
   ].join("\n")
 }
+
+export function accountabilityFormEmailHtml(
+  name: string,
+  version: number,
+  itOfficerName: string,
+): string {
+  return layout(
+    "Your accountability form",
+    `
+      <p style="margin:0 0 16px;color:#3f3f46;font-size:14px;line-height:1.5;">
+        Hi ${escapeHtml(name)}, attached is a copy of your IT equipment accountability form (version ${version}).
+      </p>
+      <p style="margin:0 0 16px;color:#3f3f46;font-size:14px;line-height:1.5;">
+        It lists the company equipment currently assigned to you. Please keep it for your records and let IT know if anything on it is wrong.
+      </p>
+      <p style="margin:0;color:#71717a;font-size:12px;line-height:1.5;">
+        Sent by ${escapeHtml(itOfficerName)}, IT Department.
+      </p>
+    `,
+  )
+}
+
+export function accountabilityFormEmailText(
+  name: string,
+  version: number,
+  itOfficerName: string,
+): string {
+  return [
+    `Hi ${name}, attached is a copy of your IT equipment accountability form (version ${version}).`,
+    "",
+    "It lists the company equipment currently assigned to you. Please keep it for your records and let IT know if anything on it is wrong.",
+    "",
+    `Sent by ${itOfficerName}, IT Department.`,
+  ].join("\n")
+}

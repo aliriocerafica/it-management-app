@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs"
 const BCRYPT_COST = 12
 const AES_ALGORITHM = "aes-256-gcm"
 
-function encryptionKey() {
+export function encryptionKey() {
   const key = process.env.ENCRYPTION_KEY
   if (!key) {
     throw new Error("ENCRYPTION_KEY environment variable is not set")

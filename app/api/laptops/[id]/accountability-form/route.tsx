@@ -1,14 +1,9 @@
 import { NextResponse } from "next/server"
 
 import { getAccountabilityFormSettings } from "@/lib/accountability-form-settings"
-import { accessoryConfigs } from "@/lib/accessories"
+import { generateForm, renderFormPdf } from "@/lib/accountability-repository"
 import { verifySession } from "@/lib/auth/session"
-import { getLaptopById, listAssignedAssets } from "@/lib/inventory-repository"
-import { formatDate } from "@/lib/laptops"
-import {
-  fillAccountabilityForm,
-  type EquipmentRow,
-} from "@/lib/pdf/fill-accountability-form"
+import { getLaptopById } from "@/lib/inventory-repository"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -19,6 +14,8 @@ function queryName(value: string | null) {
   return trimmed
 }
 
+// Generates the handler's form (saved as a version on the Accountability
+// page; reused if nothing changed) and opens it.
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -46,49 +43,14 @@ export async function GET(
   const itOfficerName =
     queryName(search.get("it")) || settings.itOfficerName || user.name
 
-  const { laptops, accessories } = await listAssignedAssets(laptop.handler)
+  const form = await generateForm(laptop.handler, { hrName, itOfficerName }, user.name)
+  const rendered = (await renderFormPdf(form.id))!
+  const filename = rendered.filename.replace(/["\\]/g, "")
 
-  const equipment: EquipmentRow[] = []
-  for (const l of laptops) {
-    equipment.push({
-      item: "Laptop",
-      brand: l.brand,
-      model: l.model,
-      serialNumber: l.serialNumber,
-      unitCount: 1,
-    })
-    equipment.push({
-      item: "Laptop Charger",
-      brand: l.brand,
-      model: l.charger.partNumber,
-      serialNumber: l.charger.serialNumber,
-      unitCount: 1,
-    })
-  }
-  for (const item of accessories) {
-    equipment.push({
-      item: accessoryConfigs[item.kind].singular,
-      brand: item.brand,
-      model: item.model,
-      serialNumber: item.serialNumber,
-      unitCount: 1,
-    })
-  }
-
-  const buffer = await fillAccountabilityForm({
-    employeeName: laptop.handler,
-    itOfficerName,
-    hrName,
-    generatedOn: formatDate(new Date()),
-    equipment,
-  })
-
-  const filename = `Accountability Form - ${laptop.handler}.pdf`
-
-  return new NextResponse(new Uint8Array(buffer), {
+  return new NextResponse(new Uint8Array(rendered.pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${filename}"`,
+      "Content-Disposition": `inline; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
     },
   })
 }

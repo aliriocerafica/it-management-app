@@ -16,6 +16,7 @@ import {
   HashIcon,
   HourglassIcon,
   LaptopIcon,
+  Loader2Icon,
   PaletteIcon,
   PencilIcon,
   SearchIcon,
@@ -31,6 +32,7 @@ import {
 
 import { AccountabilityFormPrompt } from "@/components/accountability-form-prompt";
 import { AddLaptopDialog } from "@/components/add-laptop-dialog";
+import { revalidateInventory } from "@/app/actions/revalidate-inventory";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { ErrorToast } from "@/components/error-toast";
@@ -84,6 +86,7 @@ import {
   type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops";
+import { usePendingSaves } from "@/lib/save-queue";
 import { useToday } from "@/lib/use-today";
 import { type Employee } from "@/lib/employees";
 import { cn } from "@/lib/utils";
@@ -287,11 +290,12 @@ export function LaptopInventoryTable({
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   // Asks before clearing a pending-repair alert.
   const [confirmRepaired, setConfirmRepaired] = useState<Laptop | null>(null);
+  // The last change, and how to reverse it, for the Undo toast.
   const [undo, setUndo] = useState<{
-    snapshot: Laptop[];
-    removed: Laptop[];
     message: string;
+    run: () => void;
   } | null>(null);
+  const pendingSaves = usePendingSaves();
 
   const brands = useMemo(
     () => [...new Set(laptops.map((l) => l.brand))].sort(),
@@ -375,7 +379,7 @@ export function LaptopInventoryTable({
   // Background saves: the table updates right away, and if the database
   // rejects the change it's rolled back and the reason shown.
   function persist(save: Promise<unknown>, rollback?: () => void) {
-    save.catch((error: unknown) => {
+    return save.catch((error: unknown) => {
       rollback?.();
       setSaveError(errorMessage(error));
     });
@@ -417,12 +421,29 @@ export function LaptopInventoryTable({
     );
   }
 
-  function updateLaptop(id: string, update: (laptop: Laptop) => Laptop) {
+  // Puts laptops back the way they were and saves that, for Undo.
+  function revertLaptops(originals: Laptop[]) {
+    const current = laptops.filter((l) => originals.some((o) => o.id === l.id));
+    restoreLaptops(originals);
+    return originals.map((original) =>
+      persist(saveLaptop(original), () => restoreLaptops(current)),
+    );
+  }
+
+  function updateLaptop(
+    id: string,
+    update: (laptop: Laptop) => Laptop,
+    message: (laptop: Laptop) => string,
+  ) {
     const original = laptops.find((l) => l.id === id);
     if (!original) return;
     const next = update(original);
     setLaptops((prev) => prev.map((l) => (l.id === id ? next : l)));
     persist(saveLaptop(next), () => restoreLaptops([original]));
+    setUndo({
+      message: message(original),
+      run: () => revertLaptops([original]),
+    });
   }
 
   // Clears a pending-repair alert once the outstanding fault is fixed.
@@ -439,7 +460,7 @@ export function LaptopInventoryTable({
           : entry,
       ),
       repairIssue: null,
-    }));
+    }), (l) => `Marked ${l.assetTag} repaired`);
   }
 
   function openSendToRepair(laptop: Laptop) {
@@ -457,7 +478,7 @@ export function LaptopInventoryTable({
       history: l.history.map((entry) =>
         entry.to === null ? { ...entry, note } : entry,
       ),
-    }));
+    }), (l) => `Sent ${l.assetTag} to repair`);
     setSendRepairOpen(false);
   }
 
@@ -508,7 +529,13 @@ export function LaptopInventoryTable({
           },
         ],
       };
-    });
+    }, (l) =>
+      outcome === "handler"
+        ? `Released ${l.assetTag} back to ${l.handler}`
+        : outcome === "retire"
+          ? `Retired ${l.assetTag}`
+          : `${l.assetTag} is back in stock`,
+    );
     setRepairOpen(false);
   }
 
@@ -523,13 +550,26 @@ export function LaptopInventoryTable({
     const returned = originals.map((laptop) => returnedToVacant(laptop, note));
     const byId = new Map(returned.map((laptop) => [laptop.id, laptop]));
     setLaptops((prev) => prev.map((laptop) => byId.get(laptop.id) ?? laptop));
+    const saves: Promise<unknown>[] = [];
     for (const laptop of returned) {
       const original = originals.find((o) => o.id === laptop.id)!;
-      persist(saveLaptop(laptop), () => restoreLaptops([original]));
+      saves.push(persist(saveLaptop(laptop), () => restoreLaptops([original])));
     }
     for (const accessory of alsoReturn.accessories) {
-      persist(saveAccessory(returnedToVacant(accessory, note)));
+      saves.push(persist(saveAccessory(returnedToVacant(accessory, note))));
     }
+    void Promise.all(saves).then(() => revalidateInventory());
+    const extra = returned.length - 1 + alsoReturn.accessories.length;
+    setUndo({
+      message: `Returned ${target.assetTag}${extra > 0 ? ` and ${extra} more` : ""} to stock`,
+      run: () => {
+        const undos = [
+          ...revertLaptops(originals),
+          ...alsoReturn.accessories.map((accessory) => persist(saveAccessory(accessory))),
+        ];
+        void Promise.all(undos).then(() => revalidateInventory());
+      },
+    });
     setReturnOpen(false);
     setReturning(null);
   }
@@ -556,20 +596,28 @@ export function LaptopInventoryTable({
           },
         ],
       };
-    });
+    }, (l) => `Assigned ${l.assetTag} to ${employee.name}`);
     setAssignOpen(false);
     setFormPrompt({ laptopId: id, employeeName: employee.name });
   }
 
   function deleteLaptops(ids: string[]) {
     const removed = laptops.filter((laptop) => ids.includes(laptop.id));
+    const snapshot = laptops;
     setUndo({
-      snapshot: laptops,
-      removed,
       message:
         removed.length === 1
           ? `Deleted ${removed[0].assetTag}`
           : `Deleted ${removed.length} laptops`,
+      run: () => {
+        setLaptops(snapshot);
+        const removedIds = new Set(removed.map((laptop) => laptop.id));
+        persist(
+          Promise.all(removed.map((laptop) => createLaptop(laptop))),
+          () =>
+            setLaptops((prev) => prev.filter((l) => !removedIds.has(l.id))),
+        );
+      },
     });
     setLaptops((prev) => prev.filter((l) => !ids.includes(l.id)));
     setSelected((prev) => {
@@ -607,7 +655,7 @@ export function LaptopInventoryTable({
       <div
         role="tablist"
         aria-label="Laptop status"
-        className="flex items-end gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex items-end gap-1 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((t) => {
           const active = t === tab;
@@ -718,7 +766,7 @@ export function LaptopInventoryTable({
         </div>
 
         {/* Table: rows scroll under a sticky header; columns drop out by priority as the card narrows */}
-        <div className="@container max-h-[calc(100svh-17rem)] min-h-80 overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="@container max-h-[calc(100svh-17rem)] min-h-80 overflow-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
@@ -760,7 +808,7 @@ export function LaptopInventoryTable({
                   Warranty
                 </ColumnHeader>
                 <ColumnHeader icon={CircleDotIcon}>Status</ColumnHeader>
-                <th className="sticky top-0 z-10 h-9 min-w-[8.5rem] bg-card px-2 text-left text-[11px] font-medium whitespace-nowrap text-muted-foreground shadow-[inset_0_-1px_0_var(--color-border)]">
+                <th className="sticky top-0 z-10 h-9 min-w-34 bg-card px-2 text-left text-[11px] font-medium whitespace-nowrap text-muted-foreground shadow-[inset_0_-1px_0_var(--color-border)]">
                   Actions
                 </th>
               </tr>
@@ -770,6 +818,7 @@ export function LaptopInventoryTable({
                 const isSelected = selected.has(laptop.id);
                 const warranty = today ? warrantyInfo(laptop, today) : null;
                 const status = statusStyles[laptop.status];
+                const saving = pendingSaves.has(laptop.id);
                 return (
                   <tr
                     key={laptop.id}
@@ -877,6 +926,12 @@ export function LaptopInventoryTable({
                     </td>
                     <td className={cellClass}>
                       <div className="flex items-center gap-0.5">
+                        {saving && (
+                          <Loader2Icon
+                            aria-label="Saving"
+                            className="mr-1 size-3 animate-spin text-muted-foreground"
+                          />
+                        )}
                         <span
                           className={cn(
                             "inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[11px] font-medium",
@@ -902,13 +957,18 @@ export function LaptopInventoryTable({
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       {/* Same layout on every row: one primary action in a
-                          fixed-width slot, everything else in the menu. */}
-                      <div className="flex items-center justify-end gap-1">
+                          fixed-width slot, everything else in the menu.
+                          Locked while the row's last change is saving. */}
+                      <fieldset
+                        disabled={saving}
+                        aria-busy={saving}
+                        className="flex items-center justify-end gap-1 disabled:opacity-60"
+                      >
                         {laptop.status === "Vacant" ? (
                           <Button
                             variant="outline"
                             size="xs"
-                            className="min-w-[6.75rem]"
+                            className="min-w-27"
                             onClick={() => openAssign(laptop)}
                           >
                             <UserPlusIcon />
@@ -918,7 +978,7 @@ export function LaptopInventoryTable({
                           <Button
                             variant="outline"
                             size="xs"
-                            className="min-w-[6.75rem]"
+                            className="min-w-27"
                             onClick={() => openReturn(laptop)}
                           >
                             <Undo2Icon />
@@ -928,7 +988,7 @@ export function LaptopInventoryTable({
                           <Button
                             variant="outline"
                             size="xs"
-                            className="min-w-[6.75rem]"
+                            className="min-w-27"
                             onClick={() => openReturnToStock(laptop)}
                           >
                             <Undo2Icon />
@@ -938,7 +998,7 @@ export function LaptopInventoryTable({
                           <Button
                             variant="ghost"
                             size="xs"
-                            className="min-w-[6.75rem] text-muted-foreground hover:text-foreground"
+                            className="min-w-27 text-muted-foreground hover:text-foreground"
                             onClick={() => openView(laptop)}
                           >
                             <EyeIcon />
@@ -1013,7 +1073,7 @@ export function LaptopInventoryTable({
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
+                      </fieldset>
                     </td>
                   </tr>
                 );
@@ -1119,14 +1179,7 @@ export function LaptopInventoryTable({
       <UndoToast
         message={undo?.message ?? null}
         onUndo={() => {
-          if (!undo) return;
-          setLaptops(undo.snapshot);
-          const removedIds = new Set(undo.removed.map((laptop) => laptop.id));
-          persist(
-            Promise.all(undo.removed.map((laptop) => createLaptop(laptop))),
-            () =>
-              setLaptops((prev) => prev.filter((l) => !removedIds.has(l.id))),
-          );
+          undo?.run();
           setUndo(null);
         }}
         onDismiss={() => setUndo(null)}
@@ -1146,7 +1199,9 @@ export function LaptopInventoryTable({
         confirmLabel="Mark repaired"
         confirmVariant="default"
         icon={CircleCheckIcon}
-        onConfirm={() => confirmRepaired && markRepairDone(confirmRepaired.id)}
+        onConfirm={() => {
+          if (confirmRepaired) markRepairDone(confirmRepaired.id)
+        }}
       />
 
       <ConfirmDeleteDialog
@@ -1214,10 +1269,17 @@ export function LaptopInventoryTable({
         open={editOpen}
         onOpenChange={setEditOpen}
         onSave={async (next) => {
+          const original = laptops.find((laptop) => laptop.id === next.id);
           const saved = await saveLaptop(next);
           setLaptops((prev) =>
             prev.map((laptop) => (laptop.id === saved.id ? saved : laptop)),
           );
+          if (original) {
+            setUndo({
+              message: `Updated ${saved.assetTag}`,
+              run: () => revertLaptops([original]),
+            });
+          }
         }}
       />
 

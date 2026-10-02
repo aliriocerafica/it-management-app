@@ -22,6 +22,7 @@ export async function PUT(
     revalidatePath("/dashboard")
     revalidatePath("/dashboard/laptops")
     revalidatePath("/dashboard/analytics")
+    revalidatePath("/dashboard/remote-access")
     return NextResponse.json(saved)
   } catch (error) {
     return saveErrorResponse(error)
