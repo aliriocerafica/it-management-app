@@ -1,6 +1,6 @@
 # Routes to open
 
-Base URL: `http://localhost:3001`
+Base URL: `http://localhost:3000`
 
 Auth pages (only if already logged out; do not submit forms):
 

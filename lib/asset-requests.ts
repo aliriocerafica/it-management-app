@@ -45,9 +45,19 @@ export type AssetRequest = {
   approvedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
+  // Set when the request was filed in DTR. Local requests leave this unset.
+  source?: "dtr";
+  issuedAssetId?: string | null;
+  returned?: boolean;
 };
 
-export function requestCode(request: Pick<AssetRequest, "requestNo">) {
+export function requestCode(
+  request: Pick<AssetRequest, "requestNo"> &
+    Partial<Pick<AssetRequest, "source" | "id">>,
+) {
+  if (request.source === "dtr" && request.id) {
+    return `DTR-${request.id.slice(-6).toUpperCase()}`;
+  }
   return `REQ-${String(request.requestNo).padStart(4, "0")}`;
 }
 

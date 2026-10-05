@@ -127,6 +127,33 @@ export async function saveAssetRequest(request: AssetRequest) {
   )
 }
 
+export async function issueDtrAsset(id: string, input: {
+  serialNumber: string
+  conditionIssued: "NEW" | "GOOD" | "FAIR" | "POOR"
+}) {
+  return queued([id], async () =>
+    parse<AssetRequest>(
+      await fetch(`/api/asset-requests/dtr/${encodeURIComponent(id)}/issue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    ),
+  )
+}
+
+export async function returnDtrAsset(id: string, returnCondition: "NEW" | "GOOD" | "FAIR" | "POOR" | "DAMAGED") {
+  return queued([id], async () =>
+    parse<AssetRequest>(
+      await fetch(`/api/asset-requests/dtr/${encodeURIComponent(id)}/return`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnCondition }),
+      }),
+    ),
+  )
+}
+
 export async function removeAssetRequests(ids: string[]) {
   return queued(ids, async () =>
     parse<{ ok: boolean }>(

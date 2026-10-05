@@ -50,6 +50,12 @@ import {
   type AssetRequest,
   type RequestPriority,
 } from "@/lib/asset-requests";
+import {
+  dtrIssueConditions,
+  dtrReturnConditions,
+  type DtrIssueCondition,
+  type DtrReturnCondition,
+} from "@/lib/dtr";
 import { errorMessage } from "@/lib/inventory-api";
 import { formatDate, initials, parseDate } from "@/lib/laptops";
 import { useEmployeeDirectory } from "@/lib/use-employee-directory";
@@ -446,6 +452,204 @@ function NoteForm({
   );
 }
 
+const conditionLabels: Record<string, string> = {
+  NEW: "New",
+  GOOD: "Good",
+  FAIR: "Fair",
+  POOR: "Poor",
+  DAMAGED: "Damaged",
+};
+
+// Issues a supervisor-approved DTR request: serial number and condition
+// are required by DTR before the request can move to Issued.
+export function IssueDtrAssetDialog({
+  request,
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  request: AssetRequest | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (input: {
+    serialNumber: string;
+    conditionIssued: DtrIssueCondition;
+  }) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        {request && open && (
+          <IssueForm request={request} onConfirm={onConfirm} />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function IssueForm({
+  request,
+  onConfirm,
+}: {
+  request: AssetRequest;
+  onConfirm: (input: {
+    serialNumber: string;
+    conditionIssued: DtrIssueCondition;
+  }) => void;
+}) {
+  const [serialNumber, setSerialNumber] = useState("");
+  const [conditionIssued, setConditionIssued] =
+    useState<DtrIssueCondition>("GOOD");
+  const serial = serialNumber.trim();
+
+  return (
+    <form
+      className="flex min-h-0 flex-col"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (serial.length < 3) return;
+        onConfirm({ serialNumber: serial, conditionIssued });
+      }}
+    >
+      <DialogHeader className="border-b border-border px-6 py-5 pr-12">
+        <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+          <CircleCheckIcon className="size-4" />
+          Issue asset
+        </DialogTitle>
+        <DialogDescription>
+          <span className="font-mono text-xs">{requestCode(request)}</span> ·{" "}
+          {request.quantity > 1 && `${request.quantity}× `}
+          {request.assetType} for {request.requesterName}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="flex flex-col gap-4 px-6 py-5">
+        <FormField label="Serial number" htmlFor="dtr-serial">
+          <Input
+            id="dtr-serial"
+            value={serialNumber}
+            onChange={(event) => setSerialNumber(event.target.value)}
+            placeholder="e.g. SN-1001"
+            minLength={3}
+            maxLength={100}
+            required
+            autoFocus
+          />
+        </FormField>
+        <FormField label="Condition" htmlFor="dtr-condition">
+          <select
+            id="dtr-condition"
+            value={conditionIssued}
+            onChange={(event) =>
+              setConditionIssued(event.target.value as DtrIssueCondition)
+            }
+            className={selectClass}
+          >
+            {dtrIssueConditions.map((condition) => (
+              <option key={condition} value={condition}>
+                {conditionLabels[condition]}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      </div>
+
+      <DialogFooter className="mx-0 mb-0 px-6 py-4">
+        <DialogClose render={<Button variant="outline" type="button" />}>
+          Back
+        </DialogClose>
+        <Button type="submit" disabled={serial.length < 3}>
+          <CircleCheckIcon />
+          Issue asset
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+export function ReturnDtrAssetDialog({
+  request,
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  request: AssetRequest | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (returnCondition: DtrReturnCondition) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        {request && open && (
+          <ReturnForm request={request} onConfirm={onConfirm} />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReturnForm({
+  request,
+  onConfirm,
+}: {
+  request: AssetRequest;
+  onConfirm: (returnCondition: DtrReturnCondition) => void;
+}) {
+  const [returnCondition, setReturnCondition] =
+    useState<DtrReturnCondition>("GOOD");
+
+  return (
+    <form
+      className="flex min-h-0 flex-col"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onConfirm(returnCondition);
+      }}
+    >
+      <DialogHeader className="border-b border-border px-6 py-5 pr-12">
+        <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+          <PackageIcon className="size-4" />
+          Mark returned
+        </DialogTitle>
+        <DialogDescription>
+          <span className="font-mono text-xs">{requestCode(request)}</span> ·{" "}
+          {request.assetType} for {request.requesterName}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="px-6 py-5">
+        <FormField label="Return condition" htmlFor="dtr-return-condition">
+          <select
+            id="dtr-return-condition"
+            value={returnCondition}
+            onChange={(event) =>
+              setReturnCondition(event.target.value as DtrReturnCondition)
+            }
+            className={selectClass}
+          >
+            {dtrReturnConditions.map((condition) => (
+              <option key={condition} value={condition}>
+                {conditionLabels[condition]}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      </div>
+
+      <DialogFooter className="mx-0 mb-0 px-6 py-4">
+        <DialogClose render={<Button variant="outline" type="button" />}>
+          Back
+        </DialogClose>
+        <Button type="submit">
+          <PackageIcon />
+          Mark returned
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
 // Icon for the requested asset type, shown in the details header.
 const assetTypeIcons: Record<string, LucideIcon> = {
   Laptop: LaptopIcon,
@@ -507,8 +711,9 @@ function requestSteps(request: AssetRequest): Step[] {
     });
   }
   if (status === "Cancelled") {
+    const employeeCancelled = request.resolutionNote === "Cancelled by the employee.";
     steps.push({
-      title: request.approvedAt ? "Cancelled" : "Denied",
+      title: request.approvedAt || employeeCancelled ? "Cancelled" : "Denied",
       at: request.cancelledAt,
       state: "current",
     });
@@ -547,6 +752,12 @@ function Details({ request }: { request: AssetRequest }) {
           </DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
             <span className="font-mono">{requestCode(request)}</span>
+            {request.source === "dtr" && (
+              <>
+                <span aria-hidden>·</span>
+                <span>From DTR</span>
+              </>
+            )}
             <span aria-hidden>·</span>
             <span>Requested {formatDate(new Date(request.createdAt))}</span>
             <span

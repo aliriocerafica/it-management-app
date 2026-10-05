@@ -9,7 +9,7 @@ description: >-
 
 # Build and UI check
 
-Project: IT management app. Dev server: `npm run dev` on **http://localhost:3001**.
+Project: IT management app. Dev server: `npm run dev` on **http://localhost:3000**.
 
 Do not change product code during this check unless the user asks for fixes. Report findings, then stop.
 
@@ -32,14 +32,14 @@ Use the cursor-ide-browser tools. Read each tool schema with GetDynamicTools bef
 
 If `npm run dev` is not running, do not start it. Report that the UI half was skipped.
 
-1. `browser_tabs` with action `list`. Reuse a tab already on port 3001.
+1. `browser_tabs` with action `list`. Reuse a tab already on port 3000.
 2. Install an error collector before navigation, via `browser_cdp`:
 
 ```json
 {"method":"Page.addScriptToEvaluateOnNewDocument","params":{"source":"window.__uiErrors=[];window.addEventListener('error',function(e){window.__uiErrors.push(String(e.message).slice(0,300))});window.addEventListener('unhandledrejection',function(e){window.__uiErrors.push(String(e.reason).slice(0,300))});var orig=console.error;console.error=function(){window.__uiErrors.push(Array.from(arguments).map(String).join(' ').slice(0,300));return orig.apply(console,arguments)}"}}
 ```
 
-3. `browser_navigate` to `http://localhost:3001/dashboard`.
+3. `browser_navigate` to `http://localhost:3000/dashboard`.
 4. `browser_lock` with action `lock`. Unlock when the smoke test is finished.
 5. If the page is the login screen, stop. Ask the user to sign in in that tab. Do not read `.env`, invent credentials, or submit the login form.
 6. Visit every route in [routes.md](routes.md). After each navigation:

@@ -30,8 +30,10 @@ import {
 
 import {
   AssetRequestDialog,
+  IssueDtrAssetDialog,
   RequestDetailsDialog,
   RequestNoteDialog,
+  ReturnDtrAssetDialog,
 } from "@/components/asset-request-dialogs";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { ErrorToast } from "@/components/error-toast";
@@ -65,10 +67,13 @@ import {
   type RequestPriority,
   type RequestStatus,
 } from "@/lib/asset-requests";
+import type { DtrIssueCondition, DtrReturnCondition } from "@/lib/dtr";
 import {
   createAssetRequest,
   errorMessage,
+  issueDtrAsset,
   removeAssetRequests,
+  returnDtrAsset,
   saveAssetRequest,
 } from "@/lib/inventory-api";
 import { formatDate, initials, parseDate } from "@/lib/laptops";
@@ -170,6 +175,7 @@ export function AssetRequestTable({
   const [editOpen, setEditOpen] = useState(false);
   const [denying, setDenying] = useState<AssetRequest | null>(null);
   const [completing, setCompleting] = useState<AssetRequest | null>(null);
+  const [returning, setReturning] = useState<AssetRequest | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   // Approve / reopen ask first, since they change the request right away.
@@ -215,9 +221,13 @@ export function AssetRequestTable({
   const pageRows = filtered.slice(start, start + rowsPerPage);
 
   const pageIds = pageRows.map((r) => r.id);
-  const selectedOnPage = pageIds.filter((id) => selected.has(id)).length;
+  const selectablePageIds = pageRows
+    .filter((r) => r.source !== "dtr")
+    .map((r) => r.id);
+  const selectedOnPage = selectablePageIds.filter((id) => selected.has(id)).length;
   const allOnPageSelected =
-    pageIds.length > 0 && selectedOnPage === pageIds.length;
+    selectablePageIds.length > 0 &&
+    selectedOnPage === selectablePageIds.length;
 
   const hasFilters =
     query !== "" || typeFilter.length > 0 || priorityFilter.length > 0;
@@ -246,7 +256,7 @@ export function AssetRequestTable({
   function togglePage(checked: boolean) {
     setSelected((prev) => {
       const next = new Set(prev);
-      for (const id of pageIds) {
+      for (const id of selectablePageIds) {
         if (checked) next.add(id);
         else next.delete(id);
       }
@@ -323,6 +333,27 @@ export function AssetRequestTable({
     setCompleting(null);
   }
 
+  function replaceRequest(saved: AssetRequest) {
+    setRequests((prev) => prev.map((r) => (r.id === saved.id ? saved : r)));
+  }
+
+  function issueFromDtr(
+    id: string,
+    input: { serialNumber: string; conditionIssued: DtrIssueCondition },
+  ) {
+    setCompleting(null);
+    persist(
+      issueDtrAsset(id, input).then((saved) => replaceRequest(saved)),
+    );
+  }
+
+  function returnFromDtr(id: string, returnCondition: DtrReturnCondition) {
+    setReturning(null);
+    persist(
+      returnDtrAsset(id, returnCondition).then((saved) => replaceRequest(saved)),
+    );
+  }
+
   function deny(id: string, reason: string) {
     updateRequest(id, (r) => ({
       ...r,
@@ -346,7 +377,11 @@ export function AssetRequestTable({
   }
 
   function deleteRequests(ids: string[]) {
-    const removed = requests.filter((r) => ids.includes(r.id));
+    const removed = requests.filter(
+      (r) => ids.includes(r.id) && r.source !== "dtr",
+    );
+    if (removed.length === 0) return;
+    const localIds = removed.map((r) => r.id);
     const snapshot = requests;
     setUndo({
       message:
@@ -363,13 +398,13 @@ export function AssetRequestTable({
         );
       },
     });
-    setRequests((prev) => prev.filter((r) => !ids.includes(r.id)));
+    setRequests((prev) => prev.filter((r) => !localIds.includes(r.id)));
     setSelected((prev) => {
       const next = new Set(prev);
-      for (const id of ids) next.delete(id);
+      for (const id of localIds) next.delete(id);
       return next;
     });
-    persist(removeAssetRequests(ids), () => {
+    persist(removeAssetRequests(localIds), () => {
       setUndo(null);
       setRequests((prev) => [...removed, ...prev]);
     });
@@ -538,6 +573,7 @@ export function AssetRequestTable({
                   <Checkbox
                     aria-label="Select all on page"
                     checked={allOnPageSelected}
+                    disabled={selectablePageIds.length === 0}
                     indeterminate={selectedOnPage > 0 && !allOnPageSelected}
                     onCheckedChange={(checked) => togglePage(checked)}
                   />
@@ -564,6 +600,14 @@ export function AssetRequestTable({
             </thead>
             <tbody>
               {pageRows.map((request) => {
+                const fromDtr = request.source === "dtr";
+                const canReturn =
+                  fromDtr && Boolean(request.issuedAssetId) && !request.returned;
+                const hasMenu =
+                  (!fromDtr && open.includes(request.status)) ||
+                  (fromDtr && request.status === "Ongoing") ||
+                  canReturn ||
+                  (!fromDtr && !open.includes(request.status));
                 const isSelected = selected.has(request.id);
                 const status = requestStatusStyles[request.status];
                 const code = requestCode(request);
@@ -583,6 +627,7 @@ export function AssetRequestTable({
                       <Checkbox
                         aria-label={`Select ${code}`}
                         checked={isSelected}
+                        disabled={fromDtr}
                         onCheckedChange={(checked) =>
                           toggleRow(request.id, checked)
                         }
@@ -698,7 +743,7 @@ export function AssetRequestTable({
                         aria-busy={saving}
                         className="flex items-center justify-end gap-1 disabled:opacity-60"
                       >
-                        {request.status === "Pending" ? (
+                        {request.status === "Pending" && !fromDtr ? (
                           <Button
                             variant="outline"
                             size="xs"
@@ -718,7 +763,7 @@ export function AssetRequestTable({
                             onClick={() => setCompleting(request)}
                           >
                             <CircleCheckIcon />
-                            Complete
+                            {fromDtr ? "Issue" : "Complete"}
                           </Button>
                         ) : (
                           <Button
@@ -731,6 +776,7 @@ export function AssetRequestTable({
                             View
                           </Button>
                         )}
+                        {hasMenu && (
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             render={
@@ -754,41 +800,55 @@ export function AssetRequestTable({
                                 View details
                               </DropdownMenuItem>
                             )}
-                            {open.includes(request.status) && (
+                            {open.includes(request.status) && !fromDtr && (
                               <DropdownMenuItem onClick={() => openEdit(request)}>
                                 <PencilIcon />
                                 Edit request
                               </DropdownMenuItem>
                             )}
-                            {open.includes(request.status) ? (
+                            {canReturn && (
                               <DropdownMenuItem
-                                onClick={() => setDenying(request)}
-                              >
-                                <XCircleIcon />
-                                {request.status === "Pending"
-                                  ? "Deny request"
-                                  : "Cancel request"}
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  setConfirming({ request, action: "reopen" })
-                                }
+                                onClick={() => setReturning(request)}
                               >
                                 <RotateCcwIcon />
-                                Reopen as pending
+                                Mark returned
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => setPendingDeleteIds([request.id])}
-                            >
-                              <Trash2Icon />
-                              Delete
-                            </DropdownMenuItem>
+                            {!fromDtr &&
+                              (open.includes(request.status) ? (
+                                <DropdownMenuItem
+                                  onClick={() => setDenying(request)}
+                                >
+                                  <XCircleIcon />
+                                  {request.status === "Pending"
+                                    ? "Deny request"
+                                    : "Cancel request"}
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setConfirming({ request, action: "reopen" })
+                                  }
+                                >
+                                  <RotateCcwIcon />
+                                  Reopen as pending
+                                </DropdownMenuItem>
+                              ))}
+                            {!fromDtr && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setPendingDeleteIds([request.id])}
+                                >
+                                  <Trash2Icon />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
+                        )}
                       </fieldset>
                     </td>
                   </tr>
@@ -959,16 +1019,34 @@ export function AssetRequestTable({
         onConfirm={(reason) => denying && deny(denying.id, reason)}
       />
 
-      <RequestNoteDialog
-        request={completing}
-        open={completing !== null}
-        onOpenChange={(next) => !next && setCompleting(null)}
-        title="Complete request"
-        label="What was handed over?"
-        placeholder="e.g. Issued AR-LT-AU26-012 with charger"
-        confirmLabel="Mark completed"
-        icon={CircleCheckIcon}
-        onConfirm={(note) => completing && complete(completing.id, note)}
+      {completing?.source === "dtr" ? (
+        <IssueDtrAssetDialog
+          request={completing}
+          open={completing !== null}
+          onOpenChange={(next) => !next && setCompleting(null)}
+          onConfirm={(input) => completing && issueFromDtr(completing.id, input)}
+        />
+      ) : (
+        <RequestNoteDialog
+          request={completing}
+          open={completing !== null}
+          onOpenChange={(next) => !next && setCompleting(null)}
+          title="Complete request"
+          label="What was handed over?"
+          placeholder="e.g. Issued AR-LT-AU26-012 with charger"
+          confirmLabel="Mark completed"
+          icon={CircleCheckIcon}
+          onConfirm={(note) => completing && complete(completing.id, note)}
+        />
+      )}
+
+      <ReturnDtrAssetDialog
+        request={returning}
+        open={returning !== null}
+        onOpenChange={(next) => !next && setReturning(null)}
+        onConfirm={(condition) =>
+          returning && returnFromDtr(returning.id, condition)
+        }
       />
 
       <AssetRequestDialog
