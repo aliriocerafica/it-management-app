@@ -67,8 +67,8 @@ import {
   priorityStyles,
   requestCode,
   requestPriorities,
+  requestQueueStatuses,
   requestStatusStyles,
-  requestStatuses,
   type AssetRequest,
   type RequestPriority,
   type RequestStatus,
@@ -92,8 +92,8 @@ import { usePendingSaves } from "@/lib/save-queue";
 import { useToday } from "@/lib/use-today";
 import { cn } from "@/lib/utils";
 
-type Tab = "All" | RequestStatus;
-const tabs: Tab[] = ["All", ...requestStatuses];
+type Tab = "All" | (typeof requestQueueStatuses)[number];
+const tabs: Tab[] = ["All", ...requestQueueStatuses];
 
 // What each tab means, for the tab tooltips.
 const tabHints: Record<Tab, string> = {
@@ -167,6 +167,14 @@ function daysAgo(iso: string, today: Date) {
   return `${days} days ago`;
 }
 
+function canSelectRequest(request: AssetRequest) {
+  return (
+    request.source !== "dtr" ||
+    request.status === "Pending" ||
+    request.status === "Archived"
+  );
+}
+
 export function AssetRequestTable({
   initialData,
 }: {
@@ -185,7 +193,7 @@ export function AssetRequestTable({
   const [viewOpen, setViewOpen] = useState(false);
   const [editing, setEditing] = useState<AssetRequest | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [denying, setDenying] = useState<AssetRequest | null>(null);
+  const [denying, setDenying] = useState<AssetRequest[] | null>(null);
   const [completing, setCompleting] = useState<AssetRequest | null>(null);
   const [returning, setReturning] = useState<AssetRequest | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -193,6 +201,7 @@ export function AssetRequestTable({
   // Approve / reopen ask first, since they change the request right away.
   const [confirming, setConfirming] = useState<{
     request: AssetRequest;
+    requests?: AssetRequest[];
     action:
       | "approve"
       | "reopen"
@@ -221,6 +230,7 @@ export function AssetRequestTable({
       if (typeFilter.length && !typeFilter.includes(r.assetType)) return false;
       if (priorityFilter.length && !priorityFilter.includes(r.priority))
         return false;
+      if (r.status === "Deleted") return false;
       if (tab === "All" && r.status === "Archived") return false;
       if (tab !== "All" && r.status !== tab) return false;
       if (!q) return true;
@@ -243,13 +253,18 @@ export function AssetRequestTable({
   const pageRows = filtered.slice(start, start + rowsPerPage);
 
   const pageIds = pageRows.map((r) => r.id);
-  const selectablePageIds = pageRows
-    .filter((r) => r.source !== "dtr")
-    .map((r) => r.id);
+  const selectablePageIds = pageRows.filter(canSelectRequest).map((r) => r.id);
   const selectedOnPage = selectablePageIds.filter((id) => selected.has(id)).length;
   const allOnPageSelected =
     selectablePageIds.length > 0 &&
     selectedOnPage === selectablePageIds.length;
+  const selectedRequests = requests.filter((r) => selected.has(r.id));
+  const selectedPending = selectedRequests.filter((r) => r.status === "Pending");
+  const selectedDeletable = selectedRequests.filter(
+    (r) => r.source !== "dtr" || r.status === "Archived",
+  );
+  const confirmingCount = confirming?.requests?.length ?? 1;
+  const confirmingBatch = confirmingCount > 1;
 
   const hasFilters =
     query !== "" || typeFilter.length > 0 || priorityFilter.length > 0;
@@ -264,6 +279,7 @@ export function AssetRequestTable({
       Archived: 0,
     };
     for (const r of requests) {
+      if (r.status === "Deleted") continue;
       counts[r.status] += 1;
       if (r.status !== "Archived") counts.All += 1;
     }
@@ -310,21 +326,54 @@ export function AssetRequestTable({
     });
   }
 
+  function persistOriginal(original: AssetRequest) {
+    return original.source === "dtr"
+      ? original.status === "Archived"
+        ? archiveExternalAssetRequest(original.id)
+        : saveExternalRequestOverride(
+            original.id,
+            original.status,
+            original.resolutionNote,
+          )
+      : saveAssetRequest(original);
+  }
+
   // Puts a request back the way it was and saves that, for Undo.
   function revertRequest(original: AssetRequest) {
     const current = requests.find((r) => r.id === original.id);
     setRequest(original.id, original);
-    const undoSave =
-      original.source === "dtr"
-        ? original.status === "Archived"
-          ? archiveExternalAssetRequest(original.id)
-          : saveExternalRequestOverride(
-              original.id,
-              original.status,
-              original.resolutionNote,
-            )
-        : saveAssetRequest(original);
-    persist(undoSave, () => current && setRequest(original.id, current));
+    persist(persistOriginal(original), () =>
+      current ? setRequest(original.id, current) : undefined,
+    );
+  }
+
+  function revertRequests(originals: AssetRequest[]) {
+    const originalById = new Map(originals.map((r) => [r.id, r]));
+    setRequests((prev) => prev.map((r) => originalById.get(r.id) ?? r));
+    persist(Promise.all(originals.map(persistOriginal)));
+  }
+
+  function persistMany(
+    originals: AssetRequest[],
+    nexts: AssetRequest[],
+    save: Promise<unknown>,
+    message: string,
+  ) {
+    const nextById = new Map(nexts.map((r) => [r.id, r]));
+    const originalById = new Map(originals.map((r) => [r.id, r]));
+    setRequests((prev) => prev.map((r) => nextById.get(r.id) ?? r));
+    persist(save, () =>
+      setRequests((prev) => prev.map((r) => originalById.get(r.id) ?? r)),
+    );
+    setUndo({
+      message,
+      run: () => revertRequests(originals),
+    });
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const original of originals) next.delete(original.id);
+      return next;
+    });
   }
 
   function updateRequest(
@@ -364,25 +413,35 @@ export function AssetRequestTable({
     setRequests((prev) => prev.map((r) => (r.id === id ? next : r)));
   }
 
-  function approve(id: string) {
-    const original = requests.find((r) => r.id === id);
-    if (!original) return;
-    const next: AssetRequest = {
+  function approveMany(ids: string[]) {
+    const originals = ids
+      .map((id) => requests.find((r) => r.id === id))
+      .filter((r): r is AssetRequest => r != null && r.status === "Pending");
+    if (originals.length === 0) return;
+    const now = new Date().toISOString();
+    const nexts = originals.map((original) => ({
       ...original,
-      status: "Approved",
-      approvedAt: new Date().toISOString(),
-      resolutionNote: original.source === "dtr" ? null : original.resolutionNote,
-    };
-    if (original.source === "dtr") {
-      setRequest(id, next);
-      persist(approveDtrAsset(id).then(replaceRequest), () => setRequest(id, original));
-      setUndo({
-        message: `Approved ${codeOf(id)}`,
-        run: () => revertRequest(original),
-      });
-      return;
-    }
-    updateRequest(id, () => next, `Approved ${codeOf(id)}`);
+      status: "Approved" as const,
+      approvedAt: now,
+      resolutionNote:
+        original.source === "dtr" ? null : original.resolutionNote,
+    }));
+    persistMany(
+      originals,
+      nexts,
+      Promise.all(
+        originals.map((original, index) =>
+          original.source === "dtr"
+            ? approveDtrAsset(original.id)
+            : saveAssetRequest(nexts[index]),
+        ),
+      ).then((saved) => {
+        for (const request of saved) replaceRequest(request);
+      }),
+      originals.length === 1
+        ? `Approved ${requestCode(originals[0])}`
+        : `Approved ${originals.length} requests`,
+    );
   }
 
   function complete(id: string, note: string) {
@@ -396,8 +455,10 @@ export function AssetRequestTable({
     setCompleting(null);
   }
 
-  function replaceRequest(saved: AssetRequest) {
-    setRequests((prev) => prev.map((r) => (r.id === saved.id ? saved : r)));
+  function replaceRequest(saved: AssetRequest & { emailWarning?: string }) {
+    if (saved.emailWarning) setSaveError(saved.emailWarning);
+    const { emailWarning: _warning, ...request } = saved;
+    setRequests((prev) => prev.map((r) => (r.id === request.id ? request : r)));
   }
 
   function issueFromDtr(
@@ -417,31 +478,39 @@ export function AssetRequestTable({
     );
   }
 
-  function deny(id: string, reason: string) {
-    const original = requests.find((r) => r.id === id);
-    if (!original) return;
-    const next: AssetRequest = {
-      ...original,
-      status: "Denied",
-      cancelledAt: new Date().toISOString(),
-      resolutionNote: reason,
-    };
-    setDenying(null);
-    if (original.source === "dtr") {
-      setRequest(id, next);
-      persist(rejectDtrAsset(id, reason).then(replaceRequest), () =>
-        setRequest(id, original),
+  function denyMany(ids: string[], reason: string) {
+    const originals = ids
+      .map((id) => requests.find((r) => r.id === id))
+      .filter(
+        (r): r is AssetRequest =>
+          r != null &&
+          (r.status === "Pending" ||
+            (r.status === "Approved" && r.source !== "dtr")),
       );
-      setUndo({
-        message: `Denied ${codeOf(id)}`,
-        run: () => revertRequest(original),
-      });
-      return;
-    }
-    updateRequest(
-      id,
-      () => next,
-      `${original.status === "Pending" ? "Denied" : "Cancelled"} ${codeOf(id)}`,
+    if (originals.length === 0) return;
+    setDenying(null);
+    const now = new Date().toISOString();
+    const nexts = originals.map((original) => ({
+      ...original,
+      status: "Denied" as const,
+      cancelledAt: now,
+      resolutionNote: reason,
+    }));
+    persistMany(
+      originals,
+      nexts,
+      Promise.all(
+        originals.map((original, index) =>
+          original.source === "dtr"
+            ? rejectDtrAsset(original.id, reason)
+            : saveAssetRequest(nexts[index]),
+        ),
+      ).then((saved) => {
+        for (const request of saved) replaceRequest(request);
+      }),
+      originals.length === 1
+        ? `${originals[0].status === "Pending" ? "Denied" : "Cancelled"} ${requestCode(originals[0])}`
+        : `Denied ${originals.length} requests`,
     );
   }
 
@@ -514,10 +583,14 @@ export function AssetRequestTable({
 
   function deleteRequests(ids: string[]) {
     const removed = requests.filter(
-      (r) => ids.includes(r.id) && r.source !== "dtr",
+      (r) =>
+        ids.includes(r.id) &&
+        (r.source !== "dtr" || r.status === "Archived"),
     );
     if (removed.length === 0) return;
-    const localIds = removed.map((r) => r.id);
+    const local = removed.filter((r) => r.source !== "dtr");
+    const fromDtr = removed.filter((r) => r.source === "dtr");
+    const removedIds = new Set(removed.map((r) => r.id));
     const snapshot = requests;
     setUndo({
       message:
@@ -526,24 +599,34 @@ export function AssetRequestTable({
           : `Deleted ${removed.length} requests`,
       run: () => {
         setRequests(snapshot);
-        const removedIds = new Set(removed.map((r) => r.id));
         persist(
-          Promise.all(removed.map((r) => createAssetRequest(r))),
+          Promise.all([
+            ...local.map((r) => createAssetRequest(r)),
+            ...fromDtr.map((r) =>
+              saveExternalRequestOverride(r.id, r.status, r.resolutionNote),
+            ),
+          ]),
           () =>
             setRequests((prev) => prev.filter((r) => !removedIds.has(r.id))),
         );
       },
     });
-    setRequests((prev) => prev.filter((r) => !localIds.includes(r.id)));
+    setRequests((prev) => prev.filter((r) => !removedIds.has(r.id)));
     setSelected((prev) => {
       const next = new Set(prev);
-      for (const id of localIds) next.delete(id);
+      for (const id of removedIds) next.delete(id);
       return next;
     });
-    persist(removeAssetRequests(localIds), () => {
-      setUndo(null);
-      setRequests((prev) => [...removed, ...prev]);
-    });
+    persist(
+      Promise.all([
+        local.length > 0 ? removeAssetRequests(local.map((r) => r.id)) : null,
+        ...fromDtr.map((r) => saveExternalRequestOverride(r.id, "Deleted")),
+      ]),
+      () => {
+        setUndo(null);
+        setRequests((prev) => [...removed, ...prev]);
+      },
+    );
   }
 
   const pendingDelete = pendingDeleteIds
@@ -623,18 +706,60 @@ export function AssetRequestTable({
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
           {selected.size > 0 && (
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="text-muted-foreground">
                 {selected.size} selected
               </span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setPendingDeleteIds([...selected])}
-              >
-                <Trash2Icon />
-                Delete
-              </Button>
+              {selectedPending.length > 0 && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setConfirming({
+                        request: selectedPending[0],
+                        requests: selectedPending,
+                        action: "approve",
+                      })
+                    }
+                  >
+                    <CheckIcon />
+                    {selectedPending.length === 1
+                      ? "Approve"
+                      : `Approve ${selectedPending.length}`}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setConfirming({
+                        request: selectedPending[0],
+                        requests: selectedPending,
+                        action: "deny",
+                      })
+                    }
+                  >
+                    <XCircleIcon />
+                    {selectedPending.length === 1
+                      ? "Deny"
+                      : `Deny ${selectedPending.length}`}
+                  </Button>
+                </>
+              )}
+              {selectedDeletable.length > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() =>
+                    setPendingDeleteIds(selectedDeletable.map((r) => r.id))
+                  }
+                >
+                  <Trash2Icon />
+                  {selectedDeletable.length === 1
+                    ? "Delete"
+                    : `Delete ${selectedDeletable.length}`}
+                </Button>
+              )}
             </div>
           )}
           <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
@@ -760,7 +885,7 @@ export function AssetRequestTable({
                       <Checkbox
                         aria-label={`Select ${code}`}
                         checked={isSelected}
-                        disabled={fromDtr}
+                        disabled={!canSelectRequest(request)}
                         onCheckedChange={(checked) =>
                           toggleRow(request.id, checked)
                         }
@@ -924,6 +1049,16 @@ export function AssetRequestTable({
                             <ArchiveIcon />
                             Archive
                           </Button>
+                        ) : request.status === "Archived" ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="min-w-27"
+                            onClick={() => setPendingDeleteIds([request.id])}
+                          >
+                            <Trash2Icon />
+                            Delete
+                          </Button>
                         ) : (
                           <Button
                             variant="ghost"
@@ -950,14 +1085,12 @@ export function AssetRequestTable({
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
                             {/* Only what the row's main button doesn't already do. */}
-                            {request.status !== "Archived" && (
-                              <DropdownMenuItem
-                                onClick={() => openView(request)}
-                              >
-                                <EyeIcon />
-                                View details
-                              </DropdownMenuItem>
-                            )}
+                            <DropdownMenuItem
+                              onClick={() => openView(request)}
+                            >
+                              <EyeIcon />
+                              View details
+                            </DropdownMenuItem>
                             {isOpen && !fromDtr && (
                               <DropdownMenuItem
                                 onClick={() => openEdit(request)}
@@ -1024,7 +1157,7 @@ export function AssetRequestTable({
                                 Reopen as pending
                               </DropdownMenuItem>
                             )}
-                            {!fromDtr && (
+                            {!fromDtr && request.status !== "Archived" && (
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -1172,9 +1305,13 @@ export function AssetRequestTable({
         onOpenChange={(next) => !next && setConfirming(null)}
         title={
           confirming?.action === "approve"
-            ? `Approve ${requestCode(confirming.request)}?`
+            ? confirmingBatch
+              ? `Approve ${confirmingCount} requests?`
+              : `Approve ${requestCode(confirming.request)}?`
             : confirming?.action === "deny"
-              ? `${confirming.request.status === "Approved" ? "Cancel" : "Deny"} ${requestCode(confirming.request)}?`
+              ? confirmingBatch
+                ? `Deny ${confirmingCount} requests?`
+                : `${confirming.request.status === "Approved" ? "Cancel" : "Deny"} ${requestCode(confirming.request)}?`
               : confirming?.action === "complete"
                 ? `${confirming.request.source === "dtr" ? "Issue" : "Complete"} ${requestCode(confirming.request)}?`
                 : confirming?.action === "edit"
@@ -1189,9 +1326,13 @@ export function AssetRequestTable({
           !confirming
             ? ""
             : confirming.action === "approve"
-              ? `${confirming.request.quantity > 1 ? `${confirming.request.quantity}× ` : ""}${confirming.request.assetType} for ${confirming.request.requesterName}. It moves to Approved until you ${confirming.request.source === "dtr" ? "issue it" : "mark it completed"}. You can undo this afterward.`
+              ? confirmingBatch
+                ? `These ${confirmingCount} pending requests move to Approved until you issue or complete them. You can undo this afterward.`
+                : `${confirming.request.quantity > 1 ? `${confirming.request.quantity}× ` : ""}${confirming.request.assetType} for ${confirming.request.requesterName}. It moves to Approved until you ${confirming.request.source === "dtr" ? "issue it" : "mark it completed"}. You can undo this afterward.`
               : confirming.action === "deny"
-                ? `The employee will be emailed your reason, and IT will be copied. You can undo the status change afterward.`
+                ? confirmingBatch
+                  ? `Each employee will be emailed the same reason, and IT will be copied. You can undo afterward.`
+                  : `The employee will be emailed your reason, and IT will be copied. You can undo the status change afterward.`
                 : confirming.action === "complete"
                   ? confirming.request.source === "dtr"
                     ? `You'll enter the serial number next. This issues the asset in DTR.`
@@ -1206,7 +1347,9 @@ export function AssetRequestTable({
         }
         confirmLabel={
           confirming?.action === "approve"
-            ? "Approve"
+            ? confirmingBatch
+              ? `Approve ${confirmingCount}`
+              : "Approve"
             : confirming?.action === "deny" || confirming?.action === "complete"
               ? "Continue"
               : confirming?.action === "edit"
@@ -1235,8 +1378,9 @@ export function AssetRequestTable({
         }
         onConfirm={() => {
           if (!confirming) return;
-          if (confirming.action === "approve") approve(confirming.request.id);
-          else if (confirming.action === "deny") setDenying(confirming.request);
+          const targets = confirming.requests ?? [confirming.request];
+          if (confirming.action === "approve") approveMany(targets.map((r) => r.id));
+          else if (confirming.action === "deny") setDenying(targets);
           else if (confirming.action === "complete") setCompleting(confirming.request);
           else if (confirming.action === "edit" && confirming.next) {
             applyEdit(confirming.request, confirming.next);
@@ -1247,19 +1391,36 @@ export function AssetRequestTable({
       />
 
       <RequestNoteDialog
-        request={denying}
+        request={denying?.[0] ?? null}
         open={denying !== null}
         onOpenChange={(next) => !next && setDenying(null)}
-        title={denying?.status === "Approved" ? "Cancel request" : "Deny request"}
+        title={
+          denying && denying.length > 1
+            ? `Deny ${denying.length} requests`
+            : denying?.[0]?.status === "Approved"
+              ? "Cancel request"
+              : "Deny request"
+        }
+        summary={
+          denying && denying.length > 1
+            ? `The same reason is emailed to each of these ${denying.length} employees, and IT is copied.`
+            : undefined
+        }
         label="Reason"
         placeholder="e.g. No stock available; existing laptop still under warranty"
         required
         confirmLabel={
-          denying?.status === "Approved" ? "Cancel request" : "Deny request"
+          denying && denying.length > 1
+            ? `Deny ${denying.length} requests`
+            : denying?.[0]?.status === "Approved"
+              ? "Cancel request"
+              : "Deny request"
         }
         confirmVariant="destructive"
         icon={XCircleIcon}
-        onConfirm={(reason) => denying && deny(denying.id, reason)}
+        onConfirm={(reason) =>
+          denying && denyMany(denying.map((r) => r.id), reason)
+        }
       />
 
       {completing?.source === "dtr" ? (

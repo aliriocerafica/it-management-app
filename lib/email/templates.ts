@@ -109,8 +109,13 @@ export function accountabilityFormEmailHtml(
   )
 }
 
-const itFollowUp =
-  "If you think this action was incorrect, message the IT department on Slack or email it@ardentparalegal.com."
+function firstName(name: string) {
+  return name.trim().split(/\s+/)[0] || name
+}
+
+function deniedAssetLabel(quantity: number, assetType: string) {
+  return quantity > 1 ? `${quantity}× ${assetType}` : assetType
+}
 
 export function assetRequestDeniedEmailHtml(input: {
   name: string
@@ -119,26 +124,20 @@ export function assetRequestDeniedEmailHtml(input: {
   quantity: number
   note: string
 }): string {
-  const asset =
-    input.quantity > 1
-      ? `${input.quantity}× ${escapeHtml(input.assetType)}`
-      : escapeHtml(input.assetType)
+  const asset = escapeHtml(deniedAssetLabel(input.quantity, input.assetType))
   const note = escapeHtml(input.note).replace(/\n/g, "<br>")
   return layout(
-    "Your asset request was denied",
+    "Request denied",
     `
       <p style="margin:0 0 16px;color:#3f3f46;font-size:14px;line-height:1.5;">
-        Hi ${escapeHtml(input.name)}, IT has denied your request ${escapeHtml(input.code)} for ${asset}.
+        Hi ${escapeHtml(firstName(input.name))}, your request for ${asset} was denied.
       </p>
-      <p style="margin:0 0 8px;color:#3f3f46;font-size:14px;line-height:1.5;">
-        Reason from IT:
-      </p>
-      <p style="margin:0 0 16px;padding:12px 14px;background:#fafafa;border:1px solid #e4e4e7;border-radius:8px;color:#18181b;font-size:14px;line-height:1.5;">
+      <p style="margin:0 0 16px;color:#18181b;font-size:14px;line-height:1.5;">
         ${note}
       </p>
-      <p style="margin:0;color:#3f3f46;font-size:14px;line-height:1.5;">
-        If you think this action was incorrect, message the IT department on Slack or email
-        <a href="mailto:it@ardentparalegal.com" style="color:#b42318;">it@ardentparalegal.com</a>.
+      <p style="margin:0;color:#71717a;font-size:12px;line-height:1.5;">
+        Questions? Message IT on Slack or
+        <a href="mailto:it@ardentparalegal.com" style="color:#b42318;">it@ardentparalegal.com</a>
       </p>
     `,
   )
@@ -151,17 +150,13 @@ export function assetRequestDeniedEmailText(input: {
   quantity: number
   note: string
 }): string {
-  const asset =
-    input.quantity > 1 ? `${input.quantity}× ${input.assetType}` : input.assetType
+  const asset = deniedAssetLabel(input.quantity, input.assetType)
   return [
-    "Your asset request was denied",
+    `Hi ${firstName(input.name)}, your request for ${asset} was denied.`,
     "",
-    `Hi ${input.name}, IT has denied your request ${input.code} for ${asset}.`,
-    "",
-    "Reason from IT:",
     input.note,
     "",
-    itFollowUp,
+    "Questions? Message IT on Slack or it@ardentparalegal.com",
   ].join("\n")
 }
 

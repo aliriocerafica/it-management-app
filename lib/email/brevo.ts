@@ -20,8 +20,11 @@ export class EmailSendError extends Error {
 }
 
 function publicEmailError(status: number, brevoMessage: string) {
-  if (status === 401 && /unrecognised IP address/i.test(brevoMessage)) {
-    return "Brevo blocked this server IP. Add it under Security → Authorised IPs, or turn off IP restriction for this API key."
+  if (
+    status === 401 &&
+    /ip address|authori[sz]ed ip|ip restriction/i.test(brevoMessage)
+  ) {
+    return "Brevo blocked this server IP. Open the Verify a new IP email from Brevo and choose Yes, authorize this new IP address. Then deny again so the employee gets the notice."
   }
   if (status === 401) {
     return "Brevo rejected the API key. Check BREVO_API_KEY."

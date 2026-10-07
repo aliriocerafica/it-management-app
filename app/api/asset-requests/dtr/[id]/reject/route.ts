@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
-import { notifyAssetRequestDenied } from "@/lib/asset-request-notify"
+import { withDenialEmail } from "@/lib/asset-request-notify"
 import { saveRequestOverride } from "@/lib/asset-request-repository"
 import { verifySession } from "@/lib/auth/session"
 import {
@@ -41,9 +41,9 @@ export async function POST(
         resolutionNote: note,
       }
     }
-    await notifyAssetRequestDenied(saved)
+    const payload = await withDenialEmail(saved)
     revalidatePath("/dashboard/requests")
-    return NextResponse.json(saved)
+    return NextResponse.json(payload)
   } catch (error) {
     console.error("DTR reject failed", error)
     const message =

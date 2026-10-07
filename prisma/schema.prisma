@@ -219,6 +219,7 @@ enum AssetRequestStatus {
   COMPLETED
   DENIED
   ARCHIVED
+  DELETED
 }
 
 enum AssetRequestPriority {

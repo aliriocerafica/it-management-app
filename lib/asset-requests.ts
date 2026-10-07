@@ -5,8 +5,12 @@ export const requestStatuses = [
   "Completed",
   "Denied",
   "Archived",
+  "Deleted",
 ] as const;
 export type RequestStatus = (typeof requestStatuses)[number];
+export const requestQueueStatuses = requestStatuses.filter(
+  (status): status is Exclude<RequestStatus, "Deleted"> => status !== "Deleted",
+);
 
 export const openRequestStatuses: RequestStatus[] = ["Pending", "Approved"];
 export const archiveableStatuses: RequestStatus[] = ["Completed", "Denied"];
@@ -87,6 +91,10 @@ export const requestStatusStyles: Record<
   },
   Denied: { dot: "bg-red-500", text: "text-red-600 dark:text-red-400" },
   Archived: {
+    dot: "bg-muted-foreground",
+    text: "text-muted-foreground",
+  },
+  Deleted: {
     dot: "bg-muted-foreground",
     text: "text-muted-foreground",
   },

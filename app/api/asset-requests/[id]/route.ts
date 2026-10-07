@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
 import { saveErrorResponse } from "@/lib/api-errors"
-import { notifyAssetRequestDenied } from "@/lib/asset-request-notify"
+import { withDenialEmail } from "@/lib/asset-request-notify"
 import {
   getAssetRequest,
   updateAssetRequest,
@@ -24,11 +24,12 @@ export async function PUT(
   try {
     const previous = await getAssetRequest(id)
     const saved = await updateAssetRequest({ ...body, id })
-    if (saved.status === "Denied" && previous?.status !== "Denied") {
-      await notifyAssetRequestDenied(saved)
-    }
+    const payload =
+      saved.status === "Denied" && previous?.status !== "Denied"
+        ? await withDenialEmail(saved)
+        : saved
     revalidatePath("/dashboard/requests")
-    return NextResponse.json(saved)
+    return NextResponse.json(payload)
   } catch (error) {
     return saveErrorResponse(error)
   }

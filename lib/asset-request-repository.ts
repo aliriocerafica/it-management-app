@@ -17,6 +17,7 @@ const statusFromDb: Record<AssetRequestStatus, RequestStatus> = {
   COMPLETED: "Completed",
   DENIED: "Denied",
   ARCHIVED: "Archived",
+  DELETED: "Deleted",
 }
 
 const statusToDb: Record<RequestStatus, AssetRequestStatus> = {
@@ -25,6 +26,7 @@ const statusToDb: Record<RequestStatus, AssetRequestStatus> = {
   Completed: "COMPLETED",
   Denied: "DENIED",
   Archived: "ARCHIVED",
+  Deleted: "DELETED",
 }
 
 const priorityToDb: Record<RequestPriority, AssetRequestPriority> = {
@@ -172,27 +174,30 @@ export function applyRequestOverrides(
   requests: AssetRequest[],
   overrides: Map<string, RequestOverride>,
 ): AssetRequest[] {
-  return requests.map((request) => {
+  return requests.flatMap((request) => {
     const override = overrides.get(request.id)
-    if (!override) return request
+    if (override?.status === "Deleted") return []
+    if (!override) return [request]
     if (request.status === "Completed" && override.status !== "Archived") {
-      return request
+      return [request]
     }
     const approved =
       override.status === "Approved" ||
       override.status === "Completed" ||
       override.status === "Archived"
-    return {
-      ...request,
-      status: override.status,
-      resolutionNote: override.note ?? request.resolutionNote,
-      approvedAt: approved
-        ? request.approvedAt ?? new Date().toISOString()
-        : request.approvedAt,
-      cancelledAt:
-        override.status === "Denied"
-          ? request.cancelledAt ?? new Date().toISOString()
-          : request.cancelledAt,
-    }
+    return [
+      {
+        ...request,
+        status: override.status,
+        resolutionNote: override.note ?? request.resolutionNote,
+        approvedAt: approved
+          ? request.approvedAt ?? new Date().toISOString()
+          : request.approvedAt,
+        cancelledAt:
+          override.status === "Denied"
+            ? request.cancelledAt ?? new Date().toISOString()
+            : request.cancelledAt,
+      },
+    ]
   })
 }

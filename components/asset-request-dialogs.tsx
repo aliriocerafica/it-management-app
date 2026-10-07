@@ -336,6 +336,7 @@ export function RequestNoteDialog({
   open,
   onOpenChange,
   title,
+  summary,
   label,
   placeholder,
   required,
@@ -348,6 +349,7 @@ export function RequestNoteDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  summary?: string;
   label: string;
   placeholder: string;
   required?: boolean;
@@ -363,6 +365,7 @@ export function RequestNoteDialog({
           <NoteForm
             request={request}
             title={title}
+            summary={summary}
             label={label}
             placeholder={placeholder}
             required={required}
@@ -380,6 +383,7 @@ export function RequestNoteDialog({
 function NoteForm({
   request,
   title,
+  summary,
   label,
   placeholder,
   required,
@@ -390,6 +394,7 @@ function NoteForm({
 }: {
   request: AssetRequest;
   title: string;
+  summary?: string;
   label: string;
   placeholder: string;
   required?: boolean;
@@ -415,9 +420,13 @@ function NoteForm({
           {title}
         </DialogTitle>
         <DialogDescription>
-          <span className="font-mono text-xs">{requestCode(request)}</span> ·{" "}
-          {request.quantity > 1 && `${request.quantity}× `}
-          {request.assetType} for {request.requesterName}
+          {summary ?? (
+            <>
+              <span className="font-mono text-xs">{requestCode(request)}</span>{" "}
+              · {request.quantity > 1 && `${request.quantity}× `}
+              {request.assetType} for {request.requesterName}
+            </>
+          )}
         </DialogDescription>
       </DialogHeader>
 

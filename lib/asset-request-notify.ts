@@ -1,6 +1,6 @@
 import type { AssetRequest } from "@/lib/asset-requests"
 import { requestCode } from "@/lib/asset-requests"
-import { sendEmail } from "@/lib/email/brevo"
+import { EmailSendError, sendEmail } from "@/lib/email/brevo"
 import {
   assetRequestDeniedEmailHtml,
   assetRequestDeniedEmailText,
@@ -43,10 +43,10 @@ export async function notifyAssetRequestDenied(request: AssetRequest) {
 
   const to = await employeeEmailFor(request)
   if (!to) {
-    console.warn(
-      `No HRIS email for denied request ${requestCode(request)}; the note was saved but not sent.`,
+    throw new EmailSendError(
+      `Request denied, but no email was found for ${request.requesterName} so the notice was not sent.`,
+      422,
     )
-    return
   }
 
   const details = {
@@ -57,17 +57,37 @@ export async function notifyAssetRequestDenied(request: AssetRequest) {
     note,
   }
 
+  const itEmails = await listActiveItEmails()
+  await sendEmail({
+    to,
+    cc: itEmails,
+    replyTo: itInbox,
+    subject: `Request denied: ${
+      details.quantity > 1
+        ? `${details.quantity}× ${details.assetType}`
+        : details.assetType
+    }`,
+    htmlContent: assetRequestDeniedEmailHtml(details),
+    textContent: assetRequestDeniedEmailText(details),
+  })
+}
+
+export type AssetRequestSave = AssetRequest & { emailWarning?: string }
+
+export async function withDenialEmail(
+  request: AssetRequest,
+): Promise<AssetRequestSave> {
   try {
-    const itEmails = await listActiveItEmails()
-    await sendEmail({
-      to,
-      cc: itEmails,
-      replyTo: itInbox,
-      subject: `${details.code}: your asset request was denied`,
-      htmlContent: assetRequestDeniedEmailHtml(details),
-      textContent: assetRequestDeniedEmailText(details),
-    })
+    await notifyAssetRequestDenied(request)
+    return request
   } catch (error) {
     console.error("[email:error] Denial email failed", error)
+    return {
+      ...request,
+      emailWarning:
+        error instanceof EmailSendError
+          ? error.message
+          : "Request denied, but the email could not be sent. Authorize this app's IP in Brevo, then deny again, or notify the employee another way.",
+    }
   }
 }
