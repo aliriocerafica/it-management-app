@@ -8,6 +8,7 @@ import type {
   AssetRequestStatus,
   AssetRequest as AssetRequestRow,
 } from "@/lib/generated/prisma"
+import { listDtrAssetRequests } from "@/lib/dtr"
 import { fromIsoDate, toIsoDate } from "@/lib/inventory-map"
 import { prisma } from "@/lib/prisma"
 
@@ -200,4 +201,22 @@ export function applyRequestOverrides(
       },
     ]
   })
+}
+
+export async function countPendingAssetRequests(includeDtr = true) {
+  const [local, overrides] = await Promise.all([
+    listAssetRequests(),
+    listRequestOverrides(),
+  ])
+  let fromDtr: AssetRequest[] = []
+  if (includeDtr) {
+    try {
+      fromDtr = await listDtrAssetRequests({ includeEmails: false })
+    } catch (error) {
+      console.error("Failed to count DTR asset requests", error)
+    }
+  }
+  return applyRequestOverrides([...local, ...fromDtr], overrides).filter(
+    (request) => request.status === "Pending",
+  ).length
 }

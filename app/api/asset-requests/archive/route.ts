@@ -1,12 +1,15 @@
 import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
+import { withStatusEmail } from "@/lib/asset-request-notify"
 import {
   clearRequestOverride,
+  getAssetRequest,
   saveRequestOverride,
 } from "@/lib/asset-request-repository"
 import { requestStatuses, type RequestStatus } from "@/lib/asset-requests"
 import { verifySession } from "@/lib/auth/session"
+import { getDtrAssetRequest } from "@/lib/dtr"
 
 export const dynamic = "force-dynamic"
 
@@ -32,6 +35,19 @@ export async function POST(request: Request) {
   }
 
   await saveRequestOverride(id, status, body?.note)
+  const current =
+    (await getAssetRequest(id)) ??
+    (await getDtrAssetRequest(id).catch(() => null))
+  if (current) {
+    await withStatusEmail(
+      {
+        ...current,
+        status,
+        resolutionNote: body?.note?.trim() || current.resolutionNote,
+      },
+      current.status,
+    )
+  }
   revalidatePath("/dashboard/requests")
   return NextResponse.json({ ok: true })
 }

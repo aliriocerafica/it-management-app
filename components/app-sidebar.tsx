@@ -46,6 +46,7 @@ import {
   SidebarHeader,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { fetchPendingRequestCount } from "@/app/actions/pending-request-count"
 import { fetchVacantCounts } from "@/app/actions/vacant-counts"
 import { accessoryConfigs, lowerNoun } from "@/lib/accessories"
 import { INVENTORY_CHANGED } from "@/lib/inventory-api"
@@ -58,6 +59,7 @@ const overviewItems: {
   href: string
   icon: LucideIcon | ComponentType<{ className?: string }>
   vacantKey?: keyof VacantCounts
+  pendingBadge?: boolean
   badge?: string
   action?: boolean
 }[] = [
@@ -124,6 +126,7 @@ const overviewItems: {
     title: "IT Asset Requests",
     href: "/dashboard/requests",
     icon: ClipboardListIcon,
+    pendingBadge: true,
   },
   { title: "Users", href: "/dashboard/users", icon: UsersIcon },
   { title: "Settings", href: "/dashboard/settings", icon: SettingsIcon },
@@ -137,9 +140,11 @@ function vacantNoun(key: keyof VacantCounts) {
 export function AppSidebar({
   user,
   vacantCounts: initialVacantCounts,
+  pendingRequestCount: initialPendingRequestCount,
 }: {
   user: SessionUser
   vacantCounts: VacantCounts
+  pendingRequestCount: number
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -148,17 +153,30 @@ export function AppSidebar({
   const initial = user.name.trim()[0]?.toUpperCase() ?? "?"
   const [search, setSearch] = useState("")
   const [vacantCounts, setVacantCounts] = useState(initialVacantCounts)
+  const [pendingRequestCount, setPendingRequestCount] = useState(
+    initialPendingRequestCount,
+  )
 
   useEffect(() => {
     setVacantCounts(initialVacantCounts)
   }, [initialVacantCounts])
 
   useEffect(() => {
+    setPendingRequestCount(initialPendingRequestCount)
+  }, [initialPendingRequestCount])
+
+  useEffect(() => {
     let cancelled = false
 
     async function refresh() {
-      const counts = await fetchVacantCounts()
-      if (!cancelled) setVacantCounts(counts)
+      const [counts, pending] = await Promise.all([
+        fetchVacantCounts(),
+        fetchPendingRequestCount(),
+      ])
+      if (!cancelled) {
+        setVacantCounts(counts)
+        setPendingRequestCount(pending)
+      }
     }
 
     void refresh()
@@ -171,11 +189,16 @@ export function AppSidebar({
 
   const navItems = useMemo(() => {
     return overviewItems.map((item) => {
+      if (item.pendingBadge) {
+        return pendingRequestCount > 0
+          ? { ...item, badge: String(pendingRequestCount) }
+          : item
+      }
       if (!item.vacantKey) return item
       const count = vacantCounts[item.vacantKey]
       return count > 0 ? { ...item, badge: String(count) } : item
     })
-  }, [vacantCounts])
+  }, [vacantCounts, pendingRequestCount])
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -299,7 +322,7 @@ export function AppSidebar({
                     title={
                       collapsed
                         ? item.badge
-                          ? `${item.title} · ${item.badge} vacant`
+                          ? `${item.title} · ${item.badge} ${item.pendingBadge ? "pending" : "vacant"}`
                           : item.title
                         : undefined
                     }
@@ -322,9 +345,11 @@ export function AppSidebar({
                     {item.badge && (
                       <span
                         aria-label={
-                          item.vacantKey
-                            ? `${item.badge} vacant ${vacantNoun(item.vacantKey)}`
-                            : undefined
+                          item.pendingBadge
+                            ? `${item.badge} pending requests`
+                            : item.vacantKey
+                              ? `${item.badge} vacant ${vacantNoun(item.vacantKey)}`
+                              : undefined
                         }
                         className="flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-semibold text-white tabular-nums group-data-[collapsible=icon]:absolute group-data-[collapsible=icon]:top-0.5 group-data-[collapsible=icon]:right-1 group-data-[collapsible=icon]:h-4 group-data-[collapsible=icon]:min-w-4 group-data-[collapsible=icon]:px-0.5 group-data-[collapsible=icon]:text-[9px]"
                       >

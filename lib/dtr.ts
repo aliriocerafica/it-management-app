@@ -245,12 +245,17 @@ function withDirectoryEmail(
   return email ? { ...request, requesterEmail: email } : request
 }
 
-export async function listDtrAssetRequests(): Promise<AssetRequest[]> {
+export async function listDtrAssetRequests(options?: {
+  includeEmails?: boolean
+}): Promise<AssetRequest[]> {
+  const includeEmails = options?.includeEmails !== false
   const [rows, emails] = await Promise.all([
     dtrFetch<DtrAssetRequest[]>(
       "/api/internal/assets/requests?status=ALL&limit=500",
     ),
-    listDtrEmployeeEmails(),
+    includeEmails
+      ? listDtrEmployeeEmails()
+      : Promise.resolve(new Map<string, string>()),
   ])
   return (Array.isArray(rows) ? rows : []).map((row) =>
     withDirectoryEmail(dtrRequestToAssetRequest(row), emails),

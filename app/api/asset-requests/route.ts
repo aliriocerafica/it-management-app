@@ -10,6 +10,7 @@ import {
 } from "@/lib/asset-request-repository"
 import type { AssetRequest } from "@/lib/asset-requests"
 import { saveErrorResponse } from "@/lib/api-errors"
+import { withRequestEmail } from "@/lib/asset-request-notify"
 import { verifySession } from "@/lib/auth/session"
 
 export async function GET() {
@@ -32,8 +33,9 @@ export async function POST(request: Request) {
   }
   try {
     const saved = await createAssetRequest(body)
+    const payload = await withRequestEmail(saved, "pending")
     revalidatePath("/dashboard/requests")
-    return NextResponse.json(saved)
+    return NextResponse.json(payload)
   } catch (error) {
     return saveErrorResponse(error)
   }

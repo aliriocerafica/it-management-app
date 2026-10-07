@@ -127,51 +127,59 @@ export async function listAssignedAssets(handler: string) {
 }
 
 export async function createAssetRequest(request: AssetRequest) {
-  return queued([request.id], async () =>
-    parse<AssetRequest>(
+  return queued([request.id], async () => {
+    const saved = await parse<AssetRequest>(
       await fetch("/api/asset-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function saveAssetRequest(request: AssetRequest) {
-  return queued([request.id], async () =>
-    parse<AssetRequest>(
+  return queued([request.id], async () => {
+    const saved = await parse<AssetRequest>(
       await fetch(`/api/asset-requests/${request.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function approveDtrAsset(id: string, note?: string) {
-  return queued([id], async () =>
-    parse<AssetRequest>(
+  return queued([id], async () => {
+    const saved = await parse<AssetRequest>(
       await fetch(`/api/asset-requests/dtr/${encodeURIComponent(id)}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(note?.trim() ? { note: note.trim() } : {}),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function rejectDtrAsset(id: string, note: string) {
-  return queued([id], async () =>
-    parse<AssetRequest>(
+  return queued([id], async () => {
+    const saved = await parse<AssetRequest>(
       await fetch(`/api/asset-requests/dtr/${encodeURIComponent(id)}/reject`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note }),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function saveExternalRequestOverride(
@@ -179,15 +187,17 @@ export async function saveExternalRequestOverride(
   status: RequestStatus,
   note?: string | null,
 ) {
-  return queued([id], async () =>
-    parse<{ ok: boolean }>(
+  return queued([id], async () => {
+    const saved = await parse<{ ok: boolean }>(
       await fetch("/api/asset-requests/archive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, status, note }),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function archiveExternalAssetRequest(id: string) {
@@ -195,52 +205,60 @@ export async function archiveExternalAssetRequest(id: string) {
 }
 
 export async function unarchiveExternalAssetRequest(id: string) {
-  return queued([id], async () =>
-    parse<{ ok: boolean }>(
+  return queued([id], async () => {
+    const saved = await parse<{ ok: boolean }>(
       await fetch("/api/asset-requests/archive", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function issueDtrAsset(id: string, input: {
   serialNumber: string
   conditionIssued: "NEW" | "GOOD" | "FAIR" | "POOR"
 }) {
-  return queued([id], async () =>
-    parse<AssetRequest>(
+  return queued([id], async () => {
+    const saved = await parse<AssetRequest>(
       await fetch(`/api/asset-requests/dtr/${encodeURIComponent(id)}/issue`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function returnDtrAsset(id: string, returnCondition: "NEW" | "GOOD" | "FAIR" | "POOR" | "DAMAGED") {
-  return queued([id], async () =>
-    parse<AssetRequest>(
+  return queued([id], async () => {
+    const saved = await parse<AssetRequest>(
       await fetch(`/api/asset-requests/dtr/${encodeURIComponent(id)}/return`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ returnCondition }),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function removeAssetRequests(ids: string[]) {
-  return queued(ids, async () =>
-    parse<{ ok: boolean }>(
+  return queued(ids, async () => {
+    const saved = await parse<{ ok: boolean }>(
       await fetch("/api/asset-requests", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }

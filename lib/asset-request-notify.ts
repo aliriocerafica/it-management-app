@@ -1,15 +1,16 @@
 import type { AssetRequest } from "@/lib/asset-requests"
-import { requestCode } from "@/lib/asset-requests"
 import { EmailSendError, sendEmail } from "@/lib/email/brevo"
 import {
-  assetRequestDeniedEmailHtml,
-  assetRequestDeniedEmailText,
+  assetRequestStatusEmail,
+  type RequestEmailKind,
 } from "@/lib/email/templates"
 import { lookupDtrEmployeeEmail } from "@/lib/dtr"
 import { fetchHrisEmployees } from "@/lib/hris"
 import { listActiveItEmails } from "@/lib/user-repository"
 
 const itInbox = "it@ardentparalegal.com"
+
+export type { RequestEmailKind }
 
 async function employeeEmailFor(request: AssetRequest): Promise<string | null> {
   const stored = request.requesterEmail?.trim()
@@ -32,62 +33,86 @@ async function employeeEmailFor(request: AssetRequest): Promise<string | null> {
     )
     return byId?.email.trim() || byName?.email.trim() || null
   } catch (error) {
-    console.warn("Couldn't look up employee email for denied request", error)
+    console.warn("Couldn't look up employee email for request notice", error)
     return null
   }
 }
 
-export async function notifyAssetRequestDenied(request: AssetRequest) {
-  const note = request.resolutionNote?.trim()
-  if (!note) return
+function emailKindForStatus(
+  status: AssetRequest["status"],
+): RequestEmailKind | null {
+  if (status === "Pending") return "pending"
+  if (status === "Approved") return "approved"
+  if (status === "Completed") return "completed"
+  if (status === "Denied") return "denied"
+  return null
+}
+
+export async function notifyAssetRequest(
+  request: AssetRequest,
+  kind: RequestEmailKind,
+) {
+  if (kind === "denied" && !request.resolutionNote?.trim()) return
 
   const to = await employeeEmailFor(request)
   if (!to) {
     throw new EmailSendError(
-      `Request denied, but no email was found for ${request.requesterName} so the notice was not sent.`,
+      `The request was updated, but no email was found for ${request.requesterName} so the notice was not sent.`,
       422,
     )
   }
 
-  const details = {
+  const email = assetRequestStatusEmail(kind, {
     name: request.requesterName,
-    code: requestCode(request),
     assetType: request.assetType,
     quantity: request.quantity,
-    note,
-  }
+    note:
+      kind === "pending"
+        ? request.reason
+        : request.resolutionNote,
+  })
 
   const itEmails = await listActiveItEmails()
   await sendEmail({
     to,
     cc: itEmails,
     replyTo: itInbox,
-    subject: `Request denied: ${
-      details.quantity > 1
-        ? `${details.quantity}× ${details.assetType}`
-        : details.assetType
-    }`,
-    htmlContent: assetRequestDeniedEmailHtml(details),
-    textContent: assetRequestDeniedEmailText(details),
+    subject: email.subject,
+    htmlContent: email.html,
+    textContent: email.text,
   })
 }
 
 export type AssetRequestSave = AssetRequest & { emailWarning?: string }
 
-export async function withDenialEmail(
+export async function withRequestEmail(
   request: AssetRequest,
+  kind: RequestEmailKind,
 ): Promise<AssetRequestSave> {
   try {
-    await notifyAssetRequestDenied(request)
+    await notifyAssetRequest(request, kind)
     return request
   } catch (error) {
-    console.error("[email:error] Denial email failed", error)
+    console.error(`[email:error] ${kind} email failed`, error)
     return {
       ...request,
       emailWarning:
         error instanceof EmailSendError
           ? error.message
-          : "Request denied, but the email could not be sent. Authorize this app's IP in Brevo, then deny again, or notify the employee another way.",
+          : "The request was updated, but the email could not be sent. Authorize this app's IP in Brevo, then try again, or notify the employee another way.",
     }
   }
+}
+
+export async function withStatusEmail(
+  request: AssetRequest,
+  previousStatus?: AssetRequest["status"] | null,
+): Promise<AssetRequestSave> {
+  const kind = emailKindForStatus(request.status)
+  if (!kind || request.status === previousStatus) return request
+  return withRequestEmail(request, kind)
+}
+
+export async function withDenialEmail(request: AssetRequest) {
+  return withRequestEmail(request, "denied")
 }

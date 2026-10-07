@@ -5,6 +5,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { countPendingAssetRequests } from "@/lib/asset-request-repository"
 import { requireSession } from "@/lib/auth/session"
 import { getVacantCounts } from "@/lib/inventory-repository"
 
@@ -13,9 +14,10 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const [user, vacantCounts] = await Promise.all([
+  const [user, vacantCounts, pendingRequestCount] = await Promise.all([
     requireSession(),
     getVacantCounts(),
+    countPendingAssetRequests(false),
   ])
 
   return (
@@ -24,7 +26,11 @@ export default async function DashboardLayout({
         className="h-svh min-h-0 overflow-hidden"
         style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}
       >
-        <AppSidebar user={user} vacantCounts={vacantCounts} />
+        <AppSidebar
+          user={user}
+          vacantCounts={vacantCounts}
+          pendingRequestCount={pendingRequestCount}
+        />
         <SidebarInset className="min-h-0 overflow-auto">
           <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-4 md:hidden">
             <SidebarTrigger />

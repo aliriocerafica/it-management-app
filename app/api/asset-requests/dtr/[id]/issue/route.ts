@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
+import { withRequestEmail } from "@/lib/asset-request-notify"
 import { verifySession } from "@/lib/auth/session"
 import {
   dtrIssueConditions,
@@ -39,8 +40,16 @@ export async function POST(
       serialNumber,
       conditionIssued: conditionIssued as DtrIssueCondition,
     })
+    const payload = await withRequestEmail(
+      {
+        ...saved,
+        resolutionNote:
+          saved.resolutionNote ?? `Issued ${serialNumber}.`,
+      },
+      "completed",
+    )
     revalidatePath("/dashboard/requests")
-    return NextResponse.json(saved)
+    return NextResponse.json(payload)
   } catch (error) {
     console.error("DTR issue failed", error)
     const message = error instanceof Error ? error.message : "Couldn't issue this asset in DTR."

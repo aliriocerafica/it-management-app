@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
+import { withRequestEmail } from "@/lib/asset-request-notify"
 import { saveRequestOverride } from "@/lib/asset-request-repository"
 import { verifySession } from "@/lib/auth/session"
 import {
@@ -37,8 +38,9 @@ export async function POST(
         resolutionNote: note || null,
       }
     }
+    const payload = await withRequestEmail(saved, "approved")
     revalidatePath("/dashboard/requests")
-    return NextResponse.json(saved)
+    return NextResponse.json(payload)
   } catch (error) {
     console.error("DTR approve failed", error)
     const message =
