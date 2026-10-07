@@ -119,30 +119,46 @@ function assetLabel(quantity: number, assetType: string) {
 
 export type RequestEmailKind = "pending" | "approved" | "denied" | "completed"
 
+function lordIcon(src: string, alt: string) {
+  return `<img src="${src}" width="72" height="72" alt="${escapeHtml(alt)}" style="display:block;margin:0 auto;border:0;width:72px;height:72px;" />`
+}
+
 const requestEmailCopy: Record<
   RequestEmailKind,
   { icon: string; title: string; subject: string; subtitle: string }
 > = {
   pending: {
-    icon: "&#8943;",
+    icon: lordIcon(
+      "https://media.lordicon.com/icons/system/outline/145-mail.gif",
+      "Request received",
+    ),
     title: "Request received",
     subject: "Request received",
     subtitle: "we received your request for",
   },
   approved: {
-    icon: "&#10003;",
+    icon: lordIcon(
+      "https://media.lordicon.com/icons/system/outline/24-check-circle.gif",
+      "Request approved",
+    ),
     title: "Request approved",
     subject: "Request approved",
     subtitle: "your request for",
   },
   completed: {
-    icon: "&#10003;",
+    icon: lordIcon(
+      "https://media.lordicon.com/icons/system/outline/24-check-circle.gif",
+      "Request completed",
+    ),
     title: "Request completed",
     subject: "Request completed",
     subtitle: "your request for",
   },
   denied: {
-    icon: "&#10005;",
+    icon: lordIcon(
+      "https://media.lordicon.com/icons/system/outline/25-cross-circle.gif",
+      "Request denied",
+    ),
     title: "Request denied",
     subject: "Request denied",
     subtitle: "your request for",
@@ -171,20 +187,7 @@ function simpleEmail({
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:440px;background:#ffffff;">
         <tr>
           <td align="center" style="padding:48px 40px 40px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
-              <tr>
-                <td width="8" height="8" bgcolor="#e11d2e" style="border-radius:4px;font-size:0;line-height:8px;">&nbsp;</td>
-                <td style="padding-left:8px;font-size:13px;font-weight:600;color:#111111;letter-spacing:0.01em;">Ardent</td>
-              </tr>
-            </table>
-            <div style="height:36px;line-height:36px;font-size:0;">&nbsp;</div>
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
-              <tr>
-                <td width="56" height="56" align="center" valign="middle" style="border:1.5px solid #111111;border-radius:28px;font-size:20px;color:#111111;line-height:56px;">
-                  ${icon}
-                </td>
-              </tr>
-            </table>
+            ${icon}
             <div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>
             <p style="margin:0 0 8px;font-size:26px;line-height:1.25;font-weight:700;color:#111111;">
               ${title}
@@ -209,8 +212,8 @@ function simpleEmail({
                 ? `<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td align="center" bgcolor="#e8f6e8" style="background:#e8f6e8;border-radius:8px;">
-                  <a href="${escapeHtml(button.href)}" style="display:block;padding:14px 20px;font-size:14px;font-weight:600;color:#111111;text-decoration:none;">
+                <td align="center" bgcolor="#111111" style="background:#111111;border-radius:8px;">
+                  <a href="${escapeHtml(button.href)}" style="display:block;padding:14px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
                     ${escapeHtml(button.label)}
                   </a>
                 </td>
@@ -221,6 +224,9 @@ function simpleEmail({
             <div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>
             <p style="margin:0;font-size:12px;line-height:1.5;color:#9a9a9a;">
               ${footer}
+            </p>
+            <p style="margin:16px 0 0;font-size:11px;line-height:1.5;color:#b0b0b0;">
+              <a href="https://lordicon.com/" style="color:#b0b0b0;text-decoration:none;">Animated icons by Lordicon.com</a>
             </p>
           </td>
         </tr>
