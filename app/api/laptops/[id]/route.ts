@@ -19,6 +19,7 @@ export async function PUT(
   const laptop = (await request.json()) as Laptop
   try {
     const saved = await upsertLaptop({ ...laptop, id })
+    revalidatePath("/dashboard", "layout")
     revalidatePath("/dashboard")
     revalidatePath("/dashboard/laptops")
     revalidatePath("/dashboard/analytics")

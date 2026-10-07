@@ -4,6 +4,7 @@ import {
   CalendarIcon,
   CpuIcon,
   LaptopIcon,
+  MemoryStickIcon,
   PlugIcon,
   HistoryIcon,
   UserIcon,
@@ -20,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { type Accessory } from "@/lib/accessories";
 import {
   formatAge,
   formatSpan,
@@ -248,11 +250,13 @@ function TimelineStep({
 
 export function LaptopDetailsDialog({
   laptop,
+  ramModules = [],
   open,
   onOpenChange,
   today,
 }: {
   laptop: Laptop | null;
+  ramModules?: Accessory[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   today: Date | null;
@@ -260,7 +264,13 @@ export function LaptopDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-5xl">
-        {laptop && <LaptopDetails laptop={laptop} today={today} />}
+        {laptop && (
+          <LaptopDetails
+            laptop={laptop}
+            ramModules={ramModules}
+            today={today}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -268,9 +278,11 @@ export function LaptopDetailsDialog({
 
 function LaptopDetails({
   laptop,
+  ramModules,
   today,
 }: {
   laptop: Laptop;
+  ramModules: Accessory[];
   today: Date | null;
 }) {
   const status = statusStyles[laptop.status];
@@ -360,6 +372,16 @@ function LaptopDetails({
             <Detail label="Storage">{laptop.storage}</Detail>
             <Detail label="OS">{laptop.os}</Detail>
           </Section>
+
+          {ramModules.length > 0 && (
+            <Section title="Installed RAM" icon={MemoryStickIcon}>
+              {ramModules.map((item) => (
+                <Detail key={item.id} label={item.assetTag} mono>
+                  {item.specs.capacity} {item.specs.type}
+                </Detail>
+              ))}
+            </Section>
+          )}
         </div>
 
         <div className="flex flex-col gap-4">

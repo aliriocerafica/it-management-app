@@ -16,7 +16,7 @@ import { encryptSecret } from "@/lib/crypto"
 import { employees } from "@/lib/employees"
 import { fetchHrisEmployees } from "@/lib/hris"
 import type { Laptop } from "@/lib/laptops"
-import type { InventorySummary, StatusCounts } from "@/lib/inventory-map"
+import type { InventorySummary, StatusCounts, VacantCounts } from "@/lib/inventory-map"
 import type { Prisma } from "@/lib/generated/prisma"
 import { prisma } from "@/lib/prisma"
 import { adjustRam, ramChanges, withInstallState } from "@/lib/ram"
@@ -114,6 +114,32 @@ export async function getInventorySummary(): Promise<InventorySummary> {
     laptops: countsFromGroups(laptopGroups),
     ...accessories,
   }
+}
+
+export async function getVacantCounts(): Promise<VacantCounts> {
+  const [laptopCount, accessoryRows] = await Promise.all([
+    prisma.laptop.count({ where: { status: "VACANT" } }),
+    prisma.accessory.groupBy({
+      by: ["kind"],
+      where: { status: "VACANT" },
+      _count: { _all: true },
+    }),
+  ])
+
+  const counts: VacantCounts = {
+    laptops: laptopCount,
+    headset: 0,
+    mouse: 0,
+    monitor: 0,
+    bag: 0,
+    battery: 0,
+    keyboard: 0,
+    ram: 0,
+  }
+  for (const row of accessoryRows) {
+    counts[kindFromDb[row.kind]] = row._count._all
+  }
+  return counts
 }
 
 // Handlers are stored by name; this links each name to its HRIS employee

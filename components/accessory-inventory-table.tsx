@@ -109,7 +109,9 @@ import {
 } from "@/lib/laptops";
 import {
   adjustRam,
+  installRamInLaptop,
   parseGb,
+  removeRamFromLaptop,
   toRamHost,
   withInstallState,
   type RamHost,
@@ -596,53 +598,24 @@ export function AccessoryInventoryTable({
   // RAM's version of assigning: it goes into a laptop, not to a person.
   function installItem(id: string, host: RamHost, note: string) {
     const todayIso = isoToday();
-    updateItem(id, (item) => ({
-      ...item,
-      laptopId: host.id,
-      handler: null,
-      department: null,
-      status: "In use",
-      history: [
-        ...item.history.map((entry) =>
-          entry.to === null ? { ...entry, to: todayIso } : entry,
-        ),
-        {
-          handler: null,
-          from: todayIso,
-          to: null,
-          note: [
-            `Installed in ${host.assetTag} (${host.brand} ${host.model})`,
-            note,
-          ]
-            .filter(Boolean)
-            .join(": "),
-        },
-      ],
-    }), (item) => `Installed ${item.assetTag} in ${host.assetTag}`);
+    updateItem(
+      id,
+      (item) => installRamInLaptop(item, host, note, todayIso),
+      (item) => `Installed ${item.assetTag} in ${host.assetTag}`,
+    );
     setInstallOpen(false);
   }
 
   function removeFromLaptop(id: string) {
     const todayIso = isoToday();
-    updateItem(id, (item) => {
-      const host = item.laptopId ? hostById.get(item.laptopId) : undefined;
-      return {
-        ...item,
-        laptopId: null,
-        status: "Vacant",
-        history: [
-          ...item.history.map((entry) =>
-            entry.to === null ? { ...entry, to: todayIso } : entry,
-          ),
-          {
-            handler: null,
-            from: todayIso,
-            to: null,
-            note: `Removed from ${host?.assetTag ?? "its laptop"}, back in stock`,
-          },
-        ],
-      };
-    }, (item) => `Removed ${item.assetTag} from its laptop`);
+    updateItem(
+      id,
+      (item) => {
+        const host = item.laptopId ? hostById.get(item.laptopId) : undefined;
+        return removeRamFromLaptop(item, host, todayIso);
+      },
+      (item) => `Removed ${item.assetTag} from its laptop`,
+    );
   }
 
   function deleteItems(ids: string[]) {

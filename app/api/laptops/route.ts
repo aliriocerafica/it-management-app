@@ -13,6 +13,7 @@ import { saveErrorResponse } from "@/lib/api-errors"
 import { verifySession } from "@/lib/auth/session"
 
 function refreshInventory() {
+  revalidatePath("/dashboard", "layout")
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/laptops")
   revalidatePath("/dashboard/analytics")

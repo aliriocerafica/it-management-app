@@ -3,6 +3,13 @@ import type { Accessory } from "@/lib/accessories"
 import type { Laptop } from "@/lib/laptops"
 import { queued } from "@/lib/save-queue"
 
+export const INVENTORY_CHANGED = "inventory-changed"
+
+function notifyInventoryChanged() {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new Event(INVENTORY_CHANGED))
+}
+
 async function parse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let message = `Couldn't save to the database (error ${response.status}).`
@@ -26,75 +33,87 @@ export function errorMessage(error: unknown) {
 }
 
 export async function saveLaptop(laptop: Laptop) {
-  return queued([laptop.id], async () =>
-    parse<Laptop>(
+  return queued([laptop.id], async () => {
+    const saved = await parse<Laptop>(
       await fetch(`/api/laptops/${laptop.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(laptop),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function createLaptop(laptop: Laptop) {
-  return queued([laptop.id], async () =>
-    parse<Laptop>(
+  return queued([laptop.id], async () => {
+    const saved = await parse<Laptop>(
       await fetch("/api/laptops", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(laptop),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function removeLaptops(ids: string[]) {
-  return queued(ids, async () =>
-    parse<{ ok: boolean }>(
+  return queued(ids, async () => {
+    const result = await parse<{ ok: boolean }>(
       await fetch("/api/laptops", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return result
+  })
 }
 
 export async function saveAccessory(item: Accessory) {
-  return queued([item.id], async () =>
-    parse<Accessory>(
+  return queued([item.id], async () => {
+    const saved = await parse<Accessory>(
       await fetch(`/api/accessories/${item.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(item),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function createAccessory(item: Accessory) {
-  return queued([item.id], async () =>
-    parse<Accessory>(
+  return queued([item.id], async () => {
+    const saved = await parse<Accessory>(
       await fetch("/api/accessories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(item),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return saved
+  })
 }
 
 export async function removeAccessories(ids: string[]) {
-  return queued(ids, async () =>
-    parse<{ ok: boolean }>(
+  return queued(ids, async () => {
+    const result = await parse<{ ok: boolean }>(
       await fetch("/api/accessories", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
       }),
-    ),
-  )
+    )
+    notifyInventoryChanged()
+    return result
+  })
 }
 
 export async function fetchLaptops() {

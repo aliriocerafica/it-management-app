@@ -17,6 +17,7 @@ import {
   HourglassIcon,
   LaptopIcon,
   Loader2Icon,
+  MemoryStickIcon,
   PaletteIcon,
   PencilIcon,
   SearchIcon,
@@ -59,6 +60,7 @@ import {
 } from "@/components/return-to-stock-dialog";
 import { SendToRepairDialog } from "@/components/send-to-repair-dialog";
 import { LaptopDetailsDialog } from "@/components/laptop-details-dialog";
+import { ManageLaptopRamDialog } from "@/components/manage-laptop-ram-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -88,7 +90,16 @@ import {
 } from "@/lib/laptops";
 import { usePendingSaves } from "@/lib/save-queue";
 import { useToday } from "@/lib/use-today";
+import { type Accessory } from "@/lib/accessories";
 import { type Employee } from "@/lib/employees";
+import {
+  adjustRam,
+  installRamInLaptop,
+  parseGb,
+  ramModulesInLaptop,
+  removeRamFromLaptop,
+  toRamHost,
+} from "@/lib/ram";
 import { cn } from "@/lib/utils";
 
 type Tab = "All" | LaptopStatus;
@@ -256,11 +267,14 @@ export function FilterMenu<T extends string>({
 
 export function LaptopInventoryTable({
   initialData,
+  ramModules: initialRamModules = [],
 }: {
   initialData: Laptop[];
+  ramModules?: Accessory[];
 }) {
   const today = useToday();
   const [laptops, setLaptops] = useState(initialData);
+  const [ramModules, setRamModules] = useState(initialRamModules);
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>("All");
@@ -290,6 +304,9 @@ export function LaptopInventoryTable({
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   // Asks before clearing a pending-repair alert.
   const [confirmRepaired, setConfirmRepaired] = useState<Laptop | null>(null);
+  const [managingRamId, setManagingRamId] = useState<string | null>(null);
+  const managingRam =
+    laptops.find((laptop) => laptop.id === managingRamId) ?? null;
   // The last change, and how to reverse it, for the Undo toast.
   const [undo, setUndo] = useState<{
     message: string;
@@ -388,6 +405,95 @@ export function LaptopInventoryTable({
   function restoreLaptops(originals: Laptop[]) {
     const byId = new Map(originals.map((laptop) => [laptop.id, laptop]));
     setLaptops((prev) => prev.map((laptop) => byId.get(laptop.id) ?? laptop));
+  }
+
+  function restoreRamModules(originals: Accessory[]) {
+    const byId = new Map(originals.map((item) => [item.id, item]));
+    setRamModules((prev) => prev.map((item) => byId.get(item.id) ?? item));
+  }
+
+  function applyRamToLaptop(laptop: Laptop, module: Accessory, deltaGb: number) {
+    const gb = parseGb(module.specs.capacity);
+    if (gb === null || parseGb(laptop.ram) === null) return laptop;
+    return { ...laptop, ram: adjustRam(laptop.ram, deltaGb * gb) };
+  }
+
+  function persistRamChange(
+    laptop: Laptop,
+    originalModule: Accessory,
+    nextModule: Accessory,
+    nextLaptop: Laptop,
+    message: string,
+  ) {
+    setRamModules((prev) =>
+      prev.map((item) => (item.id === nextModule.id ? nextModule : item)),
+    );
+    setLaptops((prev) =>
+      prev.map((item) => (item.id === nextLaptop.id ? nextLaptop : item)),
+    );
+    persist(
+      saveAccessory(nextModule).then((saved) => {
+        void revalidateInventory();
+        return saved;
+      }),
+      () => {
+        restoreRamModules([originalModule]);
+        restoreLaptops([laptop]);
+      },
+    );
+    setUndo({
+      message,
+      run: () => {
+        restoreRamModules([originalModule]);
+        restoreLaptops([laptop]);
+        persist(
+          saveAccessory(originalModule).then((saved) => {
+            void revalidateInventory();
+            return saved;
+          }),
+          () => {
+            restoreRamModules([nextModule]);
+            restoreLaptops([nextLaptop]);
+          },
+        );
+      },
+    });
+  }
+
+  function installRamOnLaptop(module: Accessory, note: string) {
+    const laptop = managingRam;
+    if (!laptop) return;
+    const todayIso = isoToday();
+    const nextModule = installRamInLaptop(
+      module,
+      toRamHost(laptop),
+      note,
+      todayIso,
+    );
+    persistRamChange(
+      laptop,
+      module,
+      nextModule,
+      applyRamToLaptop(laptop, module, 1),
+      `Installed ${module.assetTag} in ${laptop.assetTag}`,
+    );
+  }
+
+  function removeRamFromHost(module: Accessory) {
+    const laptop =
+      managingRam ??
+      laptops.find((item) => item.id === module.laptopId) ??
+      null;
+    if (!laptop) return;
+    const todayIso = isoToday();
+    const nextModule = removeRamFromLaptop(module, toRamHost(laptop), todayIso);
+    persistRamChange(
+      laptop,
+      module,
+      nextModule,
+      applyRamToLaptop(laptop, module, -1),
+      `Removed ${module.assetTag} from ${laptop.assetTag}`,
+    );
   }
 
   function openAssign(laptop: Laptop) {
@@ -819,6 +925,7 @@ export function LaptopInventoryTable({
                 const warranty = today ? warrantyInfo(laptop, today) : null;
                 const status = statusStyles[laptop.status];
                 const saving = pendingSaves.has(laptop.id);
+                const installedRam = ramModulesInLaptop(ramModules, laptop.id);
                 return (
                   <tr
                     key={laptop.id}
@@ -1032,6 +1139,18 @@ export function LaptopInventoryTable({
                               <PencilIcon />
                               Edit details
                             </DropdownMenuItem>
+                            {(laptop.status !== "Retired" ||
+                              installedRam.length > 0) && (
+                              <DropdownMenuItem
+                                onClick={() => setManagingRamId(laptop.id)}
+                              >
+                                <MemoryStickIcon />
+                                Manage RAM
+                                {installedRam.length > 0
+                                  ? ` (${installedRam.length})`
+                                  : ""}
+                              </DropdownMenuItem>
+                            )}
                             {laptop.repairIssue &&
                               laptop.status !== "In repair" && (
                                 <DropdownMenuItem
@@ -1285,8 +1404,22 @@ export function LaptopInventoryTable({
 
       <ErrorToast message={saveError} onDismiss={() => setSaveError(null)} />
 
+      <ManageLaptopRamDialog
+        laptop={managingRam ? toRamHost(managingRam) : null}
+        modules={ramModules}
+        open={managingRamId !== null}
+        onOpenChange={(open) => {
+          if (!open) setManagingRamId(null);
+        }}
+        onInstall={installRamOnLaptop}
+        onRemove={removeRamFromHost}
+      />
+
       <LaptopDetailsDialog
         laptop={viewing}
+        ramModules={
+          viewing ? ramModulesInLaptop(ramModules, viewing.id) : []
+        }
         open={viewOpen}
         onOpenChange={setViewOpen}
         today={today}

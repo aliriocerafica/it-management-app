@@ -68,3 +68,67 @@ export function ramChanges(
   for (const [id, gb] of changes) if (gb === 0) changes.delete(id)
   return changes
 }
+
+export function ramModulesInLaptop(modules: Accessory[], laptopId: string) {
+  return modules.filter(
+    (ram) => ram.kind === "ram" && ram.status === "In use" && ram.laptopId === laptopId,
+  )
+}
+
+export function vacantRamModules(modules: Accessory[]) {
+  return modules.filter((ram) => ram.kind === "ram" && ram.status === "Vacant")
+}
+
+export function installRamInLaptop(
+  item: Accessory,
+  host: RamHost,
+  note: string,
+  todayIso: string,
+): Accessory {
+  return {
+    ...item,
+    laptopId: host.id,
+    handler: null,
+    department: null,
+    status: "In use",
+    history: [
+      ...item.history.map((entry) =>
+        entry.to === null ? { ...entry, to: todayIso } : entry,
+      ),
+      {
+        handler: null,
+        from: todayIso,
+        to: null,
+        note: [
+          `Installed in ${host.assetTag} (${host.brand} ${host.model})`,
+          note,
+        ]
+          .filter(Boolean)
+          .join(": "),
+      },
+    ],
+  }
+}
+
+export function removeRamFromLaptop(
+  item: Accessory,
+  host: RamHost | undefined,
+  todayIso: string,
+): Accessory {
+  return {
+    ...item,
+    laptopId: null,
+    status: "Vacant",
+    history: [
+      ...item.history.map((entry) =>
+        entry.to === null ? { ...entry, to: todayIso } : entry,
+      ),
+      {
+        handler: null,
+        from: todayIso,
+        to: null,
+        note: `Removed from ${host?.assetTag ?? "its laptop"}, back in stock`,
+      },
+    ],
+  }
+}

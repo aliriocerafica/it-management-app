@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, type ComponentType } from "react"
+import { useEffect, useMemo, useState, type ComponentType } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -46,6 +46,10 @@ import {
   SidebarHeader,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { fetchVacantCounts } from "@/app/actions/vacant-counts"
+import { accessoryConfigs, lowerNoun } from "@/lib/accessories"
+import { INVENTORY_CHANGED } from "@/lib/inventory-api"
+import type { VacantCounts } from "@/lib/inventory-map"
 import { cn } from "@/lib/utils"
 import type { SessionUser } from "@/lib/auth/dto"
 
@@ -53,6 +57,7 @@ const overviewItems: {
   title: string
   href: string
   icon: LucideIcon | ComponentType<{ className?: string }>
+  vacantKey?: keyof VacantCounts
   badge?: string
   action?: boolean
 }[] = [
@@ -66,18 +71,45 @@ const overviewItems: {
     title: "Laptop Inventory",
     href: "/dashboard/laptops",
     icon: LaptopIcon,
+    vacantKey: "laptops",
   },
-  { title: "Headsets", href: "/dashboard/headsets", icon: HeadphonesIcon },
-  { title: "Mice", href: "/dashboard/mice", icon: MouseIcon },
-  { title: "Keyboards", href: "/dashboard/keyboards", icon: KeyboardIcon },
-  { title: "Monitors", href: "/dashboard/monitors", icon: TvMinimalIcon },
+  {
+    title: "Headsets",
+    href: "/dashboard/headsets",
+    icon: HeadphonesIcon,
+    vacantKey: "headset",
+  },
+  { title: "Mice", href: "/dashboard/mice", icon: MouseIcon, vacantKey: "mouse" },
+  {
+    title: "Keyboards",
+    href: "/dashboard/keyboards",
+    icon: KeyboardIcon,
+    vacantKey: "keyboard",
+  },
+  {
+    title: "Monitors",
+    href: "/dashboard/monitors",
+    icon: TvMinimalIcon,
+    vacantKey: "monitor",
+  },
   {
     title: "Laptop Bags",
     href: "/dashboard/laptop-bags",
     icon: BackpackIcon,
+    vacantKey: "bag",
   },
-  { title: "Batteries", href: "/dashboard/batteries", icon: BatteryIcon },
-  { title: "RAM", href: "/dashboard/ram", icon: MemoryStickIcon },
+  {
+    title: "Batteries",
+    href: "/dashboard/batteries",
+    icon: BatteryIcon,
+    vacantKey: "battery",
+  },
+  {
+    title: "RAM",
+    href: "/dashboard/ram",
+    icon: MemoryStickIcon,
+    vacantKey: "ram",
+  },
   {
     title: "Laptop Analytics",
     href: "/dashboard/analytics",
@@ -97,21 +129,61 @@ const overviewItems: {
   { title: "Settings", href: "/dashboard/settings", icon: SettingsIcon },
 ]
 
-export function AppSidebar({ user }: { user: SessionUser }) {
+function vacantNoun(key: keyof VacantCounts) {
+  if (key === "laptops") return "laptops"
+  return lowerNoun(accessoryConfigs[key].plural)
+}
+
+export function AppSidebar({
+  user,
+  vacantCounts: initialVacantCounts,
+}: {
+  user: SessionUser
+  vacantCounts: VacantCounts
+}) {
   const pathname = usePathname()
   const router = useRouter()
   const { state, toggleSidebar } = useSidebar()
   const collapsed = state === "collapsed"
   const initial = user.name.trim()[0]?.toUpperCase() ?? "?"
   const [search, setSearch] = useState("")
+  const [vacantCounts, setVacantCounts] = useState(initialVacantCounts)
+
+  useEffect(() => {
+    setVacantCounts(initialVacantCounts)
+  }, [initialVacantCounts])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function refresh() {
+      const counts = await fetchVacantCounts()
+      if (!cancelled) setVacantCounts(counts)
+    }
+
+    void refresh()
+    window.addEventListener(INVENTORY_CHANGED, refresh)
+    return () => {
+      cancelled = true
+      window.removeEventListener(INVENTORY_CHANGED, refresh)
+    }
+  }, [pathname])
+
+  const navItems = useMemo(() => {
+    return overviewItems.map((item) => {
+      if (!item.vacantKey) return item
+      const count = vacantCounts[item.vacantKey]
+      return count > 0 ? { ...item, badge: String(count) } : item
+    })
+  }, [vacantCounts])
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase()
-    if (!query) return overviewItems
-    return overviewItems.filter((item) =>
+    if (!query) return navItems
+    return navItems.filter((item) =>
       item.title.toLowerCase().includes(query)
     )
-  }, [search])
+  }, [navItems, search])
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" })
@@ -224,7 +296,13 @@ export function AppSidebar({ user }: { user: SessionUser }) {
                   )}
                   <Link
                     href={item.href}
-                    title={collapsed ? item.title : undefined}
+                    title={
+                      collapsed
+                        ? item.badge
+                          ? `${item.title} · ${item.badge} vacant`
+                          : item.title
+                        : undefined
+                    }
                     className={cn(
                       "flex h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
                       isActive
@@ -242,7 +320,14 @@ export function AppSidebar({ user }: { user: SessionUser }) {
                       {item.title}
                     </span>
                     {item.badge && (
-                      <span className="flex size-5 items-center justify-center rounded-full bg-violet-500 text-[10px] font-semibold text-white group-data-[collapsible=icon]:absolute group-data-[collapsible=icon]:top-0.5 group-data-[collapsible=icon]:right-1 group-data-[collapsible=icon]:size-4 group-data-[collapsible=icon]:text-[9px]">
+                      <span
+                        aria-label={
+                          item.vacantKey
+                            ? `${item.badge} vacant ${vacantNoun(item.vacantKey)}`
+                            : undefined
+                        }
+                        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-semibold text-white tabular-nums group-data-[collapsible=icon]:absolute group-data-[collapsible=icon]:top-0.5 group-data-[collapsible=icon]:right-1 group-data-[collapsible=icon]:h-4 group-data-[collapsible=icon]:min-w-4 group-data-[collapsible=icon]:px-0.5 group-data-[collapsible=icon]:text-[9px]"
+                      >
                         {item.badge}
                       </span>
                     )}

@@ -29,6 +29,7 @@ export async function PUT(
   const item = (await request.json()) as Accessory
   try {
     const saved = await upsertAccessory({ ...item, id })
+    revalidatePath("/dashboard", "layout")
     revalidatePath("/dashboard")
     revalidatePath(accessoryPaths[saved.kind])
     // Installing or removing RAM changes a laptop's memory.

@@ -21,6 +21,7 @@ const accessoryPaths: Record<AccessoryKind, string> = {
 }
 
 function refreshInventory(kind?: AccessoryKind) {
+  revalidatePath("/dashboard", "layout")
   revalidatePath("/dashboard")
   if (kind) revalidatePath(accessoryPaths[kind])
   // Installing or removing RAM changes a laptop's memory.

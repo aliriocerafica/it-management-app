@@ -37,6 +37,8 @@ export type InventorySummary = {
   ram: StatusCounts
 }
 
+export type VacantCounts = { laptops: number } & Record<AccessoryKind, number>
+
 export const statusFromDb: Record<
   Prisma.LaptopGetPayload<object>["status"],
   LaptopStatus
