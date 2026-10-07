@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string
 }
 
-const SCHEMA_VERSION = "accountability-forms-1"
+const SCHEMA_VERSION = "ram-in-laptop-1"
 
 function createPrismaClient() {
   const adapter = new PrismaNeon({

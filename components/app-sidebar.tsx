@@ -16,6 +16,7 @@ import {
   LaptopIcon,
   LayoutDashboardIcon,
   LogOutIcon,
+  MemoryStickIcon,
   MouseIcon,
   PlusIcon,
   SearchIcon,
@@ -76,6 +77,7 @@ const overviewItems: {
     icon: BackpackIcon,
   },
   { title: "Batteries", href: "/dashboard/batteries", icon: BatteryIcon },
+  { title: "RAM", href: "/dashboard/ram", icon: MemoryStickIcon },
   {
     title: "Laptop Analytics",
     href: "/dashboard/analytics",

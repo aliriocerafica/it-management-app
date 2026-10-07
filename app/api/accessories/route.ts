@@ -17,11 +17,14 @@ const accessoryPaths: Record<AccessoryKind, string> = {
   bag: "/dashboard/laptop-bags",
   battery: "/dashboard/batteries",
   keyboard: "/dashboard/keyboards",
+  ram: "/dashboard/ram",
 }
 
 function refreshInventory(kind?: AccessoryKind) {
   revalidatePath("/dashboard")
   if (kind) revalidatePath(accessoryPaths[kind])
+  // Installing or removing RAM changes a laptop's memory.
+  if (kind === "ram" || !kind) revalidatePath("/dashboard/laptops")
 }
 
 export async function GET(request: Request) {

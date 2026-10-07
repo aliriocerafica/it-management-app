@@ -2,7 +2,13 @@ import { employees } from "@/lib/employees";
 import { type LaptopStatus, type OwnershipEntry } from "@/lib/laptops";
 
 export type AccessoryKind =
-  "headset" | "mouse" | "monitor" | "bag" | "battery" | "keyboard";
+  | "headset"
+  | "mouse"
+  | "monitor"
+  | "bag"
+  | "battery"
+  | "keyboard"
+  | "ram";
 
 export type Accessory = {
   id: string;
@@ -22,8 +28,25 @@ export type Accessory = {
   specs: Record<string, string>;
   // Fault still waiting to be fixed, as for laptops.
   repairIssue?: string | null;
+  // RAM only: the laptop it's installed in (instead of a handler).
+  laptopId?: string | null;
   history: OwnershipEntry[];
 };
+
+// A type name for use mid-sentence: lowercased, except acronyms such as
+// "RAM", so "RAM modules" stays as is and "Laptop Bags" becomes "laptop bags".
+export function lowerNoun(name: string) {
+  return name
+    .split(" ")
+    .map((word) => (word === word.toUpperCase() ? word : word.toLowerCase()))
+    .join(" ");
+}
+
+// Warranty length for display; 0 years means the item has no warranty.
+export function formatWarranty(years: number) {
+  if (years === 0) return "No warranty";
+  return `${years} year${years === 1 ? "" : "s"}`;
+}
 
 export type SpecField = {
   key: string;
@@ -38,6 +61,9 @@ export type AccessoryConfig = {
   singular: string;
   plural: string;
   tagPrefix: string;
+  // Installed in a laptop (adding to its memory) rather than assigned to a
+  // person. Only RAM so far.
+  installsInLaptop?: boolean;
   modelPlaceholder: string;
   brandPlaceholder: string;
   specFields: SpecField[];
@@ -238,6 +264,37 @@ export const accessoryConfigs: Record<AccessoryKind, AccessoryConfig> = {
       secondary: `${s.switches} · ${s.layout}`,
     }),
   },
+  ram: {
+    kind: "ram",
+    singular: "RAM module",
+    plural: "RAM modules",
+    tagPrefix: "RAM",
+    installsInLaptop: true,
+    brandPlaceholder: "e.g. Kingston",
+    modelPlaceholder: "e.g. KVR32S22S8/8",
+    specFields: [
+      {
+        key: "capacity",
+        label: "Capacity",
+        options: ["4 GB", "8 GB", "16 GB", "32 GB", "64 GB"],
+      },
+      {
+        key: "type",
+        label: "Type",
+        options: ["DDR3", "DDR3L", "DDR4", "DDR5", "LPDDR4X", "LPDDR5"],
+      },
+      {
+        key: "formFactor",
+        label: "Form factor",
+        options: ["SO-DIMM (laptop)", "DIMM (desktop)"],
+      },
+      { key: "speed", label: "Speed", placeholder: "e.g. 3200 MHz" },
+    ],
+    summary: (s) => ({
+      primary: `${s.capacity} ${s.type}`,
+      secondary: `${s.formFactor} · ${s.speed}`,
+    }),
+  },
 };
 
 // -- Seed data ---------------------------------------------------------------
@@ -316,6 +373,7 @@ const monitors = build("monitor", []);
 const bags = build("bag", []);
 const batteries = build("battery", []);
 const keyboards = build("keyboard", []);
+const ram = build("ram", []);
 
 export const initialAccessories: Record<AccessoryKind, Accessory[]> = {
   headset: headsets,
@@ -324,4 +382,5 @@ export const initialAccessories: Record<AccessoryKind, Accessory[]> = {
   bag: bags,
   battery: batteries,
   keyboard: keyboards,
+  ram,
 };

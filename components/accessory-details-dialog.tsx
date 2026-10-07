@@ -4,6 +4,7 @@ import {
   WrenchIcon,
   CalendarIcon,
   SlidersHorizontalIcon,
+  LaptopIcon,
   UserIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -23,7 +24,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { type Accessory, type AccessoryConfig } from "@/lib/accessories";
+import {
+  formatWarranty,
+  type Accessory,
+  type AccessoryConfig,
+} from "@/lib/accessories";
 import {
   formatAge,
   formatDate,
@@ -32,6 +37,7 @@ import {
   statusStyles,
   warrantyInfo,
 } from "@/lib/laptops";
+import { type RamHost } from "@/lib/ram";
 import { cn } from "@/lib/utils";
 
 export function AccessoryDetailsDialog({
@@ -41,6 +47,7 @@ export function AccessoryDetailsDialog({
   open,
   onOpenChange,
   today,
+  installedIn,
 }: {
   item: Accessory | null;
   config: AccessoryConfig;
@@ -48,6 +55,8 @@ export function AccessoryDetailsDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   today: Date | null;
+  // RAM only: the laptop the module is installed in.
+  installedIn?: RamHost;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -58,6 +67,7 @@ export function AccessoryDetailsDialog({
             config={config}
             icon={icon}
             today={today}
+            installedIn={installedIn}
           />
         )}
       </DialogContent>
@@ -70,14 +80,18 @@ function AccessoryDetails({
   config,
   icon: Icon,
   today,
+  installedIn,
 }: {
   item: Accessory;
   config: AccessoryConfig;
   icon: LucideIcon;
   today: Date | null;
+  // RAM only: the laptop the module is installed in.
+  installedIn?: RamHost;
 }) {
   const status = statusStyles[item.status];
-  const warranty = today ? warrantyInfo(item, today) : null;
+  const warranty =
+    today && item.warrantyYears > 0 ? warrantyInfo(item, today) : null;
 
   return (
     <>
@@ -125,8 +139,33 @@ function AccessoryDetails({
           </section>
         )}
         <div className="flex flex-col gap-4">
-          <Section title="Assignment" icon={UserIcon}>
-            {item.handler ? (
+          <Section
+            title={config.installsInLaptop ? "Installed in" : "Assignment"}
+            icon={config.installsInLaptop ? LaptopIcon : UserIcon}
+          >
+            {config.installsInLaptop ? (
+              installedIn ? (
+                <div className="flex items-center gap-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+                    <LaptopIcon className="size-4 text-muted-foreground" />
+                  </span>
+                  <div className="leading-tight">
+                    <div className="font-mono font-medium">
+                      {installedIn.assetTag}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {installedIn.brand} {installedIn.model} ·{" "}
+                      {installedIn.ram} total
+                      {installedIn.handler && ` · ${installedIn.handler}`}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-muted-foreground italic">
+                  Not installed in a laptop
+                </p>
+              )
+            ) : item.handler ? (
               <div className="flex items-center gap-3">
                 <Avatar className="size-9 after:rounded-full">
                   <AvatarFallback className="bg-muted text-xs font-medium">
@@ -174,7 +213,7 @@ function AccessoryDetails({
               {today ? formatAge(item.purchaseDate, today) : "—"}
             </Detail>
             <Detail label="Warranty">
-              {item.warrantyYears} yr{item.warrantyYears === 1 ? "" : "s"}
+              {formatWarranty(item.warrantyYears)}
             </Detail>
             {warranty && (
               <Detail label={warranty.state === "Expired" ? "Ended" : "Until"}>

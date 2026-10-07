@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   BackpackIcon,
   BatteryIcon,
+  MemoryStickIcon,
   CableIcon,
   CheckIcon,
   CircleCheckIcon,
@@ -659,6 +660,7 @@ const assetTypeIcons: Record<string, LucideIcon> = {
   Monitor: TvMinimalIcon,
   "Laptop bag": BackpackIcon,
   Battery: BatteryIcon,
+  RAM: MemoryStickIcon,
   Charger: PlugIcon,
   "Peripheral kit": CableIcon,
   "Hardware device": CpuIcon,

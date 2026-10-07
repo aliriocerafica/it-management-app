@@ -34,6 +34,7 @@ export type InventorySummary = {
   bag: StatusCounts
   battery: StatusCounts
   keyboard: StatusCounts
+  ram: StatusCounts
 }
 
 export const statusFromDb: Record<
@@ -75,6 +76,7 @@ export const kindFromDb = {
   BAG: "bag",
   BATTERY: "battery",
   KEYBOARD: "keyboard",
+  RAM: "ram",
 } as const satisfies Record<string, AccessoryKind>
 
 export const kindToDb: Record<AccessoryKind, keyof typeof kindFromDb> = {
@@ -84,6 +86,7 @@ export const kindToDb: Record<AccessoryKind, keyof typeof kindFromDb> = {
   bag: "BAG",
   battery: "BATTERY",
   keyboard: "KEYBOARD",
+  ram: "RAM",
 }
 
 // Maps a handler name to their HRIS employee number (see employeeIdLookup).
@@ -170,6 +173,7 @@ export function accessoryFromDb(record: AccessoryRecord): Accessory {
     status: statusFromDb[record.status],
     specs: (record.specs ?? {}) as Record<string, string>,
     repairIssue: record.repairIssue,
+    laptopId: record.laptopId,
     history: toHistory(record.assignments),
   }
 }

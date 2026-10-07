@@ -19,6 +19,7 @@ export const requestAssetTypes = [
   "Monitor",
   "Laptop bag",
   "Battery",
+  "RAM",
   "Charger",
   "Peripheral kit",
   "Hardware device",

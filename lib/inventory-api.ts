@@ -97,6 +97,10 @@ export async function removeAccessories(ids: string[]) {
   )
 }
 
+export async function fetchLaptops() {
+  return parse<Laptop[]>(await fetch("/api/laptops"))
+}
+
 export async function listAssignedAssets(handler: string) {
   return parse<{ laptops: Laptop[]; accessories: Accessory[] }>(
     await fetch(`/api/assigned-assets?handler=${encodeURIComponent(handler)}`),

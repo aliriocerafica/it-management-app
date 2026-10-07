@@ -69,6 +69,8 @@ function mapKind(kind: AccessoryKind) {
       return "BATTERY" as const
     case "keyboard":
       return "KEYBOARD" as const
+    case "ram":
+      return "RAM" as const
   }
 }
 

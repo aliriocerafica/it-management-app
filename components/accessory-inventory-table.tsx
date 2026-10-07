@@ -11,13 +11,16 @@ import {
   ChevronsLeftIcon,
   ChevronsRightIcon,
   CircleDotIcon,
+  CopyIcon,
   DownloadIcon,
   EllipsisIcon,
   EyeIcon,
   HashIcon,
   HeadphonesIcon,
   HourglassIcon,
+  LaptopIcon,
   Loader2Icon,
+  MemoryStickIcon,
   TvMinimalIcon,
   MouseIcon,
   PaletteIcon,
@@ -40,6 +43,7 @@ import { AccessoryDetailsDialog } from "@/components/accessory-details-dialog";
 import { revalidateInventory } from "@/app/actions/revalidate-inventory";
 import { AddAccessoryDialog } from "@/components/add-accessory-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
+import { InstallRamDialog } from "@/components/install-ram-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { ErrorToast } from "@/components/error-toast";
 import {
@@ -51,6 +55,7 @@ import { UndoToast } from "@/components/undo-toast";
 import {
   createAccessory,
   errorMessage,
+  fetchLaptops,
   removeAccessories,
   saveAccessory,
   saveLaptop,
@@ -86,6 +91,7 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   accessoryConfigs,
+  lowerNoun,
   type Accessory,
   type AccessoryConfig,
   type AccessoryKind,
@@ -101,6 +107,13 @@ import {
   warrantyInfo,
   type LaptopStatus,
 } from "@/lib/laptops";
+import {
+  adjustRam,
+  parseGb,
+  toRamHost,
+  withInstallState,
+  type RamHost,
+} from "@/lib/ram";
 import { usePendingSaves } from "@/lib/save-queue";
 import { useToday } from "@/lib/use-today";
 import { cn } from "@/lib/utils";
@@ -112,6 +125,7 @@ export const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
   bag: BackpackIcon,
   battery: BatteryIcon,
   keyboard: KeyboardIcon,
+  ram: MemoryStickIcon,
 };
 
 type Tab = "All" | LaptopStatus;
@@ -121,6 +135,7 @@ function exportCsv(
   rows: Accessory[],
   config: AccessoryConfig,
   today: Date | null,
+  hostById: Map<string, RamHost>,
 ) {
   const header = [
     "Asset tag",
@@ -129,7 +144,7 @@ function exportCsv(
     "Serial number",
     ...config.specFields.map((field) => field.label),
     "Color",
-    "Current handler",
+    config.installsInLaptop ? "Installed in" : "Current handler",
     "Department",
     "Purchase date",
     "Age",
@@ -137,7 +152,8 @@ function exportCsv(
     "Status",
   ];
   const lines = rows.map((item) => {
-    const warranty = today ? warrantyInfo(item, today) : null;
+    const warranty =
+      today && item.warrantyYears > 0 ? warrantyInfo(item, today) : null;
     return [
       item.assetTag,
       item.brand,
@@ -145,11 +161,17 @@ function exportCsv(
       item.serialNumber,
       ...config.specFields.map((field) => item.specs[field.key] ?? ""),
       item.color,
-      item.handler ?? "Unassigned",
+      config.installsInLaptop
+        ? (hostById.get(item.laptopId ?? "")?.assetTag ?? "Not installed")
+        : (item.handler ?? "Unassigned"),
       item.department ?? "",
       item.purchaseDate,
       today ? formatAge(item.purchaseDate, today) : "",
-      warranty ? formatDate(warranty.end) : "",
+      item.warrantyYears === 0
+        ? "No warranty"
+        : warranty
+          ? formatDate(warranty.end)
+          : "",
       item.status,
     ]
       .map((value) => `"${String(value).replaceAll('"', '""')}"`)
@@ -169,14 +191,18 @@ function exportCsv(
 export function AccessoryInventoryTable({
   kind,
   initialData,
+  laptops = [],
 }: {
   kind: AccessoryKind;
   initialData: Accessory[];
+  // For kinds installed in laptops (RAM): the laptops they can go in.
+  laptops?: RamHost[];
 }) {
   const config = accessoryConfigs[kind];
   const Icon = accessoryIcons[kind];
-  const noun = config.singular.toLowerCase();
-  const nounPlural = config.plural.toLowerCase();
+  const noun = lowerNoun(config.singular);
+  const nounPlural = lowerNoun(config.plural);
+  const installs = config.installsInLaptop === true;
 
   const today = useToday();
   const [items, setItems] = useState(initialData);
@@ -193,6 +219,9 @@ export function AccessoryInventoryTable({
   // Remounts the edit dialog on every open so it starts from the row's
   // current values, even when the same item is edited twice.
   const [editKey, setEditKey] = useState(0);
+  const [duplicating, setDuplicating] = useState<Accessory | null>(null);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicateKey, setDuplicateKey] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<Accessory | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -214,6 +243,15 @@ export function AccessoryInventoryTable({
     message: string;
     run: () => void;
   } | null>(null);
+  // Laptops RAM can be installed in, with their current memory.
+  const [hosts, setHosts] = useState(laptops);
+  const hostById = useMemo(
+    () => new Map(hosts.map((host) => [host.id, host])),
+    [hosts],
+  );
+  const [installing, setInstalling] = useState<Accessory | null>(null);
+  const [installOpen, setInstallOpen] = useState(false);
+  const [removing, setRemoving] = useState<Accessory | null>(null);
   const pendingSaves = usePendingSaves();
 
   const brands = useMemo(
@@ -237,9 +275,16 @@ export function AccessoryInventoryTable({
         item.color,
         item.repairIssue ?? "",
         ...Object.values(item.specs),
+        ...installedIn(item),
       ].some((value) => value.toLowerCase().includes(q));
     });
-  }, [items, query, brandFilter, tab]);
+
+    // The installed laptop's tag and model, so RAM can be searched by laptop.
+    function installedIn(item: Accessory) {
+      const host = item.laptopId ? hostById.get(item.laptopId) : undefined;
+      return host ? [host.assetTag, host.brand, host.model] : [];
+    }
+  }, [items, query, brandFilter, tab, hostById]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const currentPage = Math.min(page, pageCount);
@@ -296,13 +341,40 @@ export function AccessoryInventoryTable({
     setEditOpen(true);
   }
 
+  function openDuplicate(item: Accessory) {
+    setDuplicating(item);
+    setDuplicateKey((key) => key + 1);
+    setDuplicateOpen(true);
+  }
+
+  async function addItem(item: Accessory) {
+    const saved = await createAccessory(item);
+    setItems((prev) => [saved, ...prev]);
+    setTab("All");
+    setPage(1);
+  }
+
+  // Installing or removing RAM changes laptops' memory on the server;
+  // re-read it so the totals shown stay right.
+  async function refreshHosts() {
+    if (!installs) return;
+    try {
+      setHosts((await fetchLaptops()).map(toRamHost));
+    } catch {
+      // Keep the totals already shown; the next save will try again.
+    }
+  }
+
   // Background saves: the table updates right away, and if the database
   // rejects the change it's rolled back and the reason shown.
   function persist(save: Promise<unknown>, rollback?: () => void) {
-    return save.catch((error: unknown) => {
-      rollback?.();
-      setSaveError(errorMessage(error));
-    });
+    return save.then(
+      () => void refreshHosts(),
+      (error: unknown) => {
+        rollback?.();
+        setSaveError(errorMessage(error));
+      },
+    );
   }
 
   function restoreItems(originals: Accessory[]) {
@@ -343,7 +415,8 @@ export function AccessoryInventoryTable({
   ) {
     const original = items.find((item) => item.id === id);
     if (!original) return;
-    const next = update(original);
+    // RAM that leaves "In use" (stock, repair, retired) is out of its laptop.
+    const next = withInstallState(update(original));
     setItems((prev) => prev.map((item) => (item.id === id ? next : item)));
     persist(saveAccessory(next), () => restoreItems([original]));
     setUndo({
@@ -515,6 +588,63 @@ export function AccessoryInventoryTable({
     setAssignOpen(false);
   }
 
+  function openInstall(item: Accessory) {
+    setInstalling(item);
+    setInstallOpen(true);
+  }
+
+  // RAM's version of assigning: it goes into a laptop, not to a person.
+  function installItem(id: string, host: RamHost, note: string) {
+    const todayIso = isoToday();
+    updateItem(id, (item) => ({
+      ...item,
+      laptopId: host.id,
+      handler: null,
+      department: null,
+      status: "In use",
+      history: [
+        ...item.history.map((entry) =>
+          entry.to === null ? { ...entry, to: todayIso } : entry,
+        ),
+        {
+          handler: null,
+          from: todayIso,
+          to: null,
+          note: [
+            `Installed in ${host.assetTag} (${host.brand} ${host.model})`,
+            note,
+          ]
+            .filter(Boolean)
+            .join(": "),
+        },
+      ],
+    }), (item) => `Installed ${item.assetTag} in ${host.assetTag}`);
+    setInstallOpen(false);
+  }
+
+  function removeFromLaptop(id: string) {
+    const todayIso = isoToday();
+    updateItem(id, (item) => {
+      const host = item.laptopId ? hostById.get(item.laptopId) : undefined;
+      return {
+        ...item,
+        laptopId: null,
+        status: "Vacant",
+        history: [
+          ...item.history.map((entry) =>
+            entry.to === null ? { ...entry, to: todayIso } : entry,
+          ),
+          {
+            handler: null,
+            from: todayIso,
+            to: null,
+            note: `Removed from ${host?.assetTag ?? "its laptop"}, back in stock`,
+          },
+        ],
+      };
+    }, (item) => `Removed ${item.assetTag} from its laptop`);
+  }
+
   function deleteItems(ids: string[]) {
     const removed = items.filter((item) => ids.includes(item.id));
     const snapshot = items;
@@ -558,6 +688,17 @@ export function AccessoryInventoryTable({
     pendingDelete.length === 1
       ? `Delete ${pendingDelete[0].brand} ${pendingDelete[0].model} (${pendingDelete[0].assetTag})? You can undo this afterward.`
       : `These ${pendingDelete.length} ${nounPlural} will be removed from inventory. You can undo this afterward.`;
+
+  function removeDescription(item: Accessory) {
+    const host = item.laptopId ? hostById.get(item.laptopId) : undefined;
+    const gb = parseGb(item.specs.capacity);
+    const where = host?.assetTag ?? "its laptop";
+    const change =
+      host && gb && parseGb(host.ram) !== null
+        ? ` ${host.assetTag}'s memory goes from ${host.ram} to ${adjustRam(host.ram, -gb)}.`
+        : "";
+    return `${item.assetTag} (${item.specs.capacity}) comes out of ${where} and goes back to stock.${change} You can undo this afterward.`;
+  }
 
   function clearFilters() {
     setQuery("");
@@ -664,7 +805,7 @@ export function AccessoryInventoryTable({
             </div>
             <Button
               variant="outline"
-              onClick={() => exportCsv(filtered, config, today)}
+              onClick={() => exportCsv(filtered, config, today, hostById)}
             >
               <DownloadIcon />
               Export
@@ -672,12 +813,7 @@ export function AccessoryInventoryTable({
             <AddAccessoryDialog
               config={config}
               items={items}
-              onAdd={async (item) => {
-                const saved = await createAccessory(item);
-                setItems((prev) => [saved, ...prev]);
-                setTab("All");
-                setPage(1);
-              }}
+              onAdd={addItem}
             />
           </div>
         </div>
@@ -702,7 +838,11 @@ export function AccessoryInventoryTable({
                 >
                   Asset tag
                 </ColumnHeader>
-                <ColumnHeader icon={UserIcon}>Handler</ColumnHeader>
+                {installs ? (
+                  <ColumnHeader icon={LaptopIcon}>Installed in</ColumnHeader>
+                ) : (
+                  <ColumnHeader icon={UserIcon}>Handler</ColumnHeader>
+                )}
                 <ColumnHeader
                   icon={HourglassIcon}
                   className="hidden @xl:table-cell"
@@ -736,7 +876,10 @@ export function AccessoryInventoryTable({
             <tbody>
               {pageRows.map((item) => {
                 const isSelected = selected.has(item.id);
-                const warranty = today ? warrantyInfo(item, today) : null;
+                const warranty =
+                  today && item.warrantyYears > 0
+                    ? warrantyInfo(item, today)
+                    : null;
                 const status = statusStyles[item.status];
                 const saving = pendingSaves.has(item.id);
                 const summary = config.summary(item.specs);
@@ -772,7 +915,16 @@ export function AccessoryInventoryTable({
                       </div>
                     </td>
                     <td className={cellClass}>
-                      {item.handler ? (
+                      {installs ? (
+                        <InstalledIn
+                          item={item}
+                          host={
+                            item.laptopId
+                              ? hostById.get(item.laptopId)
+                              : undefined
+                          }
+                        />
+                      ) : item.handler ? (
                         <div className="flex items-center gap-2">
                           <Avatar className="hidden size-6 after:rounded-full @2xl:flex">
                             <AvatarFallback className="bg-muted text-[9px] font-medium">
@@ -841,6 +993,10 @@ export function AccessoryInventoryTable({
                             {formatDate(warranty.end)}
                           </div>
                         </div>
+                      ) : item.warrantyYears === 0 ? (
+                        <span className="inline-flex rounded bg-muted px-1.5 py-px text-[11px] font-medium text-muted-foreground">
+                          No warranty
+                        </span>
                       ) : (
                         "—"
                       )}
@@ -884,7 +1040,27 @@ export function AccessoryInventoryTable({
                         aria-busy={saving}
                         className="flex items-center justify-end gap-1 disabled:opacity-60"
                       >
-                        {item.status === "Vacant" ? (
+                        {item.status === "Vacant" && installs ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="min-w-27"
+                            onClick={() => openInstall(item)}
+                          >
+                            <MemoryStickIcon />
+                            Install
+                          </Button>
+                        ) : item.status === "In use" && installs ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="min-w-27"
+                            onClick={() => setRemoving(item)}
+                          >
+                            <Undo2Icon />
+                            Remove
+                          </Button>
+                        ) : item.status === "Vacant" ? (
                           <Button
                             variant="outline"
                             size="xs"
@@ -949,6 +1125,12 @@ export function AccessoryInventoryTable({
                             <DropdownMenuItem onClick={() => openEdit(item)}>
                               <PencilIcon />
                               Edit details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => openDuplicate(item)}
+                            >
+                              <CopyIcon />
+                              Duplicate
                             </DropdownMenuItem>
                             {item.repairIssue &&
                               item.status !== "In repair" && (
@@ -1110,6 +1292,32 @@ export function AccessoryInventoryTable({
       />
 
       <ConfirmDeleteDialog
+        open={removing !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoving(null);
+        }}
+        title="Remove from laptop?"
+        description={removing ? removeDescription(removing) : ""}
+        confirmLabel="Remove"
+        confirmVariant="default"
+        icon={Undo2Icon}
+        onConfirm={() => {
+          if (removing) removeFromLaptop(removing.id);
+        }}
+      />
+
+      <InstallRamDialog
+        item={installing}
+        laptops={hosts}
+        modules={items}
+        open={installOpen}
+        onOpenChange={setInstallOpen}
+        onInstall={(host, note) =>
+          installing && installItem(installing.id, host, note)
+        }
+      />
+
+      <ConfirmDeleteDialog
         open={pendingDeleteIds.length > 0}
         onOpenChange={(open) => {
           if (!open) setPendingDeleteIds([]);
@@ -1181,6 +1389,8 @@ export function AccessoryInventoryTable({
           setItems((prev) =>
             prev.map((item) => (item.id === saved.id ? saved : item)),
           );
+          // A new capacity on an installed module changes its laptop's memory.
+          void refreshHosts();
           if (original) {
             setUndo({
               message: `Updated ${saved.assetTag}`,
@@ -1188,6 +1398,16 @@ export function AccessoryInventoryTable({
             });
           }
         }}
+      />
+
+      <AddAccessoryDialog
+        key={`duplicate-${duplicateKey}`}
+        config={config}
+        items={items}
+        template={duplicating}
+        open={duplicateOpen}
+        onOpenChange={setDuplicateOpen}
+        onAdd={addItem}
       />
 
       <ErrorToast message={saveError} onDismiss={() => setSaveError(null)} />
@@ -1199,7 +1419,39 @@ export function AccessoryInventoryTable({
         open={viewOpen}
         onOpenChange={setViewOpen}
         today={today}
+        installedIn={
+          viewing?.laptopId ? hostById.get(viewing.laptopId) : undefined
+        }
       />
+    </div>
+  );
+}
+
+// The "Installed in" cell for RAM: the laptop it's in, or that it's free.
+function InstalledIn({
+  item,
+  host,
+}: {
+  item: Accessory;
+  host: RamHost | undefined;
+}) {
+  if (!item.laptopId) {
+    return <span className="text-muted-foreground italic">Not installed</span>;
+  }
+  if (!host) {
+    return <span className="text-muted-foreground italic">Unknown laptop</span>;
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <span className="hidden size-6 shrink-0 items-center justify-center rounded-full bg-muted @2xl:flex">
+        <LaptopIcon className="size-3 text-muted-foreground" />
+      </span>
+      <div className="leading-tight">
+        <div className="font-mono">{host.assetTag}</div>
+        <div className="text-[11px] text-muted-foreground">
+          {host.brand} {host.model} · {host.ram}
+        </div>
+      </div>
     </div>
   );
 }

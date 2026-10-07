@@ -24,6 +24,7 @@ import {
   ClockIcon,
   HeadphonesIcon,
   LaptopIcon,
+  MemoryStickIcon,
   MouseIcon,
   PackageIcon,
   PieChartIcon,
@@ -63,6 +64,7 @@ const accessoryRoutes: Record<AccessoryKind, string> = {
   bag: "/dashboard/laptop-bags",
   battery: "/dashboard/batteries",
   keyboard: "/dashboard/keyboards",
+  ram: "/dashboard/ram",
 }
 
 const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
@@ -72,6 +74,7 @@ const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
   bag: BackpackIcon,
   battery: BatteryIcon,
   keyboard: KeyboardIcon,
+  ram: MemoryStickIcon,
 }
 
 const warrantyStyles = {

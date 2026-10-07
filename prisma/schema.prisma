@@ -25,6 +25,7 @@ enum AccessoryKind {
   BAG
   BATTERY
   KEYBOARD
+  RAM
 }
 
 enum ChargerCondition {
@@ -112,6 +113,8 @@ model Laptop {
   updatedAt     DateTime    @updatedAt
   charger       LaptopCharger?
   assignments   LaptopAssignment[]
+  // RAM modules installed in this laptop.
+  installedParts Accessory[]
 
   @@index([employeeId])
   @@index([status])
@@ -168,11 +171,16 @@ model Accessory {
   specs         Json
   // Fault still waiting to be fixed; may be set while the item is in use.
   repairIssue   String?
+  // For RAM: the laptop it's installed in, instead of a person. Installing
+  // or removing a module adjusts that laptop's `ram` total.
+  laptopId      String?
+  laptop        Laptop?       @relation(fields: [laptopId], references: [id], onDelete: SetNull)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   assignments   AccessoryAssignment[]
 
   @@index([kind])
+  @@index([laptopId])
   @@index([serialNumber])
   @@index([employeeId])
   @@index([status])

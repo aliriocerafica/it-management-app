@@ -5,6 +5,7 @@ import {
   chargerToDb,
   fromIsoDate,
   type EmployeeIdLookup,
+  kindFromDb,
   kindToDb,
   laptopFromDb,
   statusFromDb,
@@ -16,7 +17,10 @@ import { employees } from "@/lib/employees"
 import { fetchHrisEmployees } from "@/lib/hris"
 import type { Laptop } from "@/lib/laptops"
 import type { InventorySummary, StatusCounts } from "@/lib/inventory-map"
+import type { Prisma } from "@/lib/generated/prisma"
 import { prisma } from "@/lib/prisma"
+import { adjustRam, ramChanges, withInstallState } from "@/lib/ram"
+import { todayIsoDate } from "@/lib/inventory-lifecycle"
 import type { RemoteAccessRow } from "@/lib/remote-access"
 
 function emptyCounts(): StatusCounts {
@@ -86,6 +90,7 @@ export async function getInventorySummary(): Promise<InventorySummary> {
     bag: emptyCounts(),
     battery: emptyCounts(),
     keyboard: emptyCounts(),
+    ram: emptyCounts(),
   }
 
   for (const row of accessoryRows) {
@@ -97,6 +102,7 @@ export async function getInventorySummary(): Promise<InventorySummary> {
         BAG: "bag",
         BATTERY: "battery",
         KEYBOARD: "keyboard",
+        RAM: "ram",
       } as const
     )[row.kind]
     const status = statusFromDb[row.status]
@@ -211,63 +217,153 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
   return laptopFromDb(saved)
 }
 
-export async function upsertAccessory(item: Accessory): Promise<Accessory> {
+export async function upsertAccessory(input: Accessory): Promise<Accessory> {
+  const item = withInstallState(input)
   const employeeIdFor = await employeeIdLookup()
   const employeeId = employeeIdFor(item.handler)
-  const saved = await prisma.accessory.upsert({
-    where: { id: item.id },
-    create: {
-      id: item.id,
-      kind: kindToDb[item.kind],
-      assetTag: item.assetTag,
-      brand: item.brand,
-      model: item.model,
-      serialNumber: item.serialNumber,
-      color: item.color,
-      colorHex: item.colorHex,
-      employeeId,
-      handlerName: item.handler,
-      department: item.department,
-      purchaseDate: fromIsoDate(item.purchaseDate),
-      warrantyYears: item.warrantyYears,
-      status: statusToDb[item.status],
-      specs: item.specs,
-      repairIssue: item.repairIssue?.trim() || null,
-      assignments: { create: assignmentData(item.history, employeeIdFor) },
-    },
-    update: {
-      kind: kindToDb[item.kind],
-      assetTag: item.assetTag,
-      brand: item.brand,
-      model: item.model,
-      serialNumber: item.serialNumber,
-      color: item.color,
-      colorHex: item.colorHex,
-      employeeId,
-      handlerName: item.handler,
-      department: item.department,
-      purchaseDate: fromIsoDate(item.purchaseDate),
-      warrantyYears: item.warrantyYears,
-      status: statusToDb[item.status],
-      specs: item.specs,
-      repairIssue: item.repairIssue?.trim() || null,
-      assignments: {
-        deleteMany: {},
-        create: assignmentData(item.history, employeeIdFor),
+  const laptopId = item.laptopId ?? null
+  // Saved together with any change it makes to a laptop's memory, so the
+  // two can't drift apart.
+  const saved = await prisma.$transaction(async (tx) => {
+    const before = await tx.accessory.findUnique({
+      where: { id: item.id },
+      select: { kind: true, status: true, laptopId: true, specs: true },
+    })
+    const row = await tx.accessory.upsert({
+      where: { id: item.id },
+      create: {
+        id: item.id,
+        kind: kindToDb[item.kind],
+        assetTag: item.assetTag,
+        brand: item.brand,
+        model: item.model,
+        serialNumber: item.serialNumber,
+        color: item.color,
+        colorHex: item.colorHex,
+        employeeId,
+        handlerName: item.handler,
+        department: item.department,
+        purchaseDate: fromIsoDate(item.purchaseDate),
+        warrantyYears: item.warrantyYears,
+        status: statusToDb[item.status],
+        specs: item.specs,
+        repairIssue: item.repairIssue?.trim() || null,
+        laptopId,
+        assignments: { create: assignmentData(item.history, employeeIdFor) },
       },
-    },
-    include: accessoryInclude,
+      update: {
+        kind: kindToDb[item.kind],
+        assetTag: item.assetTag,
+        brand: item.brand,
+        model: item.model,
+        serialNumber: item.serialNumber,
+        color: item.color,
+        colorHex: item.colorHex,
+        employeeId,
+        handlerName: item.handler,
+        department: item.department,
+        purchaseDate: fromIsoDate(item.purchaseDate),
+        warrantyYears: item.warrantyYears,
+        status: statusToDb[item.status],
+        specs: item.specs,
+        repairIssue: item.repairIssue?.trim() || null,
+        laptopId,
+        assignments: {
+          deleteMany: {},
+          create: assignmentData(item.history, employeeIdFor),
+        },
+      },
+      include: accessoryInclude,
+    })
+    await applyRamChanges(
+      tx,
+      ramChanges(before && installableFromDb(before), item),
+    )
+    return row
   })
 
   return accessoryFromDb(saved)
 }
 
 export async function deleteLaptops(ids: string[]) {
-  await prisma.laptop.deleteMany({ where: { id: { in: ids } } })
+  await prisma.$transaction(async (tx) => {
+    // RAM installed in a deleted laptop goes back to stock rather than
+    // staying "In use" in a laptop that no longer exists.
+    const installed = await tx.accessory.findMany({
+      where: { laptopId: { in: ids } },
+      select: { id: true, laptop: { select: { assetTag: true } } },
+    })
+    if (installed.length) {
+      const today = fromIsoDate(todayIsoDate())
+      const accessoryIds = installed.map((row) => row.id)
+      await tx.accessoryAssignment.updateMany({
+        where: { accessoryId: { in: accessoryIds }, to: null },
+        data: { to: today },
+      })
+      await tx.accessoryAssignment.createMany({
+        data: installed.map((row) => ({
+          accessoryId: row.id,
+          from: today,
+          note: `Removed from ${row.laptop?.assetTag ?? "a laptop"} when it was deleted`,
+        })),
+      })
+      await tx.accessory.updateMany({
+        where: { id: { in: accessoryIds } },
+        data: { laptopId: null, status: "VACANT" },
+      })
+    }
+    await tx.laptop.deleteMany({ where: { id: { in: ids } } })
+  })
 }
 
 export async function deleteAccessories(ids: string[]) {
-  await prisma.accessory.deleteMany({ where: { id: { in: ids } } })
+  await prisma.$transaction(async (tx) => {
+    const installed = await tx.accessory.findMany({
+      where: { id: { in: ids }, laptopId: { not: null } },
+      select: { kind: true, status: true, laptopId: true, specs: true },
+    })
+    // Deleting an installed module takes its memory out of the laptop.
+    const changes = new Map<string, number>()
+    for (const row of installed) {
+      for (const [laptopId, gb] of ramChanges(installableFromDb(row), null)) {
+        changes.set(laptopId, (changes.get(laptopId) ?? 0) + gb)
+      }
+    }
+    await applyRamChanges(tx, changes)
+    await tx.accessory.deleteMany({ where: { id: { in: ids } } })
+  })
+}
+
+function installableFromDb(row: {
+  kind: keyof typeof kindFromDb
+  status: keyof typeof statusFromDb
+  laptopId: string | null
+  specs: unknown
+}) {
+  return {
+    kind: kindFromDb[row.kind],
+    status: statusFromDb[row.status],
+    laptopId: row.laptopId,
+    specs: (row.specs ?? {}) as Record<string, string>,
+  }
+}
+
+// Adds (or takes away) installed RAM from each laptop's memory total.
+async function applyRamChanges(
+  tx: Prisma.TransactionClient,
+  changes: Map<string, number>,
+) {
+  for (const [laptopId, gb] of changes) {
+    const laptop = await tx.laptop.findUnique({
+      where: { id: laptopId },
+      select: { ram: true },
+    })
+    if (!laptop) continue
+    const ram = adjustRam(laptop.ram, gb)
+    if (ram !== laptop.ram) {
+      await tx.laptop.update({ where: { id: laptopId }, data: { ram } })
+    }
+  }
 }
 
 export async function listRemoteAccessRows(): Promise<RemoteAccessRow[]> {

@@ -15,6 +15,7 @@ const accessoryPaths = {
   bag: "/dashboard/laptop-bags",
   battery: "/dashboard/batteries",
   keyboard: "/dashboard/keyboards",
+  ram: "/dashboard/ram",
 } as const
 
 export async function PUT(
@@ -30,6 +31,8 @@ export async function PUT(
     const saved = await upsertAccessory({ ...item, id })
     revalidatePath("/dashboard")
     revalidatePath(accessoryPaths[saved.kind])
+    // Installing or removing RAM changes a laptop's memory.
+    if (saved.kind === "ram") revalidatePath("/dashboard/laptops")
     return NextResponse.json(saved)
   } catch (error) {
     return saveErrorResponse(error)
