@@ -1,4 +1,4 @@
-import type { AssetRequest } from "@/lib/asset-requests"
+import type { AssetRequest, RequestStatus } from "@/lib/asset-requests"
 import type { Accessory } from "@/lib/accessories"
 import type { Laptop } from "@/lib/laptops"
 import { queued } from "@/lib/save-queue"
@@ -174,16 +174,24 @@ export async function rejectDtrAsset(id: string, note: string) {
   )
 }
 
-export async function archiveExternalAssetRequest(id: string) {
+export async function saveExternalRequestOverride(
+  id: string,
+  status: RequestStatus,
+  note?: string | null,
+) {
   return queued([id], async () =>
     parse<{ ok: boolean }>(
       await fetch("/api/asset-requests/archive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id, status, note }),
       }),
     ),
   )
+}
+
+export async function archiveExternalAssetRequest(id: string) {
+  return saveExternalRequestOverride(id, "Archived")
 }
 
 export async function unarchiveExternalAssetRequest(id: string) {

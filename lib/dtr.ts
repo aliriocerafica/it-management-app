@@ -37,6 +37,7 @@ export type DtrAssetRequest = {
   id: string
   employeeNo: string
   employeeName: string
+  employeeEmail?: string | null
   department: string
   assetType: DtrAssetType
   otherDetail: string | null
@@ -166,6 +167,7 @@ export function dtrRequestToAssetRequest(row: DtrAssetRequest): AssetRequest {
     requestNo: 0,
     employeeId: row.employeeNo,
     requesterName: row.employeeName,
+    requesterEmail: row.employeeEmail?.trim() || null,
     department: row.department,
     assetType,
     quantity: row.quantity,

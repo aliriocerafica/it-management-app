@@ -102,7 +102,7 @@ export function AssetRequestDialog({
             request={request ?? null}
             onSubmit={async (next) => {
               await (request ? onSave : onAdd)?.(next);
-              setOpen(false);
+              if (!request) setOpen(false);
             }}
           />
         )}
@@ -124,6 +124,9 @@ function RequestForm({
   );
   const [department, setDepartment] = useState(request?.department ?? "");
   const [employeeId, setEmployeeId] = useState(request?.employeeId ?? null);
+  const [requesterEmail, setRequesterEmail] = useState(
+    request?.requesterEmail ?? "",
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -142,6 +145,7 @@ function RequestForm({
       (e) => e.name.toLowerCase() === name.trim().toLowerCase(),
     );
     setEmployeeId(match?.id ?? null);
+    setRequesterEmail(match?.email?.trim() ?? "");
     if (match) setDepartment(match.department);
   }
 
@@ -174,6 +178,7 @@ function RequestForm({
       }),
       employeeId,
       requesterName: name,
+      requesterEmail: requesterEmail.trim() || null,
       department: department.trim() || null,
       assetType: get("assetType"),
       quantity: Number(get("quantity")) || 1,
@@ -186,6 +191,7 @@ function RequestForm({
     setError(null);
     try {
       await onSubmit(next);
+      setSaving(false);
     } catch (err) {
       setError(errorMessage(err));
       setSaving(false);
@@ -232,9 +238,9 @@ function RequestForm({
             {status === "error"
               ? "Couldn't reach HRIS. Type the name by hand."
               : employeeId
-                ? `HRIS employee ${employeeId}`
+                ? `HRIS employee ${employeeId}${requesterEmail ? ` · ${requesterEmail}` : ""}`
                 : requesterName.trim()
-                  ? "Not matched to an HRIS employee"
+                  ? "Not matched to an HRIS employee — denial email needs a match"
                   : " "}
           </p>
         </FormField>
@@ -813,6 +819,13 @@ function Details({ request }: { request: AssetRequest }) {
               {request.employeeId ?? (
                 <span className="font-normal text-muted-foreground italic">
                   Not linked to HRIS
+                </span>
+              )}
+            </Detail>
+            <Detail label="Email">
+              {request.requesterEmail ?? (
+                <span className="font-normal text-muted-foreground italic">
+                  No email on file
                 </span>
               )}
             </Detail>

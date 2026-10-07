@@ -235,6 +235,7 @@ model AssetRequest {
   requestNo     Int                  @unique @default(autoincrement())
   employeeId    String?
   requesterName String
+  requesterEmail String?
   department    String?
   assetType     String
   quantity      Int                  @default(1)

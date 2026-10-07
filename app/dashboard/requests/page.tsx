@@ -5,6 +5,7 @@ import {
   listRequestOverrides,
 } from "@/lib/asset-request-repository"
 import { listDtrAssetRequests } from "@/lib/dtr"
+import { withRequesterEmails } from "@/lib/hris"
 
 export const dynamic = "force-dynamic"
 
@@ -24,8 +25,10 @@ export default async function AssetRequestsPage() {
         ? error.message
         : "Couldn't load asset requests from DTR."
   }
-  const requests = applyRequestOverrides([...local, ...fromDtr], overrides).sort(
-    (a, b) => b.createdAt.localeCompare(a.createdAt),
+  const requests = await withRequesterEmails(
+    applyRequestOverrides([...local, ...fromDtr], overrides).sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt),
+    ),
   )
 
   return (

@@ -5,24 +5,33 @@ import {
   clearRequestOverride,
   saveRequestOverride,
 } from "@/lib/asset-request-repository"
+import { requestStatuses, type RequestStatus } from "@/lib/asset-requests"
 import { verifySession } from "@/lib/auth/session"
 
 export const dynamic = "force-dynamic"
 
-async function requestId(request: Request) {
-  const body = (await request.json().catch(() => null)) as { id?: string } | null
-  const id = body?.id?.trim() ?? ""
-  return id
+async function readBody(request: Request) {
+  return (await request.json().catch(() => null)) as {
+    id?: string
+    status?: string
+    note?: string | null
+  } | null
 }
 
 export async function POST(request: Request) {
   const user = await verifySession()
   if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
 
-  const id = await requestId(request)
+  const body = await readBody(request)
+  const id = body?.id?.trim() ?? ""
   if (!id) return NextResponse.json({ error: "Request id is required." }, { status: 400 })
 
-  await saveRequestOverride(id, "Archived")
+  const status = (body?.status?.trim() || "Archived") as RequestStatus
+  if (!requestStatuses.includes(status)) {
+    return NextResponse.json({ error: "Choose a valid status." }, { status: 400 })
+  }
+
+  await saveRequestOverride(id, status, body?.note)
   revalidatePath("/dashboard/requests")
   return NextResponse.json({ ok: true })
 }
@@ -31,7 +40,7 @@ export async function DELETE(request: Request) {
   const user = await verifySession()
   if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
 
-  const id = await requestId(request)
+  const id = (await readBody(request))?.id?.trim() ?? ""
   if (!id) return NextResponse.json({ error: "Request id is required." }, { status: 400 })
 
   await clearRequestOverride(id)

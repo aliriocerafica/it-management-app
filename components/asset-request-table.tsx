@@ -84,6 +84,7 @@ import {
   removeAssetRequests,
   returnDtrAsset,
   saveAssetRequest,
+  saveExternalRequestOverride,
   unarchiveExternalAssetRequest,
 } from "@/lib/inventory-api";
 import { formatDate, initials, parseDate } from "@/lib/laptops";
@@ -109,6 +110,7 @@ function exportCsv(rows: AssetRequest[]) {
     "Request no.",
     "Requested by",
     "Employee ID",
+    "Email",
     "Department",
     "Asset type",
     "Quantity",
@@ -128,6 +130,7 @@ function exportCsv(rows: AssetRequest[]) {
       requestCode(r),
       r.requesterName,
       r.employeeId ?? "",
+      r.requesterEmail ?? "",
       r.department ?? "",
       r.assetType,
       r.quantity,
@@ -190,7 +193,15 @@ export function AssetRequestTable({
   // Approve / reopen ask first, since they change the request right away.
   const [confirming, setConfirming] = useState<{
     request: AssetRequest;
-    action: "approve" | "reopen" | "archive" | "unarchive";
+    action:
+      | "approve"
+      | "reopen"
+      | "archive"
+      | "unarchive"
+      | "deny"
+      | "complete"
+      | "edit";
+    next?: AssetRequest;
   } | null>(null);
   // The last change, and how to reverse it, for the Undo toast.
   const [undo, setUndo] = useState<{
@@ -301,11 +312,18 @@ export function AssetRequestTable({
   // Puts a request back the way it was and saves that, for Undo.
   function revertRequest(original: AssetRequest) {
     const current = requests.find((r) => r.id === original.id);
-    setRequests((prev) => prev.map((r) => (r.id === original.id ? original : r)));
-    persist(saveAssetRequest(original), () =>
-      current &&
-      setRequests((prev) => prev.map((r) => (r.id === original.id ? current : r))),
-    );
+    setRequest(original.id, original);
+    const undoSave =
+      original.source === "dtr"
+        ? original.status === "Archived"
+          ? archiveExternalAssetRequest(original.id)
+          : saveExternalRequestOverride(
+              original.id,
+              original.status,
+              original.resolutionNote,
+            )
+        : saveAssetRequest(original);
+    persist(undoSave, () => current && setRequest(original.id, current));
   }
 
   function updateRequest(
@@ -321,6 +339,19 @@ export function AssetRequestTable({
       setRequests((prev) => prev.map((r) => (r.id === id ? original : r))),
     );
     setUndo({ message, run: () => revertRequest(original) });
+  }
+
+  function applyEdit(original: AssetRequest, next: AssetRequest) {
+    setEditOpen(false);
+    setRequest(original.id, next);
+    persist(
+      saveAssetRequest(next).then((saved) => replaceRequest(saved)),
+      () => setRequest(original.id, original),
+    );
+    setUndo({
+      message: `Updated ${requestCode(original)}`,
+      run: () => revertRequest(original),
+    });
   }
 
   function codeOf(id: string) {
@@ -344,6 +375,10 @@ export function AssetRequestTable({
     if (original.source === "dtr") {
       setRequest(id, next);
       persist(approveDtrAsset(id).then(replaceRequest), () => setRequest(id, original));
+      setUndo({
+        message: `Approved ${codeOf(id)}`,
+        run: () => revertRequest(original),
+      });
       return;
     }
     updateRequest(id, () => next, `Approved ${codeOf(id)}`);
@@ -396,6 +431,10 @@ export function AssetRequestTable({
       persist(rejectDtrAsset(id, reason).then(replaceRequest), () =>
         setRequest(id, original),
       );
+      setUndo({
+        message: `Denied ${codeOf(id)}`,
+        run: () => revertRequest(original),
+      });
       return;
     }
     updateRequest(
@@ -448,14 +487,28 @@ export function AssetRequestTable({
 
   // Puts a closed request back in the queue, clearing its decision.
   function reopen(id: string) {
-    updateRequest(id, (r) => ({
-      ...r,
+    const original = requests.find((r) => r.id === id);
+    if (!original) return;
+    const next: AssetRequest = {
+      ...original,
       status: "Pending",
       approvedAt: null,
       completedAt: null,
       cancelledAt: null,
       resolutionNote: null,
-    }), `Reopened ${codeOf(id)}`);
+    };
+    if (original.source === "dtr") {
+      setRequest(id, next);
+      persist(saveExternalRequestOverride(id, "Pending", null), () =>
+        setRequest(id, original),
+      );
+      setUndo({
+        message: `Reopened ${codeOf(id)}`,
+        run: () => revertRequest(original),
+      });
+      return;
+    }
+    updateRequest(id, () => next, `Reopened ${codeOf(id)}`);
   }
 
   function deleteRequests(ids: string[]) {
@@ -839,10 +892,24 @@ export function AssetRequestTable({
                             variant="outline"
                             size="xs"
                             className="min-w-27"
-                            onClick={() => setCompleting(request)}
+                            onClick={() =>
+                              setConfirming({ request, action: "complete" })
+                            }
                           >
                             <CircleCheckIcon />
                             {fromDtr ? "Issue" : "Complete"}
+                          </Button>
+                        ) : request.status === "Denied" ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="min-w-27"
+                            onClick={() =>
+                              setConfirming({ request, action: "reopen" })
+                            }
+                          >
+                            <RotateCcwIcon />
+                            Reopen
                           </Button>
                         ) : canArchive ? (
                           <Button
@@ -891,7 +958,9 @@ export function AssetRequestTable({
                               </DropdownMenuItem>
                             )}
                             {isOpen && !fromDtr && (
-                              <DropdownMenuItem onClick={() => openEdit(request)}>
+                              <DropdownMenuItem
+                                onClick={() => openEdit(request)}
+                              >
                                 <PencilIcon />
                                 Edit request
                               </DropdownMenuItem>
@@ -906,7 +975,9 @@ export function AssetRequestTable({
                             )}
                             {request.status === "Pending" && (
                               <DropdownMenuItem
-                                onClick={() => setDenying(request)}
+                                onClick={() =>
+                                  setConfirming({ request, action: "deny" })
+                                }
                               >
                                 <XCircleIcon />
                                 Deny request
@@ -914,7 +985,9 @@ export function AssetRequestTable({
                             )}
                             {request.status === "Approved" && !fromDtr && (
                               <DropdownMenuItem
-                                onClick={() => setDenying(request)}
+                                onClick={() =>
+                                  setConfirming({ request, action: "deny" })
+                                }
                               >
                                 <XCircleIcon />
                                 Cancel request
@@ -930,7 +1003,17 @@ export function AssetRequestTable({
                                 Restore
                               </DropdownMenuItem>
                             )}
-                            {!fromDtr && canArchive && (
+                            {request.status === "Denied" && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setConfirming({ request, action: "archive" })
+                                }
+                              >
+                                <ArchiveIcon />
+                                Archive
+                              </DropdownMenuItem>
+                            )}
+                            {request.status === "Completed" && (
                               <DropdownMenuItem
                                 onClick={() =>
                                   setConfirming({ request, action: "reopen" })
@@ -1089,48 +1172,76 @@ export function AssetRequestTable({
         title={
           confirming?.action === "approve"
             ? `Approve ${requestCode(confirming.request)}?`
-            : confirming?.action === "archive"
-              ? `Archive ${requestCode(confirming.request)}?`
-              : confirming?.action === "unarchive"
-                ? `Restore ${requestCode(confirming.request)}?`
-                : `Reopen ${confirming ? requestCode(confirming.request) : ""}?`
+            : confirming?.action === "deny"
+              ? `${confirming.request.status === "Approved" ? "Cancel" : "Deny"} ${requestCode(confirming.request)}?`
+              : confirming?.action === "complete"
+                ? `${confirming.request.source === "dtr" ? "Issue" : "Complete"} ${requestCode(confirming.request)}?`
+                : confirming?.action === "edit"
+                  ? `Save changes to ${requestCode(confirming.request)}?`
+                  : confirming?.action === "archive"
+                    ? `Archive ${requestCode(confirming.request)}?`
+                    : confirming?.action === "unarchive"
+                      ? `Restore ${requestCode(confirming.request)}?`
+                      : `Reopen ${confirming ? requestCode(confirming.request) : ""}?`
         }
         description={
           !confirming
             ? ""
             : confirming.action === "approve"
-              ? `${confirming.request.quantity > 1 ? `${confirming.request.quantity}× ` : ""}${confirming.request.assetType} for ${confirming.request.requesterName}. It moves to Approved until you ${confirming.request.source === "dtr" ? "issue it" : "mark it completed"}.`
-              : confirming.action === "archive"
-                ? `${requestCode(confirming.request)} leaves the active queue. You can restore it from Archived.`
-                : confirming.action === "unarchive"
-                  ? `Move ${requestCode(confirming.request)} back to ${previousStatusAfterUnarchive(confirming.request)}.`
-                  : `Move ${requestCode(confirming.request)} back to Pending? Its ${confirming.request.status === "Denied" ? "denial" : "completion"} and note will be cleared.`
+              ? `${confirming.request.quantity > 1 ? `${confirming.request.quantity}× ` : ""}${confirming.request.assetType} for ${confirming.request.requesterName}. It moves to Approved until you ${confirming.request.source === "dtr" ? "issue it" : "mark it completed"}. You can undo this afterward.`
+              : confirming.action === "deny"
+                ? `The employee will be emailed your reason, and IT will be copied. You can undo the status change afterward.`
+                : confirming.action === "complete"
+                  ? confirming.request.source === "dtr"
+                    ? `You'll enter the serial number next. This issues the asset in DTR.`
+                    : `You'll note what was handed over next. You can undo this afterward.`
+                  : confirming.action === "edit"
+                    ? `This updates the request details. You can undo this afterward.`
+                    : confirming.action === "archive"
+                      ? `${requestCode(confirming.request)} leaves the active queue. You can restore it from Archived, or undo.`
+                      : confirming.action === "unarchive"
+                        ? `Move ${requestCode(confirming.request)} back to ${previousStatusAfterUnarchive(confirming.request)}. You can undo this afterward.`
+                        : `Move ${requestCode(confirming.request)} back to Pending? Its ${confirming.request.status === "Denied" ? "denial" : "completion"} and note will be cleared. You can undo this afterward.`
         }
         confirmLabel={
           confirming?.action === "approve"
             ? "Approve"
-            : confirming?.action === "archive"
-              ? "Archive"
-              : confirming?.action === "unarchive"
-                ? "Restore"
-                : "Reopen"
+            : confirming?.action === "deny" || confirming?.action === "complete"
+              ? "Continue"
+              : confirming?.action === "edit"
+                ? "Save changes"
+                : confirming?.action === "archive"
+                  ? "Archive"
+                  : confirming?.action === "unarchive"
+                    ? "Restore"
+                    : "Reopen"
         }
-        confirmVariant="default"
+        confirmVariant={confirming?.action === "deny" ? "destructive" : "default"}
         icon={
           confirming?.action === "approve"
             ? CheckIcon
-            : confirming?.action === "archive"
-              ? ArchiveIcon
-              : confirming?.action === "unarchive"
-                ? ArchiveRestoreIcon
-                : RotateCcwIcon
+            : confirming?.action === "deny"
+              ? XCircleIcon
+              : confirming?.action === "complete"
+                ? CircleCheckIcon
+                : confirming?.action === "edit"
+                  ? PencilIcon
+                  : confirming?.action === "archive"
+                    ? ArchiveIcon
+                    : confirming?.action === "unarchive"
+                      ? ArchiveRestoreIcon
+                      : RotateCcwIcon
         }
         onConfirm={() => {
           if (!confirming) return;
           if (confirming.action === "approve") approve(confirming.request.id);
-          else if (confirming.action === "archive") archive(confirming.request.id);
+          else if (confirming.action === "deny") setDenying(confirming.request);
+          else if (confirming.action === "complete") setCompleting(confirming.request);
+          else if (confirming.action === "edit" && confirming.next) {
+            applyEdit(confirming.request, confirming.next);
+          } else if (confirming.action === "archive") archive(confirming.request.id);
           else if (confirming.action === "unarchive") unarchive(confirming.request.id);
-          else reopen(confirming.request.id);
+          else if (confirming.action === "reopen") reopen(confirming.request.id);
         }}
       />
 
@@ -1186,16 +1297,8 @@ export function AssetRequestTable({
         onOpenChange={setEditOpen}
         onSave={async (next) => {
           const original = requests.find((r) => r.id === next.id);
-          const saved = await saveAssetRequest(next);
-          setRequests((prev) =>
-            prev.map((r) => (r.id === saved.id ? saved : r)),
-          );
-          if (original) {
-            setUndo({
-              message: `Updated ${requestCode(saved)}`,
-              run: () => revertRequest(original),
-            });
-          }
+          if (!original) return;
+          setConfirming({ request: original, action: "edit", next });
         }}
       />
 

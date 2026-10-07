@@ -11,6 +11,8 @@ import { listActiveItEmails } from "@/lib/user-repository"
 const itInbox = "it@ardentparalegal.com"
 
 async function employeeEmailFor(request: AssetRequest): Promise<string | null> {
+  const stored = request.requesterEmail?.trim()
+  if (stored) return stored
   if (!request.employeeId) return null
   try {
     const employees = await fetchHrisEmployees("all")

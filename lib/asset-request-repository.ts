@@ -44,6 +44,7 @@ function requestFromDb(row: AssetRequestRow): AssetRequest {
     requestNo: row.requestNo,
     employeeId: row.employeeId,
     requesterName: row.requesterName,
+    requesterEmail: row.requesterEmail,
     department: row.department,
     assetType: row.assetType,
     quantity: row.quantity,
@@ -67,6 +68,7 @@ function requestData(request: AssetRequest) {
   return {
     employeeId: request.employeeId || null,
     requesterName: request.requesterName.trim(),
+    requesterEmail: request.requesterEmail?.trim() || null,
     department: request.department?.trim() || null,
     assetType: request.assetType.trim(),
     quantity: Math.max(1, Math.floor(request.quantity) || 1),

@@ -35,6 +35,7 @@ export type AssetRequest = {
   requestNo: number;
   employeeId: string | null;
   requesterName: string;
+  requesterEmail: string | null;
   department: string | null;
   assetType: string;
   quantity: number;

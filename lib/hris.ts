@@ -43,3 +43,33 @@ export async function fetchHrisEmployees(
     email: e.email ?? "",
   }))
 }
+
+export async function withRequesterEmails<T extends {
+  employeeId: string | null
+  requesterEmail?: string | null
+}>(requests: T[]): Promise<T[]> {
+  const missing = requests.filter(
+    (request) => !request.requesterEmail?.trim() && request.employeeId,
+  )
+  if (missing.length === 0) return requests
+
+  try {
+    const employees = await fetchHrisEmployees("all")
+    const emailById = new Map(
+      employees.map((employee) => [
+        employee.id,
+        employee.email.trim() || null,
+      ]),
+    )
+    return requests.map((request) => {
+      if (request.requesterEmail?.trim()) return request
+      const email = request.employeeId
+        ? emailById.get(request.employeeId) ?? null
+        : null
+      return email ? { ...request, requesterEmail: email } : request
+    })
+  } catch (error) {
+    console.warn("Couldn't attach employee emails from HRIS", error)
+    return requests
+  }
+}
