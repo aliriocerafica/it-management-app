@@ -38,6 +38,11 @@ export type DtrAssetRequest = {
   employeeNo: string
   employeeName: string
   employeeEmail?: string | null
+  employee?: {
+    email?: string | null
+    name?: string | null
+    employeeNo?: string | null
+  } | null
   department: string
   assetType: DtrAssetType
   otherDetail: string | null
@@ -152,6 +157,14 @@ function resolutionNote(row: DtrAssetRequest) {
   return row.supervisorNote?.trim() || null
 }
 
+function dtrRequesterEmail(row: DtrAssetRequest) {
+  return (
+    row.employeeEmail?.trim() ||
+    row.employee?.email?.trim() ||
+    null
+  )
+}
+
 export function dtrRequestToAssetRequest(row: DtrAssetRequest): AssetRequest {
   const status = mapStatus(row.status)
   const approved =
@@ -167,7 +180,7 @@ export function dtrRequestToAssetRequest(row: DtrAssetRequest): AssetRequest {
     requestNo: 0,
     employeeId: row.employeeNo,
     requesterName: row.employeeName,
-    requesterEmail: row.employeeEmail?.trim() || null,
+    requesterEmail: dtrRequesterEmail(row),
     department: row.department,
     assetType,
     quantity: row.quantity,
@@ -186,11 +199,62 @@ export function dtrRequestToAssetRequest(row: DtrAssetRequest): AssetRequest {
   }
 }
 
+type DtrDirectoryEmployee = {
+  employeeNo?: string
+  email?: string | null
+}
+
+async function listDtrEmployeeEmails(): Promise<Map<string, string>> {
+  try {
+    const rows = await dtrFetch<DtrDirectoryEmployee[]>(
+      "/api/internal/employees",
+    )
+    const emails = new Map<string, string>()
+    if (!Array.isArray(rows)) return emails
+    for (const row of rows) {
+      const employeeNo = row.employeeNo?.trim().toUpperCase()
+      const email = row.email?.trim()
+      if (employeeNo && email) emails.set(employeeNo, email)
+    }
+    return emails
+  } catch {
+    return new Map()
+  }
+}
+
+export async function lookupDtrEmployeeEmail(
+  employeeNo: string,
+): Promise<string | null> {
+  try {
+    const profile = await dtrFetch<{ email?: string | null }>(
+      `/api/internal/employees/${encodeURIComponent(employeeNo)}/export-profile`,
+    )
+    return profile.email?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+function withDirectoryEmail(
+  request: AssetRequest,
+  emails: Map<string, string>,
+): AssetRequest {
+  if (request.requesterEmail?.trim()) return request
+  const employeeNo = request.employeeId?.trim().toUpperCase()
+  const email = employeeNo ? emails.get(employeeNo) ?? null : null
+  return email ? { ...request, requesterEmail: email } : request
+}
+
 export async function listDtrAssetRequests(): Promise<AssetRequest[]> {
-  const rows = await dtrFetch<DtrAssetRequest[]>(
-    "/api/internal/assets/requests?status=ALL&limit=500",
+  const [rows, emails] = await Promise.all([
+    dtrFetch<DtrAssetRequest[]>(
+      "/api/internal/assets/requests?status=ALL&limit=500",
+    ),
+    listDtrEmployeeEmails(),
+  ])
+  return (Array.isArray(rows) ? rows : []).map((row) =>
+    withDirectoryEmail(dtrRequestToAssetRequest(row), emails),
   )
-  return rows.map(dtrRequestToAssetRequest)
 }
 
 export function isMissingDtrEndpoint(error: unknown) {
@@ -207,7 +271,10 @@ async function fetchDtrRequest(id: string): Promise<DtrAssetRequest> {
 }
 
 export async function getDtrAssetRequest(id: string): Promise<AssetRequest> {
-  return dtrRequestToAssetRequest(await fetchDtrRequest(id))
+  const mapped = dtrRequestToAssetRequest(await fetchDtrRequest(id))
+  if (mapped.requesterEmail || !mapped.employeeId) return mapped
+  const email = await lookupDtrEmployeeEmail(mapped.employeeId)
+  return email ? { ...mapped, requesterEmail: email } : mapped
 }
 
 function isDtrAssetRequest(value: unknown): value is DtrAssetRequest {

@@ -5,6 +5,7 @@ import {
   assetRequestDeniedEmailHtml,
   assetRequestDeniedEmailText,
 } from "@/lib/email/templates"
+import { lookupDtrEmployeeEmail } from "@/lib/dtr"
 import { fetchHrisEmployees } from "@/lib/hris"
 import { listActiveItEmails } from "@/lib/user-repository"
 
@@ -13,12 +14,23 @@ const itInbox = "it@ardentparalegal.com"
 async function employeeEmailFor(request: AssetRequest): Promise<string | null> {
   const stored = request.requesterEmail?.trim()
   if (stored) return stored
-  if (!request.employeeId) return null
+  if (request.source === "dtr" && request.employeeId) {
+    const fromDtr = await lookupDtrEmployeeEmail(request.employeeId)
+    if (fromDtr) return fromDtr
+  }
+  if (!request.employeeId && !request.requesterName) return null
   try {
     const employees = await fetchHrisEmployees("all")
-    const match = employees.find((employee) => employee.id === request.employeeId)
-    const email = match?.email?.trim()
-    return email || null
+    const id = request.employeeId?.trim().toUpperCase()
+    const byId = employees.find(
+      (employee) => employee.id.trim().toUpperCase() === id,
+    )
+    const byName = employees.find(
+      (employee) =>
+        employee.name.trim().toLowerCase() ===
+        request.requesterName.trim().toLowerCase(),
+    )
+    return byId?.email.trim() || byName?.email.trim() || null
   } catch (error) {
     console.warn("Couldn't look up employee email for denied request", error)
     return null

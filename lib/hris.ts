@@ -48,24 +48,39 @@ export async function withRequesterEmails<T extends {
   employeeId: string | null
   requesterEmail?: string | null
 }>(requests: T[]): Promise<T[]> {
-  const missing = requests.filter(
-    (request) => !request.requesterEmail?.trim() && request.employeeId,
-  )
+  const missing = requests.filter((request) => !request.requesterEmail?.trim())
   if (missing.length === 0) return requests
 
   try {
     const employees = await fetchHrisEmployees("all")
     const emailById = new Map(
-      employees.map((employee) => [
-        employee.id,
-        employee.email.trim() || null,
-      ]),
+      employees.flatMap((employee) => {
+        const email = employee.email.trim()
+        if (!email) return []
+        const keys = [employee.id.trim(), employee.id.trim().toUpperCase()]
+        return keys.map((key) => [key, email] as const)
+      }),
+    )
+    const emailByName = new Map(
+      employees
+        .filter((employee) => employee.email.trim())
+        .map((employee) => [
+          employee.name.trim().toLowerCase(),
+          employee.email.trim(),
+        ]),
     )
     return requests.map((request) => {
       if (request.requesterEmail?.trim()) return request
-      const email = request.employeeId
-        ? emailById.get(request.employeeId) ?? null
-        : null
+      const id = request.employeeId?.trim()
+      const email =
+        (id ? emailById.get(id) ?? emailById.get(id.toUpperCase()) : null) ??
+        emailByName.get(
+          "requesterName" in request &&
+            typeof request.requesterName === "string"
+            ? request.requesterName.trim().toLowerCase()
+            : "",
+        ) ??
+        null
       return email ? { ...request, requesterEmail: email } : request
     })
   } catch (error) {

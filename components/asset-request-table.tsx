@@ -229,6 +229,7 @@ export function AssetRequestTable({
         r.requesterName,
         r.employeeId ?? "",
         r.department ?? "",
+        r.requesterEmail ?? "",
         r.assetType,
         r.reason,
         r.resolutionNote ?? "",
@@ -783,7 +784,7 @@ export function AssetRequestTable({
                         <div className="leading-tight">
                           <div>{request.requesterName}</div>
                           <div className="text-[11px] text-muted-foreground">
-                            {request.department}
+                            {request.requesterEmail || request.department}
                           </div>
                         </div>
                       </div>
