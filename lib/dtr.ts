@@ -2,6 +2,8 @@ import type { AssetRequest, RequestPriority, RequestStatus } from "@/lib/asset-r
 
 // AURA (DTR) internal asset-request API.
 // GET  /api/internal/assets/requests
+// POST /api/internal/assets/requests/:id/approve
+// POST /api/internal/assets/requests/:id/reject
 // POST /api/internal/assets/requests/:id/issue
 // POST /api/internal/assets/:issuedId/return
 
@@ -68,11 +70,11 @@ const assetTypeLabels: Record<DtrAssetType, string> = {
   OTHER: "Other",
 }
 
-const statusLabels: Record<RequestStatus, DtrAssetStatus[]> = {
+const statusLabels: Partial<Record<RequestStatus, DtrAssetStatus[]>> = {
   Pending: ["SUBMITTED"],
-  Ongoing: ["SUPERVISOR_APPROVED"],
+  Approved: ["SUPERVISOR_APPROVED"],
   Completed: ["ISSUED", "RETURNED"],
-  Cancelled: ["SUPERVISOR_REJECTED", "CANCELLED"],
+  Denied: ["SUPERVISOR_REJECTED", "CANCELLED"],
 }
 
 function dtrConfig() {
@@ -132,7 +134,7 @@ function mapStatus(status: DtrAssetStatus): RequestStatus {
 }
 
 function resolutionNote(row: DtrAssetRequest) {
-  if (row.status === "SUBMITTED") return "Waiting for supervisor approval."
+  if (row.status === "SUBMITTED") return "Waiting for approval."
   if (row.status === "SUPERVISOR_REJECTED") {
     return row.supervisorNote?.trim() || "Denied by supervisor."
   }
@@ -151,7 +153,8 @@ function resolutionNote(row: DtrAssetRequest) {
 
 export function dtrRequestToAssetRequest(row: DtrAssetRequest): AssetRequest {
   const status = mapStatus(row.status)
-  const approved = status === "Ongoing" || status === "Completed"
+  const approved =
+    status === "Approved" || status === "Completed" || status === "Archived"
   const assetType =
     row.assetType === "OTHER" && row.otherDetail?.trim()
       ? row.otherDetail.trim()
@@ -174,7 +177,7 @@ export function dtrRequestToAssetRequest(row: DtrAssetRequest): AssetRequest {
     createdAt: row.createdAt,
     approvedAt: approved ? row.createdAt : null,
     completedAt: row.issued?.issuedAt ?? null,
-    cancelledAt: status === "Cancelled" ? row.createdAt : null,
+    cancelledAt: status === "Denied" ? row.createdAt : null,
     source: "dtr",
     issuedAssetId: row.issued?.id ?? null,
     returned: row.status === "RETURNED",
@@ -188,10 +191,75 @@ export async function listDtrAssetRequests(): Promise<AssetRequest[]> {
   return rows.map(dtrRequestToAssetRequest)
 }
 
+export function isMissingDtrEndpoint(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return /did not recognise|no procedure|method not allowed|DTR responded with 404|DTR responded with 405/i.test(
+    message,
+  )
+}
+
+async function fetchDtrRequest(id: string): Promise<DtrAssetRequest> {
+  return dtrFetch<DtrAssetRequest>(
+    `/api/internal/assets/requests/${encodeURIComponent(id)}`,
+  )
+}
+
+export async function getDtrAssetRequest(id: string): Promise<AssetRequest> {
+  return dtrRequestToAssetRequest(await fetchDtrRequest(id))
+}
+
+function isDtrAssetRequest(value: unknown): value is DtrAssetRequest {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "id" in value &&
+      "status" in value &&
+      typeof (value as DtrAssetRequest).id === "string",
+  )
+}
+
+async function decideDtrAssetRequest(
+  id: string,
+  action: "approve" | "reject",
+  note?: string,
+): Promise<AssetRequest> {
+  const result = await dtrFetch<unknown>(
+    `/api/internal/assets/requests/${encodeURIComponent(id)}/${action}`,
+    {
+      method: "POST",
+      body: JSON.stringify(note?.trim() ? { note: note.trim() } : {}),
+    },
+  )
+  const row = isDtrAssetRequest(result) ? result : await fetchDtrRequest(id)
+  return dtrRequestToAssetRequest(row)
+}
+
+export async function approveDtrAssetRequest(
+  id: string,
+  note?: string,
+): Promise<AssetRequest> {
+  return decideDtrAssetRequest(id, "approve", note)
+}
+
+export async function rejectDtrAssetRequest(
+  id: string,
+  note: string,
+): Promise<AssetRequest> {
+  return decideDtrAssetRequest(id, "reject", note)
+}
+
 export async function issueDtrAssetRequest(
   id: string,
   input: { serialNumber: string; conditionIssued: DtrIssueCondition },
 ): Promise<AssetRequest> {
+  const current = await fetchDtrRequest(id)
+  if (current.status === "SUBMITTED") {
+    try {
+      await decideDtrAssetRequest(id, "approve")
+    } catch {
+      // Issue will return DTR's own error if the request is still unapproved.
+    }
+  }
   const row = await dtrFetch<DtrAssetRequest>(
     `/api/internal/assets/requests/${encodeURIComponent(id)}/issue`,
     { method: "POST", body: JSON.stringify(input) },

@@ -1,11 +1,18 @@
 import { AssetRequestTable } from "@/components/asset-request-table"
-import { listAssetRequests } from "@/lib/asset-request-repository"
+import {
+  applyRequestOverrides,
+  listAssetRequests,
+  listRequestOverrides,
+} from "@/lib/asset-request-repository"
 import { listDtrAssetRequests } from "@/lib/dtr"
 
 export const dynamic = "force-dynamic"
 
 export default async function AssetRequestsPage() {
-  const local = await listAssetRequests()
+  const [local, overrides] = await Promise.all([
+    listAssetRequests(),
+    listRequestOverrides(),
+  ])
   let dtrError: string | null = null
   let fromDtr: Awaited<ReturnType<typeof listDtrAssetRequests>> = []
   try {
@@ -17,9 +24,8 @@ export default async function AssetRequestsPage() {
         ? error.message
         : "Couldn't load asset requests from DTR."
   }
-
-  const requests = [...local, ...fromDtr].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
+  const requests = applyRequestOverrides([...local, ...fromDtr], overrides).sort(
+    (a, b) => b.createdAt.localeCompare(a.createdAt),
   )
 
   return (

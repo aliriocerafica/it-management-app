@@ -1,12 +1,15 @@
-// IT asset requests: an employee asks for equipment, IT approves (Ongoing)
-// or denies (Cancelled) it, and marks it Completed once handed over.
+// IT asset requests: Pending → Approved or Denied → Completed, then Archive.
 export const requestStatuses = [
   "Pending",
-  "Ongoing",
+  "Approved",
   "Completed",
-  "Cancelled",
+  "Denied",
+  "Archived",
 ] as const;
 export type RequestStatus = (typeof requestStatuses)[number];
+
+export const openRequestStatuses: RequestStatus[] = ["Pending", "Approved"];
+export const archiveableStatuses: RequestStatus[] = ["Completed", "Denied"];
 
 export const requestPriorities = ["Low", "Normal", "High", "Urgent"] as const;
 export type RequestPriority = (typeof requestPriorities)[number];
@@ -52,6 +55,15 @@ export type AssetRequest = {
   returned?: boolean;
 };
 
+export function previousStatusAfterUnarchive(
+  request: Pick<AssetRequest, "completedAt" | "cancelledAt" | "approvedAt">,
+): RequestStatus {
+  if (request.completedAt) return "Completed";
+  if (request.cancelledAt) return "Denied";
+  if (request.approvedAt) return "Approved";
+  return "Pending";
+}
+
 export function requestCode(
   request: Pick<AssetRequest, "requestNo"> &
     Partial<Pick<AssetRequest, "source" | "id">>,
@@ -67,12 +79,16 @@ export const requestStatusStyles: Record<
   { dot: string; text: string }
 > = {
   Pending: { dot: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" },
-  Ongoing: { dot: "bg-sky-500", text: "text-sky-600 dark:text-sky-400" },
+  Approved: { dot: "bg-sky-500", text: "text-sky-600 dark:text-sky-400" },
   Completed: {
     dot: "bg-emerald-500",
     text: "text-emerald-600 dark:text-emerald-400",
   },
-  Cancelled: { dot: "bg-red-500", text: "text-red-600 dark:text-red-400" },
+  Denied: { dot: "bg-red-500", text: "text-red-600 dark:text-red-400" },
+  Archived: {
+    dot: "bg-muted-foreground",
+    text: "text-muted-foreground",
+  },
 };
 
 export const priorityStyles: Record<RequestPriority, string> = {

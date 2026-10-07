@@ -218,6 +218,7 @@ enum AssetRequestStatus {
   APPROVED
   COMPLETED
   DENIED
+  ARCHIVED
 }
 
 enum AssetRequestPriority {
@@ -227,8 +228,8 @@ enum AssetRequestPriority {
   URGENT
 }
 
-// An employee's request for IT equipment. Approved requests show as
-// "Ongoing" until IT hands the item over; denied ones as "Cancelled".
+// An employee's request for IT equipment. Approved until handed over
+// (Completed), denied, or archived.
 model AssetRequest {
   id            String               @id @default(cuid())
   requestNo     Int                  @unique @default(autoincrement())
@@ -252,6 +253,17 @@ model AssetRequest {
   @@index([status])
   @@index([employeeId])
   @@map("asset_requests")
+}
+
+// DTR requests live in AURA. IT-side approve / deny / archive is stored here
+// when the DTR row should not keep its original status in this queue.
+model AssetRequestOverride {
+  requestId String             @id
+  status    AssetRequestStatus
+  note      String?
+  updatedAt DateTime           @updatedAt @default(now())
+
+  @@map("asset_request_overrides")
 }
 
 // One generated accountability form. Each holder gets a new version when

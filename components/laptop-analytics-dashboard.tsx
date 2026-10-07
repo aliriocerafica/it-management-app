@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 
 import { FilterMenu } from "@/components/laptop-inventory-table";
+import { Scrollable } from "@/components/scrollable";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -599,7 +600,7 @@ function AgeUsageCard({ rows }: { rows: GradedLaptop[] }) {
         </span>
         <span className="text-right">Used / age</span>
       </div>
-      <div className="max-h-80 overflow-auto scrollbar-none print:max-h-none [&::-webkit-scrollbar]:hidden print:overflow-visible">
+      <Scrollable className="max-h-80 print:max-h-none print:overflow-visible">
         {sorted.map((r) => (
           <div
             key={r.laptop.id}
@@ -636,7 +637,7 @@ function AgeUsageCard({ rows }: { rows: GradedLaptop[] }) {
             </span>
           </div>
         ))}
-      </div>
+      </Scrollable>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-3 text-[11px] text-muted-foreground">
         {grades.map((g) => (
           <span key={g} className="inline-flex items-center gap-1.5">
@@ -1168,7 +1169,7 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
                 Sorted by average health score, lowest first
               </CardDescription>
             </CardHeader>
-            <div className="max-h-80 overflow-auto scrollbar-none print:max-h-none [&::-webkit-scrollbar]:hidden print:overflow-visible">
+            <Scrollable className="max-h-80 print:max-h-none print:overflow-visible">
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>
@@ -1226,7 +1227,7 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </Scrollable>
           </BentoCard>
 
           <BentoCard className="gap-0 pb-0 md:col-span-2 lg:col-span-4">
@@ -1250,7 +1251,7 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
                 ))}
               </CardAction>
             </CardHeader>
-            <div className="max-h-[28rem] overflow-auto scrollbar-none print:max-h-none [&::-webkit-scrollbar]:hidden print:overflow-visible">
+            <Scrollable className="max-h-[28rem] print:max-h-none print:overflow-visible">
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>
@@ -1342,7 +1343,7 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
                   )}
                 </tbody>
               </table>
-            </div>
+            </Scrollable>
           </BentoCard>
         </div>
       </div>

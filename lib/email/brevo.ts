@@ -1,5 +1,7 @@
 type SendEmailInput = {
   to: string
+  cc?: string[]
+  replyTo?: string
   subject: string
   htmlContent: string
   textContent?: string
@@ -32,6 +34,8 @@ function publicEmailError(status: number, brevoMessage: string) {
  */
 export async function sendEmail({
   to,
+  cc,
+  replyTo: replyToOverride,
   subject,
   htmlContent,
   textContent,
@@ -48,7 +52,14 @@ export async function sendEmail({
 
   const senderEmail = process.env.BREVO_SENDER_EMAIL?.trim() || "no-reply@example.com"
   const senderName = process.env.BREVO_SENDER_NAME?.trim() || "IT Asset Management"
-  const replyTo = process.env.BREVO_REPLY_TO?.trim()
+  const replyTo = replyToOverride?.trim() || process.env.BREVO_REPLY_TO?.trim()
+  const ccRecipients = [
+    ...new Set(
+      (cc ?? [])
+        .map((email) => email.trim().toLowerCase())
+        .filter((email) => email && email !== to.trim().toLowerCase()),
+    ),
+  ].map((email) => ({ email }))
 
   let response: Response
   try {
@@ -62,6 +73,7 @@ export async function sendEmail({
       body: JSON.stringify({
         sender: { email: senderEmail, name: senderName },
         to: [{ email: to }],
+        ...(ccRecipients.length ? { cc: ccRecipients } : {}),
         ...(replyTo ? { replyTo: { email: replyTo, name: senderName } } : {}),
         subject,
         htmlContent,

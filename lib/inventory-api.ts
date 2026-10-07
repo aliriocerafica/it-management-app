@@ -150,6 +150,54 @@ export async function saveAssetRequest(request: AssetRequest) {
   )
 }
 
+export async function approveDtrAsset(id: string, note?: string) {
+  return queued([id], async () =>
+    parse<AssetRequest>(
+      await fetch(`/api/asset-requests/dtr/${encodeURIComponent(id)}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(note?.trim() ? { note: note.trim() } : {}),
+      }),
+    ),
+  )
+}
+
+export async function rejectDtrAsset(id: string, note: string) {
+  return queued([id], async () =>
+    parse<AssetRequest>(
+      await fetch(`/api/asset-requests/dtr/${encodeURIComponent(id)}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note }),
+      }),
+    ),
+  )
+}
+
+export async function archiveExternalAssetRequest(id: string) {
+  return queued([id], async () =>
+    parse<{ ok: boolean }>(
+      await fetch("/api/asset-requests/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      }),
+    ),
+  )
+}
+
+export async function unarchiveExternalAssetRequest(id: string) {
+  return queued([id], async () =>
+    parse<{ ok: boolean }>(
+      await fetch("/api/asset-requests/archive", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      }),
+    ),
+  )
+}
+
 export async function issueDtrAsset(id: string, input: {
   serialNumber: string
   conditionIssued: "NEW" | "GOOD" | "FAIR" | "POOR"

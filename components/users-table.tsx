@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 
 import { AddUserDialog } from "@/components/add-user-dialog"
+import { Scrollable } from "@/components/scrollable"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { UndoToast } from "@/components/undo-toast"
 import { FilterMenu, rowsPerPageOptions } from "@/components/laptop-inventory-table"
@@ -335,7 +336,7 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
         </div>
       )}
 
-      <div className="overflow-auto">
+      <Scrollable className="max-h-[calc(100svh-17rem)] min-h-80">
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr className="border-b border-border">
@@ -469,7 +470,7 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
             )}
           </tbody>
         </table>
-      </div>
+      </Scrollable>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
         <span>Rows per page</span>

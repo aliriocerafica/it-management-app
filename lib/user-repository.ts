@@ -39,6 +39,20 @@ export async function listUsers(): Promise<UserDto[]> {
   return users.map(toDto)
 }
 
+export async function listActiveItEmails(): Promise<string[]> {
+  const users = await prisma.user.findMany({
+    where: { isActive: true },
+    select: { email: true },
+  })
+  return [
+    ...new Set(
+      users
+        .map((user) => user.email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ]
+}
+
 export async function createUser(input: {
   name: string
   email: string

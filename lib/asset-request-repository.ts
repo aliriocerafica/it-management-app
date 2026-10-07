@@ -13,16 +13,18 @@ import { prisma } from "@/lib/prisma"
 
 const statusFromDb: Record<AssetRequestStatus, RequestStatus> = {
   PENDING: "Pending",
-  APPROVED: "Ongoing",
+  APPROVED: "Approved",
   COMPLETED: "Completed",
-  DENIED: "Cancelled",
+  DENIED: "Denied",
+  ARCHIVED: "Archived",
 }
 
 const statusToDb: Record<RequestStatus, AssetRequestStatus> = {
   Pending: "PENDING",
-  Ongoing: "APPROVED",
+  Approved: "APPROVED",
   Completed: "COMPLETED",
-  Cancelled: "DENIED",
+  Denied: "DENIED",
+  Archived: "ARCHIVED",
 }
 
 const priorityToDb: Record<RequestPriority, AssetRequestPriority> = {
@@ -105,6 +107,11 @@ export async function createAssetRequest(
   return requestFromDb(row)
 }
 
+export async function getAssetRequest(id: string): Promise<AssetRequest | null> {
+  const row = await prisma.assetRequest.findUnique({ where: { id } })
+  return row ? requestFromDb(row) : null
+}
+
 export async function updateAssetRequest(
   request: AssetRequest,
 ): Promise<AssetRequest> {
@@ -117,4 +124,73 @@ export async function updateAssetRequest(
 
 export async function deleteAssetRequests(ids: string[]) {
   await prisma.assetRequest.deleteMany({ where: { id: { in: ids } } })
+}
+
+export type RequestOverride = {
+  status: RequestStatus
+  note: string | null
+}
+
+export async function listRequestOverrides(): Promise<Map<string, RequestOverride>> {
+  const rows = await prisma.assetRequestOverride.findMany({
+    select: { requestId: true, status: true, note: true },
+  })
+  return new Map(
+    rows.map((row) => [
+      row.requestId,
+      { status: statusFromDb[row.status], note: row.note },
+    ]),
+  )
+}
+
+export async function saveRequestOverride(
+  requestId: string,
+  status: RequestStatus,
+  note?: string | null,
+) {
+  await prisma.assetRequestOverride.upsert({
+    where: { requestId },
+    create: {
+      requestId,
+      status: statusToDb[status],
+      note: note?.trim() || null,
+    },
+    update: {
+      status: statusToDb[status],
+      note: note?.trim() || null,
+    },
+  })
+}
+
+export async function clearRequestOverride(requestId: string) {
+  await prisma.assetRequestOverride.deleteMany({ where: { requestId } })
+}
+
+export function applyRequestOverrides(
+  requests: AssetRequest[],
+  overrides: Map<string, RequestOverride>,
+): AssetRequest[] {
+  return requests.map((request) => {
+    const override = overrides.get(request.id)
+    if (!override) return request
+    if (request.status === "Completed" && override.status !== "Archived") {
+      return request
+    }
+    const approved =
+      override.status === "Approved" ||
+      override.status === "Completed" ||
+      override.status === "Archived"
+    return {
+      ...request,
+      status: override.status,
+      resolutionNote: override.note ?? request.resolutionNote,
+      approvedAt: approved
+        ? request.approvedAt ?? new Date().toISOString()
+        : request.approvedAt,
+      cancelledAt:
+        override.status === "Denied"
+          ? request.cancelledAt ?? new Date().toISOString()
+          : request.cancelledAt,
+    }
+  })
 }

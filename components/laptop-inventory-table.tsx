@@ -61,6 +61,7 @@ import {
 import { SendToRepairDialog } from "@/components/send-to-repair-dialog";
 import { LaptopDetailsDialog } from "@/components/laptop-details-dialog";
 import { ManageLaptopRamDialog } from "@/components/manage-laptop-ram-dialog";
+import { Scrollable } from "@/components/scrollable";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -872,7 +873,7 @@ export function LaptopInventoryTable({
         </div>
 
         {/* Table: rows scroll under a sticky header; columns drop out by priority as the card narrows */}
-        <div className="@container max-h-[calc(100svh-17rem)] min-h-80 overflow-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
+        <Scrollable className="@container max-h-[calc(100svh-17rem)] min-h-80">
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
@@ -1209,7 +1210,7 @@ export function LaptopInventoryTable({
               )}
             </tbody>
           </table>
-        </div>
+        </Scrollable>
 
         {/* Pagination */}
         <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">

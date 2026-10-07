@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
   BoxIcon,
   CalendarClockIcon,
   CheckIcon,
@@ -43,6 +45,7 @@ import {
   cellClass,
   rowsPerPageOptions,
 } from "@/components/laptop-inventory-table";
+import { Scrollable } from "@/components/scrollable";
 import { UndoToast } from "@/components/undo-toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -58,6 +61,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
+  archiveableStatuses,
+  openRequestStatuses,
+  previousStatusAfterUnarchive,
   priorityStyles,
   requestCode,
   requestPriorities,
@@ -69,12 +75,16 @@ import {
 } from "@/lib/asset-requests";
 import type { DtrIssueCondition, DtrReturnCondition } from "@/lib/dtr";
 import {
+  approveDtrAsset,
+  archiveExternalAssetRequest,
   createAssetRequest,
   errorMessage,
   issueDtrAsset,
+  rejectDtrAsset,
   removeAssetRequests,
   returnDtrAsset,
   saveAssetRequest,
+  unarchiveExternalAssetRequest,
 } from "@/lib/inventory-api";
 import { formatDate, initials, parseDate } from "@/lib/laptops";
 import { usePendingSaves } from "@/lib/save-queue";
@@ -86,14 +96,13 @@ const tabs: Tab[] = ["All", ...requestStatuses];
 
 // What each tab means, for the tab tooltips.
 const tabHints: Record<Tab, string> = {
-  All: "Every request",
+  All: "Active requests, not archived",
   Pending: "Waiting for IT to approve or deny",
-  Ongoing: "Approved, waiting to be handed over",
+  Approved: "Approved, waiting to be handed over",
   Completed: "Handed over to the employee",
-  Cancelled: "Denied or cancelled",
+  Denied: "Denied or cancelled",
+  Archived: "Closed requests moved out of the queue",
 };
-
-const open: RequestStatus[] = ["Pending", "Ongoing"];
 
 function exportCsv(rows: AssetRequest[]) {
   const header = [
@@ -111,7 +120,7 @@ function exportCsv(rows: AssetRequest[]) {
     "Requested",
     "Approved",
     "Completed",
-    "Cancelled",
+    "Denied",
   ];
   const day = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
   const lines = rows.map((r) =>
@@ -181,7 +190,7 @@ export function AssetRequestTable({
   // Approve / reopen ask first, since they change the request right away.
   const [confirming, setConfirming] = useState<{
     request: AssetRequest;
-    action: "approve" | "reopen";
+    action: "approve" | "reopen" | "archive" | "unarchive";
   } | null>(null);
   // The last change, and how to reverse it, for the Undo toast.
   const [undo, setUndo] = useState<{
@@ -201,6 +210,7 @@ export function AssetRequestTable({
       if (typeFilter.length && !typeFilter.includes(r.assetType)) return false;
       if (priorityFilter.length && !priorityFilter.includes(r.priority))
         return false;
+      if (tab === "All" && r.status === "Archived") return false;
       if (tab !== "All" && r.status !== tab) return false;
       if (!q) return true;
       return [
@@ -234,13 +244,17 @@ export function AssetRequestTable({
 
   const tabCounts = useMemo(() => {
     const counts: Record<Tab, number> = {
-      All: requests.length,
+      All: 0,
       Pending: 0,
-      Ongoing: 0,
+      Approved: 0,
       Completed: 0,
-      Cancelled: 0,
+      Denied: 0,
+      Archived: 0,
     };
-    for (const r of requests) counts[r.status] += 1;
+    for (const r of requests) {
+      counts[r.status] += 1;
+      if (r.status !== "Archived") counts.All += 1;
+    }
     return counts;
   }, [requests]);
 
@@ -270,7 +284,7 @@ export function AssetRequestTable({
   }
 
   function openEdit(request: AssetRequest) {
-    if (!open.includes(request.status)) return;
+    if (!openRequestStatuses.includes(request.status)) return;
     setEditing(request);
     setEditOpen(true);
   }
@@ -314,12 +328,25 @@ export function AssetRequestTable({
     return request ? requestCode(request) : "request";
   }
 
+  function setRequest(id: string, next: AssetRequest) {
+    setRequests((prev) => prev.map((r) => (r.id === id ? next : r)));
+  }
+
   function approve(id: string) {
-    updateRequest(id, (r) => ({
-      ...r,
-      status: "Ongoing",
+    const original = requests.find((r) => r.id === id);
+    if (!original) return;
+    const next: AssetRequest = {
+      ...original,
+      status: "Approved",
       approvedAt: new Date().toISOString(),
-    }), `Approved ${codeOf(id)}`);
+      resolutionNote: original.source === "dtr" ? null : original.resolutionNote,
+    };
+    if (original.source === "dtr") {
+      setRequest(id, next);
+      persist(approveDtrAsset(id).then(replaceRequest), () => setRequest(id, original));
+      return;
+    }
+    updateRequest(id, () => next, `Approved ${codeOf(id)}`);
   }
 
   function complete(id: string, note: string) {
@@ -355,13 +382,68 @@ export function AssetRequestTable({
   }
 
   function deny(id: string, reason: string) {
-    updateRequest(id, (r) => ({
-      ...r,
-      status: "Cancelled",
+    const original = requests.find((r) => r.id === id);
+    if (!original) return;
+    const next: AssetRequest = {
+      ...original,
+      status: "Denied",
       cancelledAt: new Date().toISOString(),
       resolutionNote: reason,
-    }), `${requests.find((r) => r.id === id)?.status === "Pending" ? "Denied" : "Cancelled"} ${codeOf(id)}`);
+    };
     setDenying(null);
+    if (original.source === "dtr") {
+      setRequest(id, next);
+      persist(rejectDtrAsset(id, reason).then(replaceRequest), () =>
+        setRequest(id, original),
+      );
+      return;
+    }
+    updateRequest(
+      id,
+      () => next,
+      `${original.status === "Pending" ? "Denied" : "Cancelled"} ${codeOf(id)}`,
+    );
+  }
+
+  function archive(id: string) {
+    const original = requests.find((r) => r.id === id);
+    if (!original) return;
+    const next: AssetRequest = { ...original, status: "Archived" };
+    if (original.source === "dtr") {
+      setRequest(id, next);
+      persist(archiveExternalAssetRequest(id), () => setRequest(id, original));
+      setUndo({
+        message: `Archived ${codeOf(id)}`,
+        run: () => {
+          setRequest(id, original);
+          persist(unarchiveExternalAssetRequest(id), () => setRequest(id, next));
+        },
+      });
+      return;
+    }
+    updateRequest(id, () => next, `Archived ${codeOf(id)}`);
+  }
+
+  function unarchive(id: string) {
+    const original = requests.find((r) => r.id === id);
+    if (!original) return;
+    const next: AssetRequest = {
+      ...original,
+      status: previousStatusAfterUnarchive(original),
+    };
+    if (original.source === "dtr") {
+      setRequest(id, next);
+      persist(unarchiveExternalAssetRequest(id), () => setRequest(id, original));
+      setUndo({
+        message: `Restored ${codeOf(id)}`,
+        run: () => {
+          setRequest(id, original);
+          persist(archiveExternalAssetRequest(id), () => setRequest(id, next));
+        },
+      });
+      return;
+    }
+    updateRequest(id, () => next, `Restored ${codeOf(id)}`);
   }
 
   // Puts a closed request back in the queue, clearing its decision.
@@ -565,7 +647,7 @@ export function AssetRequestTable({
         </div>
 
         {/* Table: rows scroll under a sticky header; columns drop out by priority as the card narrows */}
-        <div className="@container max-h-[calc(100svh-17rem)] min-h-80 overflow-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
+        <Scrollable className="@container max-h-[calc(100svh-17rem)] min-h-80">
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
@@ -603,11 +685,8 @@ export function AssetRequestTable({
                 const fromDtr = request.source === "dtr";
                 const canReturn =
                   fromDtr && Boolean(request.issuedAssetId) && !request.returned;
-                const hasMenu =
-                  (!fromDtr && open.includes(request.status)) ||
-                  (fromDtr && request.status === "Ongoing") ||
-                  canReturn ||
-                  (!fromDtr && !open.includes(request.status));
+                const isOpen = openRequestStatuses.includes(request.status);
+                const canArchive = archiveableStatuses.includes(request.status);
                 const isSelected = selected.has(request.id);
                 const status = requestStatusStyles[request.status];
                 const code = requestCode(request);
@@ -615,7 +694,7 @@ export function AssetRequestTable({
                 const overdue =
                   today != null &&
                   request.neededBy != null &&
-                  open.includes(request.status) &&
+                  isOpen &&
                   parseDate(request.neededBy) < today;
                 return (
                   <tr
@@ -743,7 +822,7 @@ export function AssetRequestTable({
                         aria-busy={saving}
                         className="flex items-center justify-end gap-1 disabled:opacity-60"
                       >
-                        {request.status === "Pending" && !fromDtr ? (
+                        {request.status === "Pending" ? (
                           <Button
                             variant="outline"
                             size="xs"
@@ -755,7 +834,7 @@ export function AssetRequestTable({
                             <CheckIcon />
                             Approve
                           </Button>
-                        ) : request.status === "Ongoing" ? (
+                        ) : request.status === "Approved" ? (
                           <Button
                             variant="outline"
                             size="xs"
@@ -764,6 +843,18 @@ export function AssetRequestTable({
                           >
                             <CircleCheckIcon />
                             {fromDtr ? "Issue" : "Complete"}
+                          </Button>
+                        ) : canArchive ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="min-w-27"
+                            onClick={() =>
+                              setConfirming({ request, action: "archive" })
+                            }
+                          >
+                            <ArchiveIcon />
+                            Archive
                           </Button>
                         ) : (
                           <Button
@@ -776,7 +867,6 @@ export function AssetRequestTable({
                             View
                           </Button>
                         )}
-                        {hasMenu && (
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             render={
@@ -792,7 +882,7 @@ export function AssetRequestTable({
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
                             {/* Only what the row's main button doesn't already do. */}
-                            {open.includes(request.status) && (
+                            {request.status !== "Archived" && (
                               <DropdownMenuItem
                                 onClick={() => openView(request)}
                               >
@@ -800,7 +890,7 @@ export function AssetRequestTable({
                                 View details
                               </DropdownMenuItem>
                             )}
-                            {open.includes(request.status) && !fromDtr && (
+                            {isOpen && !fromDtr && (
                               <DropdownMenuItem onClick={() => openEdit(request)}>
                                 <PencilIcon />
                                 Edit request
@@ -814,26 +904,42 @@ export function AssetRequestTable({
                                 Mark returned
                               </DropdownMenuItem>
                             )}
-                            {!fromDtr &&
-                              (open.includes(request.status) ? (
-                                <DropdownMenuItem
-                                  onClick={() => setDenying(request)}
-                                >
-                                  <XCircleIcon />
-                                  {request.status === "Pending"
-                                    ? "Deny request"
-                                    : "Cancel request"}
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    setConfirming({ request, action: "reopen" })
-                                  }
-                                >
-                                  <RotateCcwIcon />
-                                  Reopen as pending
-                                </DropdownMenuItem>
-                              ))}
+                            {request.status === "Pending" && (
+                              <DropdownMenuItem
+                                onClick={() => setDenying(request)}
+                              >
+                                <XCircleIcon />
+                                Deny request
+                              </DropdownMenuItem>
+                            )}
+                            {request.status === "Approved" && !fromDtr && (
+                              <DropdownMenuItem
+                                onClick={() => setDenying(request)}
+                              >
+                                <XCircleIcon />
+                                Cancel request
+                              </DropdownMenuItem>
+                            )}
+                            {request.status === "Archived" && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setConfirming({ request, action: "unarchive" })
+                                }
+                              >
+                                <ArchiveRestoreIcon />
+                                Restore
+                              </DropdownMenuItem>
+                            )}
+                            {!fromDtr && canArchive && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setConfirming({ request, action: "reopen" })
+                                }
+                              >
+                                <RotateCcwIcon />
+                                Reopen as pending
+                              </DropdownMenuItem>
+                            )}
                             {!fromDtr && (
                               <>
                                 <DropdownMenuSeparator />
@@ -848,7 +954,6 @@ export function AssetRequestTable({
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        )}
                       </fieldset>
                     </td>
                   </tr>
@@ -868,7 +973,7 @@ export function AssetRequestTable({
               )}
             </tbody>
           </table>
-        </div>
+        </Scrollable>
 
         {/* Pagination */}
         <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
@@ -984,21 +1089,47 @@ export function AssetRequestTable({
         title={
           confirming?.action === "approve"
             ? `Approve ${requestCode(confirming.request)}?`
-            : `Reopen ${confirming ? requestCode(confirming.request) : ""}?`
+            : confirming?.action === "archive"
+              ? `Archive ${requestCode(confirming.request)}?`
+              : confirming?.action === "unarchive"
+                ? `Restore ${requestCode(confirming.request)}?`
+                : `Reopen ${confirming ? requestCode(confirming.request) : ""}?`
         }
         description={
           !confirming
             ? ""
             : confirming.action === "approve"
-              ? `${confirming.request.quantity > 1 ? `${confirming.request.quantity}× ` : ""}${confirming.request.assetType} for ${confirming.request.requesterName}. It moves to Ongoing until you mark it completed.`
-              : `Move ${requestCode(confirming.request)} back to Pending? Its ${confirming.request.status === "Cancelled" ? "denial" : "completion"} and note will be cleared.`
+              ? `${confirming.request.quantity > 1 ? `${confirming.request.quantity}× ` : ""}${confirming.request.assetType} for ${confirming.request.requesterName}. It moves to Approved until you ${confirming.request.source === "dtr" ? "issue it" : "mark it completed"}.`
+              : confirming.action === "archive"
+                ? `${requestCode(confirming.request)} leaves the active queue. You can restore it from Archived.`
+                : confirming.action === "unarchive"
+                  ? `Move ${requestCode(confirming.request)} back to ${previousStatusAfterUnarchive(confirming.request)}.`
+                  : `Move ${requestCode(confirming.request)} back to Pending? Its ${confirming.request.status === "Denied" ? "denial" : "completion"} and note will be cleared.`
         }
-        confirmLabel={confirming?.action === "approve" ? "Approve" : "Reopen"}
+        confirmLabel={
+          confirming?.action === "approve"
+            ? "Approve"
+            : confirming?.action === "archive"
+              ? "Archive"
+              : confirming?.action === "unarchive"
+                ? "Restore"
+                : "Reopen"
+        }
         confirmVariant="default"
-        icon={confirming?.action === "approve" ? CheckIcon : RotateCcwIcon}
+        icon={
+          confirming?.action === "approve"
+            ? CheckIcon
+            : confirming?.action === "archive"
+              ? ArchiveIcon
+              : confirming?.action === "unarchive"
+                ? ArchiveRestoreIcon
+                : RotateCcwIcon
+        }
         onConfirm={() => {
           if (!confirming) return;
           if (confirming.action === "approve") approve(confirming.request.id);
+          else if (confirming.action === "archive") archive(confirming.request.id);
+          else if (confirming.action === "unarchive") unarchive(confirming.request.id);
           else reopen(confirming.request.id);
         }}
       />
@@ -1007,12 +1138,12 @@ export function AssetRequestTable({
         request={denying}
         open={denying !== null}
         onOpenChange={(next) => !next && setDenying(null)}
-        title={denying?.status === "Ongoing" ? "Cancel request" : "Deny request"}
+        title={denying?.status === "Approved" ? "Cancel request" : "Deny request"}
         label="Reason"
         placeholder="e.g. No stock available; existing laptop still under warranty"
         required
         confirmLabel={
-          denying?.status === "Ongoing" ? "Cancel request" : "Deny request"
+          denying?.status === "Approved" ? "Cancel request" : "Deny request"
         }
         confirmVariant="destructive"
         icon={XCircleIcon}

@@ -68,7 +68,7 @@ export const textareaClass =
 
 // Without `request` this is the "New request" dialog with its own trigger
 // button. With `request` it edits that request and is opened by the parent.
-// Status changes go through the row actions (approve / complete / deny).
+// Status changes go through the row actions (approve / complete / deny / archive).
 export function AssetRequestDialog({
   onAdd,
   request,
@@ -701,29 +701,45 @@ function requestSteps(request: AssetRequest): Step[] {
       state: status === "Pending" ? "current" : "done",
     },
   ];
-  if (request.approvedAt || status !== "Cancelled") {
+  const denied =
+    status === "Denied" ||
+    (status === "Archived" && Boolean(request.cancelledAt) && !request.completedAt);
+  if (request.approvedAt || !denied) {
     steps.push({
       title: request.approvedAt ? "Approved" : "Awaiting approval",
       at: request.approvedAt,
       state: !request.approvedAt
         ? "upcoming"
-        : status === "Ongoing"
+        : status === "Approved"
           ? "current"
           : "done",
     });
   }
-  if (status === "Cancelled") {
-    const employeeCancelled = request.resolutionNote === "Cancelled by the employee.";
+  if (denied) {
+    const employeeCancelled =
+      request.resolutionNote === "Cancelled by the employee.";
     steps.push({
       title: request.approvedAt || employeeCancelled ? "Cancelled" : "Denied",
       at: request.cancelledAt,
-      state: "current",
+      state: status === "Denied" ? "current" : "done",
     });
   } else {
     steps.push({
       title: request.completedAt ? "Completed" : "Awaiting hand-over",
       at: request.completedAt,
-      state: request.completedAt ? "current" : "upcoming",
+      state:
+        status === "Completed"
+          ? "current"
+          : request.completedAt
+            ? "done"
+            : "upcoming",
+    });
+  }
+  if (status === "Archived") {
+    steps.push({
+      title: "Archived",
+      at: request.cancelledAt && !request.completedAt ? request.cancelledAt : request.completedAt,
+      state: "current",
     });
   }
   return steps;
@@ -736,10 +752,10 @@ function Details({ request }: { request: AssetRequest }) {
   const overdue =
     today != null &&
     request.neededBy != null &&
-    (request.status === "Pending" || request.status === "Ongoing") &&
+    (request.status === "Pending" || request.status === "Approved") &&
     parseDate(request.neededBy) < today;
   const steps = requestSteps(request);
-  const cancelled = request.status === "Cancelled";
+  const cancelled = request.status === "Denied";
 
   return (
     <>

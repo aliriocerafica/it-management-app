@@ -44,6 +44,7 @@ import { revalidateInventory } from "@/app/actions/revalidate-inventory";
 import { AddAccessoryDialog } from "@/components/add-accessory-dialog";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { InstallRamDialog } from "@/components/install-ram-dialog";
+import { Scrollable } from "@/components/scrollable";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { ErrorToast } from "@/components/error-toast";
 import {
@@ -792,7 +793,7 @@ export function AccessoryInventoryTable({
         </div>
 
         {/* Table: rows scroll under a sticky header; columns drop out by priority as the card narrows */}
-        <div className="@container max-h-[calc(100svh-17rem)] min-h-80 overflow-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
+        <Scrollable className="@container max-h-[calc(100svh-17rem)] min-h-80">
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
@@ -1150,7 +1151,7 @@ export function AccessoryInventoryTable({
               )}
             </tbody>
           </table>
-        </div>
+        </Scrollable>
 
         {/* Pagination */}
         <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">

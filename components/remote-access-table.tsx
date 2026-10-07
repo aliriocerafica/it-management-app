@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 
 import { AnyDeskIcon } from "@/components/anydesk-icon"
+import { Scrollable } from "@/components/scrollable"
 import {
   ColumnHeader,
   FilterMenu,
@@ -277,7 +278,7 @@ export function RemoteAccessTable({
           </div>
         </div>
 
-        <div className="@container max-h-[calc(100svh-17rem)] min-h-80 overflow-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
+        <Scrollable className="@container max-h-[calc(100svh-17rem)] min-h-80">
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
@@ -486,7 +487,7 @@ export function RemoteAccessTable({
               )}
             </tbody>
           </table>
-        </div>
+        </Scrollable>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
           <div className="flex flex-wrap items-center gap-3">

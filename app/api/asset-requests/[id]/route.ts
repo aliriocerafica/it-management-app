@@ -2,7 +2,11 @@ import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
 import { saveErrorResponse } from "@/lib/api-errors"
-import { updateAssetRequest } from "@/lib/asset-request-repository"
+import { notifyAssetRequestDenied } from "@/lib/asset-request-notify"
+import {
+  getAssetRequest,
+  updateAssetRequest,
+} from "@/lib/asset-request-repository"
 import type { AssetRequest } from "@/lib/asset-requests"
 import { verifySession } from "@/lib/auth/session"
 
@@ -18,7 +22,11 @@ export async function PUT(
   const { id } = await params
   const body = (await request.json()) as AssetRequest
   try {
+    const previous = await getAssetRequest(id)
     const saved = await updateAssetRequest({ ...body, id })
+    if (saved.status === "Denied" && previous?.status !== "Denied") {
+      await notifyAssetRequestDenied(saved)
+    }
     revalidatePath("/dashboard/requests")
     return NextResponse.json(saved)
   } catch (error) {
