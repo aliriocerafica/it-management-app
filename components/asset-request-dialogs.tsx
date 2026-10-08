@@ -131,11 +131,15 @@ function RequestForm({
   const [saving, setSaving] = useState(false);
 
   const editing = request != null;
-  // Keep a stored type that's no longer in the option list.
-  const assetTypes =
-    request && !requestAssetTypes.includes(request.assetType)
-      ? [request.assetType, ...requestAssetTypes]
-      : requestAssetTypes;
+  const listedTypes = requestAssetTypes.filter((type) => type !== "Other");
+  const storedType = request?.assetType ?? "Laptop";
+  const storedIsListed = listedTypes.includes(storedType);
+  const [assetType, setAssetType] = useState(
+    storedIsListed ? storedType : "Other",
+  );
+  const [otherAsset, setOtherAsset] = useState(
+    storedIsListed ? "" : storedType === "Other" ? "" : storedType,
+  );
 
   // Picking a name from the HRIS list fills in their department and ID;
   // anyone else can still be typed in by hand.
@@ -164,6 +168,12 @@ function RequestForm({
       setError("Add a reason for the request.");
       return;
     }
+    const chosenAsset =
+      assetType === "Other" ? otherAsset.trim().replace(/\s+/g, " ") : assetType;
+    if (!chosenAsset) {
+      setError("Type what asset they need.");
+      return;
+    }
 
     const next: AssetRequest = {
       ...(request ?? {
@@ -180,7 +190,7 @@ function RequestForm({
       requesterName: name,
       requesterEmail: requesterEmail.trim() || null,
       department: department.trim() || null,
-      assetType: get("assetType"),
+      assetType: chosenAsset,
       quantity: Number(get("quantity")) || 1,
       priority: get("priority") as RequestPriority,
       neededBy: get("neededBy") || null,
@@ -256,10 +266,11 @@ function RequestForm({
           <select
             id="assetType"
             name="assetType"
-            defaultValue={request?.assetType ?? "Laptop"}
+            value={assetType}
+            onChange={(event) => setAssetType(event.target.value)}
             className={selectClass}
           >
-            {assetTypes.map((type) => (
+            {requestAssetTypes.map((type) => (
               <option key={type} value={type}>
                 {type}
               </option>
@@ -277,6 +288,21 @@ function RequestForm({
             required
           />
         </FormField>
+        {assetType === "Other" && (
+          <FormField
+            label="What asset"
+            htmlFor="otherAsset"
+            className="sm:col-span-2"
+          >
+            <Input
+              id="otherAsset"
+              value={otherAsset}
+              onChange={(event) => setOtherAsset(event.target.value)}
+              placeholder="e.g. Webcam, docking station, printer"
+              required
+            />
+          </FormField>
+        )}
         <FormField label="Priority" htmlFor="priority">
           <select
             id="priority"
@@ -577,6 +603,151 @@ function IssueForm({
         <Button type="submit" disabled={serial.length < 3}>
           <CircleCheckIcon />
           Issue asset
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+// Issues several approved DTR requests at once. Each row needs its own serial.
+export function IssueDtrAssetsDialog({
+  requests,
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  requests: AssetRequest[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (
+    items: {
+      id: string;
+      serialNumber: string;
+      conditionIssued: DtrIssueCondition;
+    }[],
+  ) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+        {open && requests.length > 0 && (
+          <IssueManyForm
+            key={requests.map((request) => request.id).join()}
+            requests={requests}
+            onConfirm={onConfirm}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function IssueManyForm({
+  requests,
+  onConfirm,
+}: {
+  requests: AssetRequest[];
+  onConfirm: (
+    items: {
+      id: string;
+      serialNumber: string;
+      conditionIssued: DtrIssueCondition;
+    }[],
+  ) => void;
+}) {
+  const [conditionIssued, setConditionIssued] =
+    useState<DtrIssueCondition>("GOOD");
+  const [serials, setSerials] = useState<Record<string, string>>({});
+  const trimmed = requests.map(
+    (request) => serials[request.id]?.trim() ?? "",
+  );
+  const duplicate = trimmed.some(
+    (serial, index) => serial.length > 0 && trimmed.indexOf(serial) !== index,
+  );
+  const ready =
+    !duplicate && trimmed.every((serial) => serial.length >= 3 && serial.length <= 100);
+
+  return (
+    <form
+      className="flex min-h-0 flex-col"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!ready) return;
+        onConfirm(
+          requests.map((request, index) => ({
+            id: request.id,
+            serialNumber: trimmed[index],
+            conditionIssued,
+          })),
+        );
+      }}
+    >
+      <DialogHeader className="border-b border-border px-6 py-5 pr-12">
+        <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+          <CircleCheckIcon className="size-4" />
+          Issue {requests.length} assets
+        </DialogTitle>
+        <DialogDescription>
+          Enter a serial number for each request. They all go out in the same
+          condition.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-6 py-5">
+        <FormField label="Condition" htmlFor="dtr-batch-condition">
+          <select
+            id="dtr-batch-condition"
+            value={conditionIssued}
+            onChange={(event) =>
+              setConditionIssued(event.target.value as DtrIssueCondition)
+            }
+            className={selectClass}
+          >
+            {dtrIssueConditions.map((condition) => (
+              <option key={condition} value={condition}>
+                {conditionLabels[condition]}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <div className="flex flex-col gap-3">
+          {requests.map((request) => (
+            <FormField
+              key={request.id}
+              label={`${requestCode(request)} · ${request.assetType}`}
+              htmlFor={`dtr-serial-${request.id}`}
+            >
+              <Input
+                id={`dtr-serial-${request.id}`}
+                value={serials[request.id] ?? ""}
+                onChange={(event) =>
+                  setSerials((prev) => ({
+                    ...prev,
+                    [request.id]: event.target.value,
+                  }))
+                }
+                placeholder={`Serial for ${request.requesterName}`}
+                minLength={3}
+                maxLength={100}
+                required
+              />
+            </FormField>
+          ))}
+        </div>
+        {duplicate && (
+          <p role="alert" className="text-sm text-destructive">
+            Each asset needs its own serial number.
+          </p>
+        )}
+      </div>
+
+      <DialogFooter className="mx-0 mb-0 px-6 py-4">
+        <DialogClose render={<Button variant="outline" type="button" />}>
+          Back
+        </DialogClose>
+        <Button type="submit" disabled={!ready}>
+          <CircleCheckIcon />
+          Issue {requests.length} assets
         </Button>
       </DialogFooter>
     </form>

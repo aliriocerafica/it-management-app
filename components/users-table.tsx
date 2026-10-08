@@ -100,14 +100,16 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
   const start = (currentPage - 1) * rowsPerPage
   const pageRows = filtered.slice(start, start + rowsPerPage)
 
-  const allOnPageSelected = pageRows.length > 0 && pageRows.every((u) => selected.has(u.id))
+  const filteredIds = filtered.map((user) => user.id)
+  const selectedInView = filteredIds.filter((id) => selected.has(id)).length
+  const allSelected = filteredIds.length > 0 && selectedInView === filteredIds.length
 
-  function togglePage(checked: boolean) {
+  function toggleAll(checked: boolean) {
     setSelected((prev) => {
       const next = new Set(prev)
-      for (const user of pageRows) {
-        if (checked) next.add(user.id)
-        else next.delete(user.id)
+      for (const id of filteredIds) {
+        if (checked) next.add(id)
+        else next.delete(id)
       }
       return next
     })
@@ -342,9 +344,15 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
             <tr className="border-b border-border">
               <th className="sticky top-0 z-10 h-9 w-9 border-r border-border bg-card pl-3 shadow-[inset_0_-1px_0_var(--color-border)]">
                 <Checkbox
-                  aria-label="Select all on page"
-                  checked={allOnPageSelected}
-                  onCheckedChange={(checked) => togglePage(Boolean(checked))}
+                  aria-label={
+                    filtered.length === 0
+                      ? "Select all"
+                      : `Select all ${filtered.length} users`
+                  }
+                  checked={allSelected}
+                  disabled={filteredIds.length === 0}
+                  indeterminate={selectedInView > 0 && !allSelected}
+                  onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                 />
               </th>
               <th className="sticky top-0 z-10 h-9 border-r border-border bg-card px-2.5 text-left text-[11px] font-medium text-muted-foreground">

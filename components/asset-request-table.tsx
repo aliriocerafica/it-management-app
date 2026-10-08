@@ -33,6 +33,7 @@ import {
 import {
   AssetRequestDialog,
   IssueDtrAssetDialog,
+  IssueDtrAssetsDialog,
   RequestDetailsDialog,
   RequestNoteDialog,
   ReturnDtrAssetDialog,
@@ -167,14 +168,6 @@ function daysAgo(iso: string, today: Date) {
   return `${days} days ago`;
 }
 
-function canSelectRequest(request: AssetRequest) {
-  return (
-    request.source !== "dtr" ||
-    request.status === "Pending" ||
-    request.status === "Archived"
-  );
-}
-
 export function AssetRequestTable({
   initialData,
 }: {
@@ -195,6 +188,8 @@ export function AssetRequestTable({
   const [editOpen, setEditOpen] = useState(false);
   const [denying, setDenying] = useState<AssetRequest[] | null>(null);
   const [completing, setCompleting] = useState<AssetRequest | null>(null);
+  const [issuing, setIssuing] = useState<AssetRequest[]>([]);
+  const [completingLocal, setCompletingLocal] = useState<AssetRequest[]>([]);
   const [returning, setReturning] = useState<AssetRequest | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
@@ -252,14 +247,18 @@ export function AssetRequestTable({
   const start = (currentPage - 1) * rowsPerPage;
   const pageRows = filtered.slice(start, start + rowsPerPage);
 
-  const pageIds = pageRows.map((r) => r.id);
-  const selectablePageIds = pageRows.filter(canSelectRequest).map((r) => r.id);
-  const selectedOnPage = selectablePageIds.filter((id) => selected.has(id)).length;
-  const allOnPageSelected =
-    selectablePageIds.length > 0 &&
-    selectedOnPage === selectablePageIds.length;
+  const filteredIds = filtered.map((r) => r.id);
+  const selectedInView = filteredIds.filter((id) => selected.has(id)).length;
+  const allSelected =
+    filteredIds.length > 0 && selectedInView === filteredIds.length;
   const selectedRequests = requests.filter((r) => selected.has(r.id));
   const selectedPending = selectedRequests.filter((r) => r.status === "Pending");
+  const selectedApprovedDtr = selectedRequests.filter(
+    (r) => r.status === "Approved" && r.source === "dtr",
+  );
+  const selectedApprovedLocal = selectedRequests.filter(
+    (r) => r.status === "Approved" && r.source !== "dtr",
+  );
   const selectedDeletable = selectedRequests.filter(
     (r) => r.source !== "dtr" || r.status === "Archived",
   );
@@ -295,10 +294,10 @@ export function AssetRequestTable({
     });
   }
 
-  function togglePage(checked: boolean) {
+  function toggleAll(checked: boolean) {
     setSelected((prev) => {
       const next = new Set(prev);
-      for (const id of selectablePageIds) {
+      for (const id of filteredIds) {
         if (checked) next.add(id);
         else next.delete(id);
       }
@@ -453,6 +452,57 @@ export function AssetRequestTable({
       resolutionNote: note || null,
     }), `Completed ${codeOf(id)}`);
     setCompleting(null);
+  }
+
+  function completeMany(targets: AssetRequest[], note: string) {
+    const originals = targets.filter(
+      (request) => request.source !== "dtr" && request.status === "Approved",
+    );
+    if (originals.length === 0) return;
+    setCompletingLocal([]);
+    const now = new Date().toISOString();
+    const nexts = originals.map((original) => ({
+      ...original,
+      status: "Completed" as const,
+      approvedAt: original.approvedAt ?? now,
+      completedAt: now,
+      resolutionNote: note || null,
+    }));
+    persistMany(
+      originals,
+      nexts,
+      Promise.all(nexts.map((next) => saveAssetRequest(next))).then((saved) => {
+        for (const request of saved) replaceRequest(request);
+      }),
+      originals.length === 1
+        ? `Completed ${requestCode(originals[0])}`
+        : `Completed ${originals.length} requests`,
+    );
+  }
+
+  function issueMany(
+    items: {
+      id: string;
+      serialNumber: string;
+      conditionIssued: DtrIssueCondition;
+    }[],
+  ) {
+    setIssuing([]);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const item of items) next.delete(item.id);
+      return next;
+    });
+    persist(
+      Promise.all(
+        items.map((item) =>
+          issueDtrAsset(item.id, {
+            serialNumber: item.serialNumber,
+            conditionIssued: item.conditionIssued,
+          }).then((saved) => replaceRequest(saved)),
+        ),
+      ),
+    );
   }
 
   function replaceRequest(saved: AssetRequest & { emailWarning?: string }) {
@@ -760,6 +810,41 @@ export function AssetRequestTable({
                     : `Delete ${selectedDeletable.length}`}
                 </Button>
               )}
+              {selectedApprovedDtr.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    selectedApprovedDtr.length === 1
+                      ? setCompleting(selectedApprovedDtr[0])
+                      : setIssuing(selectedApprovedDtr)
+                  }
+                >
+                  <CircleCheckIcon />
+                  {selectedApprovedDtr.length === 1
+                    ? "Issue"
+                    : `Issue ${selectedApprovedDtr.length}`}
+                </Button>
+              )}
+              {selectedApprovedLocal.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCompletingLocal(selectedApprovedLocal)}
+                >
+                  <CircleCheckIcon />
+                  {selectedApprovedLocal.length === 1
+                    ? "Complete"
+                    : `Complete ${selectedApprovedLocal.length}`}
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelected(new Set())}
+              >
+                Clear
+              </Button>
             </div>
           )}
           <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
@@ -832,11 +917,15 @@ export function AssetRequestTable({
               <tr className="border-b border-border">
                 <th className="sticky top-0 z-10 h-9 w-9 border-r border-border bg-card pl-3 shadow-[inset_0_-1px_0_var(--color-border)]">
                   <Checkbox
-                    aria-label="Select all on page"
-                    checked={allOnPageSelected}
-                    disabled={selectablePageIds.length === 0}
-                    indeterminate={selectedOnPage > 0 && !allOnPageSelected}
-                    onCheckedChange={(checked) => togglePage(checked)}
+                    aria-label={
+                      filtered.length === 0
+                        ? "Select all"
+                        : `Select all ${filtered.length} requests`
+                    }
+                    checked={allSelected}
+                    disabled={filteredIds.length === 0}
+                    indeterminate={selectedInView > 0 && !allSelected}
+                    onCheckedChange={(checked) => toggleAll(checked)}
                   />
                 </th>
                 <ColumnHeader icon={HashIcon} className="hidden @3xl:table-cell">
@@ -885,7 +974,6 @@ export function AssetRequestTable({
                       <Checkbox
                         aria-label={`Select ${code}`}
                         checked={isSelected}
-                        disabled={!canSelectRequest(request)}
                         onCheckedChange={(checked) =>
                           toggleRow(request.id, checked)
                         }
@@ -1421,6 +1509,38 @@ export function AssetRequestTable({
         onConfirm={(reason) =>
           denying && denyMany(denying.map((r) => r.id), reason)
         }
+      />
+
+      <IssueDtrAssetsDialog
+        requests={issuing}
+        open={issuing.length > 0}
+        onOpenChange={(next) => !next && setIssuing([])}
+        onConfirm={issueMany}
+      />
+
+      <RequestNoteDialog
+        request={completingLocal[0] ?? null}
+        open={completingLocal.length > 0}
+        onOpenChange={(next) => !next && setCompletingLocal([])}
+        title={
+          completingLocal.length > 1
+            ? `Complete ${completingLocal.length} requests`
+            : "Complete request"
+        }
+        summary={
+          completingLocal.length > 1
+            ? `The same handover note is saved on all ${completingLocal.length} requests.`
+            : undefined
+        }
+        label="What was handed over?"
+        placeholder="e.g. Issued AR-LT-AU26-012 with charger"
+        confirmLabel={
+          completingLocal.length > 1
+            ? `Complete ${completingLocal.length}`
+            : "Mark completed"
+        }
+        icon={CircleCheckIcon}
+        onConfirm={(note) => completeMany(completingLocal, note)}
       />
 
       {completing?.source === "dtr" ? (

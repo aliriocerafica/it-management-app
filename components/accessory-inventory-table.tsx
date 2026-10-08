@@ -294,10 +294,10 @@ export function AccessoryInventoryTable({
   const start = (currentPage - 1) * rowsPerPage;
   const pageRows = filtered.slice(start, start + rowsPerPage);
 
-  const pageIds = pageRows.map((item) => item.id);
-  const selectedOnPage = pageIds.filter((id) => selected.has(id)).length;
-  const allOnPageSelected =
-    pageIds.length > 0 && selectedOnPage === pageIds.length;
+  const filteredIds = filtered.map((item) => item.id);
+  const selectedInView = filteredIds.filter((id) => selected.has(id)).length;
+  const allSelected =
+    filteredIds.length > 0 && selectedInView === filteredIds.length;
 
   const hasFilters = query !== "" || brandFilter.length > 0;
 
@@ -322,10 +322,10 @@ export function AccessoryInventoryTable({
     });
   }
 
-  function togglePage(checked: boolean) {
+  function toggleAll(checked: boolean) {
     setSelected((prev) => {
       const next = new Set(prev);
-      for (const id of pageIds) {
+      for (const id of filteredIds) {
         if (checked) next.add(id);
         else next.delete(id);
       }
@@ -799,10 +799,15 @@ export function AccessoryInventoryTable({
               <tr className="border-b border-border">
                 <th className="sticky top-0 z-10 h-9 w-9 border-r border-border bg-card pl-3 shadow-[inset_0_-1px_0_var(--color-border)]">
                   <Checkbox
-                    aria-label="Select all on page"
-                    checked={allOnPageSelected}
-                    indeterminate={selectedOnPage > 0 && !allOnPageSelected}
-                    onCheckedChange={(checked) => togglePage(checked)}
+                    aria-label={
+                      filtered.length === 0
+                        ? "Select all"
+                        : `Select all ${filtered.length} ${config.plural.toLowerCase()}`
+                    }
+                    checked={allSelected}
+                    disabled={filteredIds.length === 0}
+                    indeterminate={selectedInView > 0 && !allSelected}
+                    onCheckedChange={(checked) => toggleAll(checked)}
                   />
                 </th>
                 <ColumnHeader icon={Icon}>{config.singular}</ColumnHeader>

@@ -30,6 +30,7 @@ import {
 } from "@/components/laptop-inventory-table"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -75,6 +76,8 @@ export function RemoteAccessTable({
   const [rowsPerPage, setRowsPerPage] = useState(15)
   const [page, setPage] = useState(1)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [copiedSelection, setCopiedSelection] = useState(false)
 
   const departments = useMemo(
     () => [...new Set(rows.map((row) => row.employee.department))].sort(),
@@ -123,6 +126,9 @@ export function RemoteAccessTable({
   const currentPage = Math.min(page, pageCount)
   const start = (currentPage - 1) * rowsPerPage
   const pageRows = filtered.slice(start, start + rowsPerPage)
+  const filteredIds = filtered.map((row) => row.employee.id)
+  const selectedInView = filteredIds.filter((id) => selected.has(id)).length
+  const allSelected = filteredIds.length > 0 && selectedInView === filteredIds.length
   const hasFilters = query !== "" || departmentFilter.length > 0 || brandFilter.length > 0
 
   const tabCounts = useMemo(() => {
@@ -131,6 +137,41 @@ export function RemoteAccessTable({
     for (const row of rows) counts[rowStatus(row)] += 1
     return counts
   }, [rows])
+
+  function toggleRow(id: string, checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  function toggleAll(checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      for (const id of filteredIds) {
+        if (checked) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
+
+  async function copySelected() {
+    const addresses = filtered
+      .filter((row) => selected.has(row.employee.id))
+      .flatMap((row) =>
+        row.laptops
+          .map((laptop) => laptop.anydeskAddress)
+          .filter((address): address is string => Boolean(address)),
+      )
+      .map((address) => formatAnydeskAddress(address))
+    if (addresses.length === 0) return
+    await navigator.clipboard.writeText(addresses.join("\n"))
+    setCopiedSelection(true)
+    window.setTimeout(() => setCopiedSelection(false), 1500)
+  }
 
   function clearFilters() {
     setQuery("")
@@ -237,6 +278,18 @@ export function RemoteAccessTable({
       <div className="flex min-w-0 flex-col rounded-2xl rounded-tl-none border border-border bg-card text-card-foreground shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
+            {selected.size > 0 && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">{selected.size} selected</span>
+                <Button variant="outline" size="sm" onClick={() => void copySelected()}>
+                  {copiedSelection ? <CheckIcon /> : <CopyIcon />}
+                  {copiedSelection ? "Copied" : "Copy addresses"}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                  Clear
+                </Button>
+              </div>
+            )}
             <FilterMenu
               label="Department"
               icon={BuildingIcon}
@@ -282,6 +335,19 @@ export function RemoteAccessTable({
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
+                <th className="sticky top-0 z-10 h-9 w-9 border-r border-border bg-card pl-3 shadow-[inset_0_-1px_0_var(--color-border)]">
+                  <Checkbox
+                    aria-label={
+                      filtered.length === 0
+                        ? "Select all"
+                        : `Select all ${filtered.length} employees`
+                    }
+                    checked={allSelected}
+                    disabled={filteredIds.length === 0}
+                    indeterminate={selectedInView > 0 && !allSelected}
+                    onCheckedChange={(checked) => toggleAll(checked)}
+                  />
+                </th>
                 <ColumnHeader icon={UserIcon}>Employee</ColumnHeader>
                 <ColumnHeader icon={LaptopIcon}>Laptop</ColumnHeader>
                 <ColumnHeader icon={MonitorPlayIcon}>Laptop status</ColumnHeader>
@@ -303,8 +369,23 @@ export function RemoteAccessTable({
                       return (
                   <tr
                     key={laptop?.id ?? employee.id}
-                    className="border-b border-border transition-colors hover:bg-muted/50"
+                    data-state={selected.has(employee.id) ? "selected" : undefined}
+                    className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
                   >
+                    {index === 0 && (
+                      <td
+                        rowSpan={lines.length}
+                        className="w-9 border-r border-border pl-3 align-top"
+                      >
+                        <Checkbox
+                          aria-label={`Select ${employee.name}`}
+                          checked={selected.has(employee.id)}
+                          onCheckedChange={(checked) =>
+                            toggleRow(employee.id, checked)
+                          }
+                        />
+                      </td>
+                    )}
                     {index === 0 && (
                       <td rowSpan={lines.length} className={cn(cellClass, "align-top")}>
                       <div className="flex items-center gap-2.5">
@@ -478,7 +559,7 @@ export function RemoteAccessTable({
               {pageRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={5}
                     className="px-4 py-12 text-center text-sm text-muted-foreground"
                   >
                     No employees match your filters.
