@@ -16,6 +16,33 @@ export function todayIsoDate() {
   ].join("-")
 }
 
+// Hands an item to someone and closes the open "with IT" stint.
+export function assignIssuedItem<T extends Returnable>(
+  item: T,
+  holder: { name: string; department: string | null },
+  note: string,
+  todayIso = todayIsoDate(),
+): T {
+  return {
+    ...item,
+    status: "In use",
+    handler: holder.name,
+    department: holder.department,
+    history: [
+      ...item.history.map((entry) =>
+        entry.to === null ? { ...entry, to: todayIso } : entry,
+      ),
+      {
+        handler: holder.name,
+        department: holder.department || undefined,
+        from: todayIso,
+        to: null,
+        note: note || undefined,
+      },
+    ],
+  }
+}
+
 export function returnedToVacant<T extends Returnable>(item: T, extraNote = ""): T {
   const todayIso = todayIsoDate()
   const previousOwner = item.handler?.trim()

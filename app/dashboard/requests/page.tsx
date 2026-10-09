@@ -6,13 +6,15 @@ import {
 } from "@/lib/asset-request-repository"
 import { listDtrAssetRequests } from "@/lib/dtr"
 import { withRequesterEmails } from "@/lib/hris"
+import { listIssuedHoldings } from "@/lib/inventory-repository"
 
 export const dynamic = "force-dynamic"
 
 export default async function AssetRequestsPage() {
-  const [local, overrides] = await Promise.all([
+  const [local, overrides, issuedHoldings] = await Promise.all([
     listAssetRequests(),
     listRequestOverrides(),
+    listIssuedHoldings(),
   ])
   let dtrError: string | null = null
   let fromDtr: Awaited<ReturnType<typeof listDtrAssetRequests>> = []
@@ -39,7 +41,7 @@ export default async function AssetRequestsPage() {
       {dtrError && (
         <p className="text-sm text-red-600 dark:text-red-400">{dtrError}</p>
       )}
-      <AssetRequestTable initialData={requests} />
+      <AssetRequestTable initialData={requests} issuedHoldings={issuedHoldings} />
     </div>
   )
 }

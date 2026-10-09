@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 
 import {
+  AlreadyIssued,
   AssetRequestDialog,
   IssueDtrAssetDialog,
   IssueDtrAssetsDialog,
@@ -76,6 +77,13 @@ import {
 } from "@/lib/asset-requests";
 import type { DtrIssueCondition, DtrReturnCondition } from "@/lib/dtr";
 import {
+  holdingFromIssued,
+  inventoryKindForAssetType,
+  issuedItemUpdate,
+  type IssuedHolding,
+  type IssuedInventory,
+} from "@/lib/issue-stock";
+import {
   approveDtrAsset,
   archiveExternalAssetRequest,
   createAssetRequest,
@@ -84,8 +92,10 @@ import {
   rejectDtrAsset,
   removeAssetRequests,
   returnDtrAsset,
+  saveAccessory,
   saveAssetRequest,
   saveExternalRequestOverride,
+  saveLaptop,
   unarchiveExternalAssetRequest,
 } from "@/lib/inventory-api";
 import { formatDate, initials, parseDate } from "@/lib/laptops";
@@ -170,11 +180,14 @@ function daysAgo(iso: string, today: Date) {
 
 export function AssetRequestTable({
   initialData,
+  issuedHoldings,
 }: {
   initialData: AssetRequest[];
+  issuedHoldings: IssuedHolding[];
 }) {
   const today = useToday();
   const [requests, setRequests] = useState(initialData);
+  const [holdings, setHoldings] = useState(issuedHoldings);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<RequestPriority[]>([]);
@@ -512,12 +525,37 @@ export function AssetRequestTable({
   }
 
   function issueFromDtr(
-    id: string,
-    input: { serialNumber: string; conditionIssued: DtrIssueCondition },
+    request: AssetRequest,
+    input: {
+      serialNumber: string;
+      conditionIssued: DtrIssueCondition;
+      stock?: IssuedInventory;
+    },
   ) {
     setCompleting(null);
     persist(
-      issueDtrAsset(id, input).then((saved) => replaceRequest(saved)),
+      issueDtrAsset(request.id, {
+        serialNumber: input.serialNumber,
+        conditionIssued: input.conditionIssued,
+      }).then(async (saved) => {
+        replaceRequest(saved);
+        if (!input.stock) return;
+        const update = issuedItemUpdate(
+          input.stock,
+          {
+            name: request.requesterName,
+            department: request.department,
+          },
+          `Issued for ${requestCode(request)}`,
+        );
+        if (update.kind === "laptop") await saveLaptop(update.item);
+        else await saveAccessory(update.item);
+        const next = holdingFromIssued(input.stock, request.requesterName);
+        setHoldings((current) => [
+          ...current.filter((item) => item.id !== next.id),
+          next,
+        ]);
+      }),
     );
   }
 
@@ -1021,6 +1059,11 @@ export function AssetRequestTable({
                       >
                         {request.reason}
                       </div>
+                      <AlreadyIssued
+                        holdings={holdings}
+                        request={request}
+                        compact
+                      />
                     </td>
                     <td className={cn(cellClass, "hidden @xl:table-cell")}>
                       <span
@@ -1423,7 +1466,9 @@ export function AssetRequestTable({
                   : `The employee will be emailed your reason, and IT will be copied. You can undo the status change afterward.`
                 : confirming.action === "complete"
                   ? confirming.request.source === "dtr"
-                    ? `You'll enter the serial number next. This issues the asset in DTR.`
+                    ? inventoryKindForAssetType(confirming.request.assetType)
+                      ? `You'll confirm the item from inventory next. This issues it in DTR and marks it issued in stock.`
+                      : `You'll enter the serial number next. This issues the asset in DTR.`
                     : `You'll note what was handed over next. You can undo this afterward.`
                   : confirming.action === "edit"
                     ? `This updates the request details. You can undo this afterward.`
@@ -1513,6 +1558,7 @@ export function AssetRequestTable({
 
       <IssueDtrAssetsDialog
         requests={issuing}
+        holdings={holdings}
         open={issuing.length > 0}
         onOpenChange={(next) => !next && setIssuing([])}
         onConfirm={issueMany}
@@ -1546,9 +1592,10 @@ export function AssetRequestTable({
       {completing?.source === "dtr" ? (
         <IssueDtrAssetDialog
           request={completing}
+          holdings={holdings}
           open={completing !== null}
           onOpenChange={(next) => !next && setCompleting(null)}
-          onConfirm={(input) => completing && issueFromDtr(completing.id, input)}
+          onConfirm={(input) => completing && issueFromDtr(completing, input)}
         />
       ) : (
         <RequestNoteDialog
@@ -1588,6 +1635,7 @@ export function AssetRequestTable({
 
       <RequestDetailsDialog
         request={viewing}
+        holdings={holdings}
         open={viewOpen}
         onOpenChange={setViewOpen}
       />

@@ -1,4 +1,5 @@
 import type { Accessory, AccessoryKind } from "@/lib/accessories"
+import type { IssuedHolding } from "@/lib/issue-stock"
 import {
   accessoryFromDb,
   assignmentData,
@@ -436,6 +437,70 @@ export async function getLaptopById(id: string): Promise<Laptop | null> {
     include: laptopInclude,
   })
   return row ? laptopFromDb(row) : null
+}
+
+// In-use laptops, headsets, RAM, and other tracked gear, with the person who has them.
+// RAM counts as issued to whoever holds the laptop it is installed in.
+export async function listIssuedHoldings(): Promise<IssuedHolding[]> {
+  const [laptops, accessories] = await Promise.all([
+    prisma.laptop.findMany({
+      where: { status: "IN_USE", handlerName: { not: null } },
+      select: {
+        id: true,
+        assetTag: true,
+        brand: true,
+        model: true,
+        serialNumber: true,
+        handlerName: true,
+      },
+    }),
+    prisma.accessory.findMany({
+      where: { status: "IN_USE" },
+      select: {
+        id: true,
+        kind: true,
+        assetTag: true,
+        brand: true,
+        model: true,
+        serialNumber: true,
+        handlerName: true,
+        laptop: { select: { assetTag: true, handlerName: true } },
+      },
+    }),
+  ])
+
+  const holdings: IssuedHolding[] = []
+  for (const laptop of laptops) {
+    if (!laptop.handlerName) continue
+    holdings.push({
+      id: laptop.id,
+      kind: "laptop",
+      assetTag: laptop.assetTag,
+      brand: laptop.brand,
+      model: laptop.model,
+      serialNumber: laptop.serialNumber,
+      holder: laptop.handlerName,
+      installedIn: null,
+    })
+  }
+  for (const item of accessories) {
+    const holder =
+      item.kind === "RAM"
+        ? item.laptop?.handlerName || item.handlerName
+        : item.handlerName
+    if (!holder) continue
+    holdings.push({
+      id: item.id,
+      kind: kindFromDb[item.kind],
+      assetTag: item.assetTag,
+      brand: item.brand,
+      model: item.model,
+      serialNumber: item.serialNumber,
+      holder,
+      installedIn: item.kind === "RAM" ? item.laptop?.assetTag ?? null : null,
+    })
+  }
+  return holdings
 }
 
 // Everything currently checked out to one person, for the accountability form.

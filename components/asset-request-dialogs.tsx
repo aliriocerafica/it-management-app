@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BackpackIcon,
   BatteryIcon,
@@ -8,6 +8,7 @@ import {
   CableIcon,
   CheckIcon,
   CircleCheckIcon,
+  Loader2Icon,
   ClipboardListIcon,
   CpuIcon,
   HeadphonesIcon,
@@ -42,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { accessoryConfigs, type Accessory } from "@/lib/accessories";
 import {
   priorityStyles,
   requestAssetTypes,
@@ -57,6 +59,20 @@ import {
   type DtrIssueCondition,
   type DtrReturnCondition,
 } from "@/lib/dtr";
+import {
+  detectStockItem,
+  inventoryKindForAssetType,
+  requestHoldings,
+  samePerson,
+  stockHintScore,
+  stockNoun,
+  usableSerial,
+  type IssuedHolding,
+  type IssuedInventory,
+  type IssueStockKind,
+} from "@/lib/issue-stock";
+import type { Laptop } from "@/lib/laptops";
+import { toRamHost, type RamHost } from "@/lib/ram";
 import { errorMessage } from "@/lib/inventory-api";
 import { formatDate, initials, parseDate } from "@/lib/laptops";
 import { useEmployeeDirectory } from "@/lib/use-employee-directory";
@@ -502,27 +518,34 @@ const conditionLabels: Record<string, string> = {
   DAMAGED: "Damaged",
 };
 
-// Issues a supervisor-approved DTR request: serial number and condition
-// are required by DTR before the request can move to Issued.
+// Issues a supervisor-approved DTR request. Tracked types (headset, RAM, …)
+// take their serial from vacant inventory; DTR still requires a condition.
 export function IssueDtrAssetDialog({
   request,
+  holdings = [],
   open,
   onOpenChange,
   onConfirm,
 }: {
   request: AssetRequest | null;
+  holdings?: IssuedHolding[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (input: {
     serialNumber: string;
     conditionIssued: DtrIssueCondition;
+    stock?: IssuedInventory;
   }) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
         {request && open && (
-          <IssueForm request={request} onConfirm={onConfirm} />
+          <IssueForm
+            request={request}
+            holdings={holdings}
+            onConfirm={onConfirm}
+          />
         )}
       </DialogContent>
     </Dialog>
@@ -531,26 +554,160 @@ export function IssueDtrAssetDialog({
 
 function IssueForm({
   request,
+  holdings,
   onConfirm,
 }: {
   request: AssetRequest;
+  holdings: IssuedHolding[];
   onConfirm: (input: {
     serialNumber: string;
     conditionIssued: DtrIssueCondition;
+    stock?: IssuedInventory;
   }) => void;
 }) {
+  const kind = inventoryKindForAssetType(request.assetType);
   const [serialNumber, setSerialNumber] = useState("");
   const [conditionIssued, setConditionIssued] =
     useState<DtrIssueCondition>("GOOD");
-  const serial = serialNumber.trim();
+  const [manual, setManual] = useState(!kind);
+  const [stock, setStock] = useState<Array<Accessory | Laptop> | null>(
+    kind ? null : [],
+  );
+  const [hosts, setHosts] = useState<RamHost[] | null>(kind === "ram" ? null : []);
+  const [selectedId, setSelectedId] = useState("");
+  const [hostId, setHostId] = useState("");
+  const [query, setQuery] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const issued = requestHoldings(holdings, request);
+  const [holdingId, setHoldingId] = useState(() =>
+    issued?.items.length === 1 ? issued.items[0].id : "",
+  );
+  const [useHolding, setUseHolding] = useState(true);
+
+  useEffect(() => {
+    if (!kind) return;
+    const requestedKind = kind;
+    let cancelled = false;
+    const hint = `${request.assetType} ${request.reason}`;
+
+    async function load() {
+      const response = await fetch(stockUrl(requestedKind), { cache: "no-store" });
+      if (!response.ok) throw new Error("Couldn't load inventory.");
+      const rows = (await response.json()) as Array<Accessory | Laptop>;
+      if (cancelled) return;
+      const vacant = rows.filter(
+        (item) => item.status === "Vacant" && usableSerial(item.serialNumber),
+      );
+      vacant.sort(
+        (a, b) => stockHintScore(b, hint) - stockHintScore(a, hint),
+      );
+      setStock(vacant);
+      if (vacant.length === 0) {
+        setManual(true);
+        setHosts([]);
+        return;
+      }
+      const detected = detectStockItem(vacant, (item) =>
+        stockHintScore(item, hint),
+      );
+      if (detected) setSelectedId(detected.id);
+
+      if (requestedKind !== "ram") {
+        setHosts([]);
+        return;
+      }
+      const laptopsResponse = await fetch("/api/laptops", { cache: "no-store" });
+      if (!laptopsResponse.ok) {
+        if (!cancelled) setHosts([]);
+        return;
+      }
+      const laptops = (await laptopsResponse.json()) as Laptop[];
+      if (cancelled) return;
+      const matched = laptops
+        .filter(
+          (laptop) =>
+            laptop.status !== "Retired" &&
+            samePerson(laptop.handler, request.requesterName),
+        )
+        .map(toRamHost);
+      setHosts(matched);
+      if (matched.length === 1) setHostId(matched[0].id);
+    }
+
+    load().catch((error: unknown) => {
+      if (cancelled) return;
+      setLoadError(
+        error instanceof Error ? error.message : "Couldn't load inventory.",
+      );
+      setStock((current) => current ?? []);
+      setHosts((current) => current ?? []);
+      setManual(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, request.assetType, request.reason, request.requesterName]);
+
+  const selected = stock?.find((item) => item.id === selectedId) ?? null;
+  const pickedHolding =
+    useHolding && issued
+      ? (issued.items.find((item) => item.id === holdingId) ?? null)
+      : null;
+  const picking = Boolean(
+    !pickedHolding && kind && !manual && stock && stock.length > 0,
+  );
+  const serial = (
+    pickedHolding
+      ? pickedHolding.serialNumber
+      : picking
+        ? (selected?.serialNumber ?? "")
+        : serialNumber
+  ).trim();
+  const typedMatch =
+    stock?.find(
+      (item) => item.serialNumber.trim().toLowerCase() === serial.toLowerCase(),
+    ) ?? null;
+  const chosen = picking ? selected : typedMatch;
+  const host =
+    kind === "ram"
+      ? hosts?.length === 1
+        ? hosts[0]
+        : (hosts?.find((item) => item.id === hostId) ?? null)
+      : null;
+  const needsHost = Boolean(
+    chosen && kind === "ram" && hosts && hosts.length > 1 && !host,
+  );
+  const waiting =
+    !pickedHolding &&
+    (Boolean(kind === "ram" && hosts === null && !loadError) ||
+      Boolean(kind && !manual && stock === null && !loadError));
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (stock ?? []).filter(
+      (item) =>
+        item.id === selectedId ||
+        !q ||
+        [item.assetTag, item.brand, item.model, item.serialNumber]
+          .join(" ")
+          .toLowerCase()
+          .includes(q),
+    );
+  }, [query, selectedId, stock]);
 
   return (
     <form
       className="flex min-h-0 flex-col"
       onSubmit={(event) => {
         event.preventDefault();
-        if (serial.length < 3) return;
-        onConfirm({ serialNumber: serial, conditionIssued });
+        if (serial.length < 3 || needsHost || (picking && !chosen)) return;
+        onConfirm({
+          serialNumber: serial,
+          conditionIssued,
+          stock:
+            !pickedHolding && chosen && kind
+              ? toIssuedInventory(kind, chosen, host)
+              : undefined,
+        });
       }}
     >
       <DialogHeader className="border-b border-border px-6 py-5 pr-12">
@@ -566,18 +723,90 @@ function IssueForm({
       </DialogHeader>
 
       <div className="flex flex-col gap-4 px-6 py-5">
-        <FormField label="Serial number" htmlFor="dtr-serial">
-          <Input
-            id="dtr-serial"
-            value={serialNumber}
-            onChange={(event) => setSerialNumber(event.target.value)}
-            placeholder="e.g. SN-1001"
-            minLength={3}
-            maxLength={100}
-            required
-            autoFocus
+        <AlreadyIssued
+          holdings={holdings}
+          request={request}
+          selectedId={useHolding ? holdingId : ""}
+          onSelect={(id) => {
+            setHoldingId(id);
+            setUseHolding(true);
+          }}
+        />
+        {pickedHolding ? (
+          <Button
+            type="button"
+            variant="link"
+            size="xs"
+            className="h-auto self-start px-0"
+            onClick={() => setUseHolding(false)}
+          >
+            Enter a different serial
+          </Button>
+        ) : kind && !manual ? (
+          <InventoryPick
+            kind={kind}
+            stock={stock}
+            filtered={filtered}
+            selected={selected}
+            selectedId={selectedId}
+            query={query}
+            loadError={loadError}
+            requesterName={request.requesterName}
+            hosts={hosts}
+            host={host}
+            hostId={hostId}
+            onQuery={setQuery}
+            onSelect={setSelectedId}
+            onHost={setHostId}
+            onManual={() => setManual(true)}
           />
-        </FormField>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {loadError && (
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {loadError} Enter the serial number instead.
+              </p>
+            )}
+            {!loadError && kind && stock && stock.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No vacant {stockNoun(kind)} in inventory.
+              </p>
+            )}
+            <FormField label="Serial number" htmlFor="dtr-serial">
+              <Input
+                id="dtr-serial"
+                value={serialNumber}
+                onChange={(event) => setSerialNumber(event.target.value)}
+                placeholder="e.g. SN-1001"
+                minLength={3}
+                maxLength={100}
+                required
+                autoFocus
+              />
+            </FormField>
+            {kind && stock && stock.length > 0 && (
+              <Button
+                type="button"
+                variant="link"
+                size="xs"
+                className="h-auto self-start px-0"
+                onClick={() => setManual(false)}
+              >
+                Choose from inventory
+              </Button>
+            )}
+          </div>
+        )}
+        {kind === "ram" && manual && !pickedHolding && (
+          <RamHostField
+            requesterName={request.requesterName}
+            hosts={hosts}
+            host={host}
+            hostId={hostId}
+            onHost={setHostId}
+            known={Boolean(chosen)}
+          />
+        )}
         <FormField label="Condition" htmlFor="dtr-condition">
           <select
             id="dtr-condition"
@@ -600,7 +829,10 @@ function IssueForm({
         <DialogClose render={<Button variant="outline" type="button" />}>
           Back
         </DialogClose>
-        <Button type="submit" disabled={serial.length < 3}>
+        <Button
+          type="submit"
+          disabled={waiting || needsHost || serial.length < 3}
+        >
           <CircleCheckIcon />
           Issue asset
         </Button>
@@ -612,11 +844,13 @@ function IssueForm({
 // Issues several approved DTR requests at once. Each row needs its own serial.
 export function IssueDtrAssetsDialog({
   requests,
+  holdings = [],
   open,
   onOpenChange,
   onConfirm,
 }: {
   requests: AssetRequest[];
+  holdings?: IssuedHolding[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (
@@ -634,6 +868,7 @@ export function IssueDtrAssetsDialog({
           <IssueManyForm
             key={requests.map((request) => request.id).join()}
             requests={requests}
+            holdings={holdings}
             onConfirm={onConfirm}
           />
         )}
@@ -642,11 +877,31 @@ export function IssueDtrAssetsDialog({
   );
 }
 
+function initialIssuedPicks(
+  requests: AssetRequest[],
+  holdings: IssuedHolding[],
+) {
+  const used = new Set<string>();
+  const picked: Record<string, string> = {};
+  for (const request of requests) {
+    const available = (requestHoldings(holdings, request)?.items ?? []).filter(
+      (item) =>
+        !used.has(item.id) && item.serialNumber.trim().length >= 3,
+    );
+    if (available.length !== 1) continue;
+    picked[request.id] = available[0].id;
+    used.add(available[0].id);
+  }
+  return picked;
+}
+
 function IssueManyForm({
   requests,
+  holdings,
   onConfirm,
 }: {
   requests: AssetRequest[];
+  holdings: IssuedHolding[];
   onConfirm: (
     items: {
       id: string;
@@ -658,9 +913,21 @@ function IssueManyForm({
   const [conditionIssued, setConditionIssued] =
     useState<DtrIssueCondition>("GOOD");
   const [serials, setSerials] = useState<Record<string, string>>({});
-  const trimmed = requests.map(
-    (request) => serials[request.id]?.trim() ?? "",
+  const [picked, setPicked] = useState(() =>
+    initialIssuedPicks(requests, holdings),
   );
+  const [manual, setManual] = useState<Record<string, boolean>>({});
+  const rows = requests.map((request) => {
+    const items = requestHoldings(holdings, request)?.items ?? [];
+    const holding = manual[request.id]
+      ? null
+      : (items.find((item) => item.id === picked[request.id]) ?? null);
+    const serial = (
+      holding ? holding.serialNumber : (serials[request.id] ?? "")
+    ).trim();
+    return { request, items, holding, serial };
+  });
+  const trimmed = rows.map((row) => row.serial);
   const duplicate = trimmed.some(
     (serial, index) => serial.length > 0 && trimmed.indexOf(serial) !== index,
   );
@@ -688,8 +955,8 @@ function IssueManyForm({
           Issue {requests.length} assets
         </DialogTitle>
         <DialogDescription>
-          Enter a serial number for each request. They all go out in the same
-          condition.
+          The asset already with each person is selected. Enter a serial only
+          when they don&apos;t have one. They all go out in the same condition.
         </DialogDescription>
       </DialogHeader>
 
@@ -711,27 +978,86 @@ function IssueManyForm({
           </select>
         </FormField>
         <div className="flex flex-col gap-3">
-          {requests.map((request) => (
-            <FormField
-              key={request.id}
-              label={`${requestCode(request)} · ${request.assetType}`}
-              htmlFor={`dtr-serial-${request.id}`}
-            >
-              <Input
-                id={`dtr-serial-${request.id}`}
-                value={serials[request.id] ?? ""}
-                onChange={(event) =>
-                  setSerials((prev) => ({
-                    ...prev,
-                    [request.id]: event.target.value,
-                  }))
-                }
-                placeholder={`Serial for ${request.requesterName}`}
-                minLength={3}
-                maxLength={100}
-                required
-              />
-            </FormField>
+          {rows.map(({ request, items, holding }) => (
+            <div key={request.id} className="flex flex-col gap-1.5">
+              <p className="text-xs font-medium">
+                <span className="font-mono">{requestCode(request)}</span>
+                {" · "}
+                {request.assetType}
+                <span className="font-normal text-muted-foreground">
+                  {" "}
+                  for {request.requesterName}
+                </span>
+              </p>
+              {items.length > 0 && !manual[request.id] ? (
+                <div className="flex flex-col gap-1 rounded-lg border border-border bg-muted/40 p-1">
+                  {items.map((item) => {
+                    const isSelected = holding?.id === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() =>
+                          setPicked((prev) => ({
+                            ...prev,
+                            [request.id]: item.id,
+                          }))
+                        }
+                        className={cn(
+                          "rounded-md px-2 py-1.5 text-left text-sm leading-tight outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          isSelected
+                            ? "bg-background ring-1 ring-foreground/20"
+                            : "hover:bg-background/70",
+                        )}
+                      >
+                        <span className="font-mono text-xs">{item.assetTag}</span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {item.brand} {item.model}
+                          {item.serialNumber ? ` · SN ${item.serialNumber}` : ""}
+                          {item.installedIn ? ` · in ${item.installedIn}` : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <Input
+                  id={`dtr-serial-${request.id}`}
+                  aria-label={`Serial for ${request.requesterName}`}
+                  value={serials[request.id] ?? ""}
+                  onChange={(event) =>
+                    setSerials((prev) => ({
+                      ...prev,
+                      [request.id]: event.target.value,
+                    }))
+                  }
+                  placeholder={`Serial for ${request.requesterName}`}
+                  minLength={3}
+                  maxLength={100}
+                  required
+                />
+              )}
+              {items.length > 0 && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="xs"
+                  className="h-auto self-start px-0"
+                  onClick={() =>
+                    setManual((prev) => ({
+                      ...prev,
+                      [request.id]: !prev[request.id],
+                    }))
+                  }
+                >
+                  {manual[request.id]
+                    ? "Choose the issued asset"
+                    : "Enter a different serial"}
+                </Button>
+              )}
+            </div>
           ))}
         </div>
         {duplicate && (
@@ -751,6 +1077,242 @@ function IssueManyForm({
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+function stockUrl(kind: IssueStockKind) {
+  return kind === "laptop" ? "/api/laptops" : `/api/accessories?kind=${kind}`;
+}
+
+function toIssuedInventory(
+  kind: IssueStockKind,
+  item: Accessory | Laptop,
+  host: RamHost | null,
+): IssuedInventory {
+  if (kind === "laptop") return { kind: "laptop", item: item as Laptop };
+  if (kind === "ram") return { kind: "ram", item: item as Accessory, host };
+  return { kind, item: item as Accessory };
+}
+
+function stockDetail(kind: IssueStockKind, item: Accessory | Laptop) {
+  if (kind === "laptop" || !("kind" in item)) return "";
+  const summary = accessoryConfigs[item.kind].summary(item.specs ?? {});
+  return [summary.primary, summary.secondary]
+    .filter((part) => part && !part.includes("undefined"))
+    .join(" · ");
+}
+
+function InventoryPick({
+  kind,
+  stock,
+  filtered,
+  selected,
+  selectedId,
+  query,
+  loadError,
+  requesterName,
+  hosts,
+  host,
+  hostId,
+  onQuery,
+  onSelect,
+  onHost,
+  onManual,
+}: {
+  kind: IssueStockKind;
+  stock: Array<Accessory | Laptop> | null;
+  filtered: Array<Accessory | Laptop>;
+  selected: Accessory | Laptop | null;
+  selectedId: string;
+  query: string;
+  loadError: string | null;
+  requesterName: string;
+  hosts: RamHost[] | null;
+  host: RamHost | null;
+  hostId: string;
+  onQuery: (value: string) => void;
+  onSelect: (id: string) => void;
+  onHost: (id: string) => void;
+  onManual: () => void;
+}) {
+  const noun = stockNoun(kind);
+  const one = stockNoun(kind, 1);
+
+  if (stock === null && !loadError) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2Icon className="size-3.5 animate-spin" />
+        Checking inventory for a vacant {one}…
+      </p>
+    );
+  }
+
+  if (loadError) {
+    return <p className="text-sm text-red-600 dark:text-red-400">{loadError}</p>;
+  }
+
+  if (!stock || stock.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No vacant {noun} in inventory. Enter the serial number instead.
+      </p>
+    );
+  }
+
+  const detected = stock.length === 1 || Boolean(selected);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {stock.length === 1 && selected ? (
+        <DetectedStock kind={kind} item={selected} />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {(stock.length > 6 || query) && (
+            <Input
+              value={query}
+              onChange={(event) => onQuery(event.target.value)}
+              placeholder={`Search ${noun}`}
+              aria-label={`Search ${noun}`}
+            />
+          )}
+          <FormField label={`Vacant ${one}`} htmlFor="dtr-stock">
+            <select
+              id="dtr-stock"
+              value={selectedId}
+              onChange={(event) => onSelect(event.target.value)}
+              className={selectClass}
+              required
+              autoFocus
+            >
+              <option value="" disabled>
+                Select a vacant {one}
+              </option>
+              {filtered.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.assetTag} · {item.brand} {item.model} ·{" "}
+                  {item.serialNumber}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          {selected && <DetectedStock kind={kind} item={selected} compact />}
+        </div>
+      )}
+      {kind === "ram" && (
+        <RamHostField
+          requesterName={requesterName}
+          hosts={hosts}
+          host={host}
+          hostId={hostId}
+          onHost={onHost}
+          known={detected && Boolean(selected)}
+        />
+      )}
+      <Button
+        type="button"
+        variant="link"
+        size="xs"
+        className="h-auto self-start px-0"
+        onClick={onManual}
+      >
+        Enter a serial instead
+      </Button>
+    </div>
+  );
+}
+
+function DetectedStock({
+  kind,
+  item,
+  compact = false,
+}: {
+  kind: IssueStockKind;
+  item: Accessory | Laptop;
+  compact?: boolean;
+}) {
+  const detail = stockDetail(kind, item);
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+      <CircleCheckIcon className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+      <div className="min-w-0 leading-tight">
+        {!compact && (
+          <p className="text-xs text-muted-foreground">Detected in inventory</p>
+        )}
+        <p className="truncate text-sm font-medium">
+          <span className="font-mono">{item.assetTag}</span>
+          <span className="font-normal text-muted-foreground">
+            {" "}
+            · {item.brand} {item.model}
+          </span>
+        </p>
+        <p className="truncate text-xs text-muted-foreground">
+          Serial {item.serialNumber}
+          {detail ? ` · ${detail}` : ""}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function RamHostField({
+  requesterName,
+  hosts,
+  host,
+  hostId,
+  onHost,
+  known,
+}: {
+  requesterName: string;
+  hosts: RamHost[] | null;
+  host: RamHost | null;
+  hostId: string;
+  onHost: (id: string) => void;
+  known: boolean;
+}) {
+  if (!known) return null;
+  if (hosts === null) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2Icon className="size-3.5 animate-spin" />
+        Looking up {requesterName}&apos;s laptop…
+      </p>
+    );
+  }
+  if (hosts.length === 1 && host) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Installs in <span className="font-mono">{host.assetTag}</span> ·{" "}
+        {host.brand} {host.model}
+      </p>
+    );
+  }
+  if (hosts.length > 1) {
+    return (
+      <FormField label="Install in" htmlFor="dtr-ram-host">
+        <select
+          id="dtr-ram-host"
+          value={hostId}
+          onChange={(event) => onHost(event.target.value)}
+          className={selectClass}
+          required
+        >
+          <option value="" disabled>
+            {requesterName}&apos;s laptop
+          </option>
+          {hosts.map((laptop) => (
+            <option key={laptop.id} value={laptop.id}>
+              {laptop.assetTag} · {laptop.brand} {laptop.model}
+            </option>
+          ))}
+        </select>
+      </FormField>
+    );
+  }
+  return (
+    <p className="text-xs text-muted-foreground">
+      {requesterName} has no laptop in inventory, so this module will be marked
+      in use for them.
+    </p>
   );
 }
 
@@ -855,19 +1417,127 @@ const assetTypeIcons: Record<string, LucideIcon> = {
 
 export function RequestDetailsDialog({
   request,
+  holdings = [],
   open,
   onOpenChange,
 }: {
   request: AssetRequest | null;
+  holdings?: IssuedHolding[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        {request && <Details request={request} />}
+        {request && <Details request={request} holdings={holdings} />}
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function AlreadyIssued({
+  holdings,
+  request,
+  compact = false,
+  selectedId,
+  onSelect,
+}: {
+  holdings: IssuedHolding[];
+  request: Pick<AssetRequest, "requesterName" | "assetType" | "resolutionNote">;
+  compact?: boolean;
+  selectedId?: string;
+  onSelect?: (id: string) => void;
+}) {
+  const match = requestHoldings(holdings, request);
+  if (!match) return null;
+  if (compact && match.items.length === 0) return null;
+
+  if (compact) {
+    const others = match.items.filter((item) => item.id !== match.completed?.id);
+    return (
+      <div className="mt-0.5 space-y-0.5">
+        {match.completed && (
+          <div className="text-[11px] text-emerald-700 dark:text-emerald-400">
+            Issued {match.completed.assetTag}
+            {match.completed.installedIn
+              ? ` in ${match.completed.installedIn}`
+              : ""}
+          </div>
+        )}
+        {others.length > 0 && (
+          <div
+            className="text-[11px] text-amber-700 dark:text-amber-400"
+            title={others
+              .map((item) =>
+                `${item.assetTag} ${item.brand} ${item.model}${item.installedIn ? ` in ${item.installedIn}` : ""}`,
+              )
+              .join(", ")}
+          >
+            Already has {others.map((item) => item.assetTag).join(", ")}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+      <p className="text-xs font-medium text-muted-foreground">
+        Already with {request.requesterName}
+      </p>
+      {match.items.length === 0 ? (
+        <p className="mt-1 text-sm">
+          No {stockNoun(match.kind, 1)} is currently issued to them.
+        </p>
+      ) : (
+        <ul className="mt-1.5 flex flex-col gap-1.5">
+          {match.items.map((item) => {
+            const forThisRequest = match.completed?.id === item.id;
+            const isSelected = selectedId === item.id;
+            const label = (
+              <>
+                <span className="font-mono text-xs">{item.assetTag}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {item.brand} {item.model}
+                  {item.serialNumber ? ` · SN ${item.serialNumber}` : ""}
+                  {item.installedIn ? ` · in ${item.installedIn}` : ""}
+                </span>
+                {forThisRequest && (
+                  <span className="ml-1.5 text-xs text-emerald-700 dark:text-emerald-400">
+                    This request
+                  </span>
+                )}
+              </>
+            );
+            if (!onSelect) {
+              return (
+                <li key={item.id} className="text-sm leading-tight">
+                  {label}
+                </li>
+              );
+            }
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => onSelect(item.id)}
+                  className={cn(
+                    "flex w-full rounded-md px-2 py-1.5 text-left text-sm leading-tight outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    isSelected
+                      ? "bg-background ring-1 ring-foreground/20"
+                      : "hover:bg-background/70",
+                  )}
+                >
+                  {label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -931,7 +1601,13 @@ function requestSteps(request: AssetRequest): Step[] {
   return steps;
 }
 
-function Details({ request }: { request: AssetRequest }) {
+function Details({
+  request,
+  holdings,
+}: {
+  request: AssetRequest;
+  holdings: IssuedHolding[];
+}) {
   const today = useToday();
   const status = requestStatusStyles[request.status];
   const Icon = assetTypeIcons[request.assetType] ?? PackageIcon;
@@ -1036,6 +1712,7 @@ function Details({ request }: { request: AssetRequest }) {
               )}
             </Detail>
           </Section>
+          <AlreadyIssued holdings={holdings} request={request} />
         </div>
 
         <section className="rounded-xl border border-border p-4">

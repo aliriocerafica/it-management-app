@@ -6,9 +6,9 @@ import { CheckIcon, PlusIcon } from "lucide-react";
 import {
   FormField,
   FormSection,
-  selectClass,
   toIsoDate,
 } from "@/components/add-laptop-dialog";
+import { FormSelect } from "@/components/form-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -391,18 +391,15 @@ export function AddAccessoryDialog({
               return (
                 <FormField key={field.key} label={field.label} htmlFor={id}>
                   {options ? (
-                    <select
+                    <FormSelect
                       id={id}
                       name={id}
                       defaultValue={current || options[0]}
-                      className={selectClass}
-                    >
-                      {options.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
+                      options={options.map((option) => ({
+                        value: option,
+                        label: option,
+                      }))}
+                    />
                   ) : (
                     <Input
                       id={id}
@@ -421,18 +418,15 @@ export function AddAccessoryDialog({
             {!editing && (
               <>
                 <FormField label="Status" htmlFor="status">
-                  <select
+                  <FormSelect
                     id="status"
                     name="status"
                     defaultValue="Vacant"
-                    className={selectClass}
-                  >
-                    {addStatuses.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
+                    options={addStatuses.map((status) => ({
+                      value: status,
+                      label: status,
+                    }))}
+                  />
                 </FormField>
                 {!installs && (
                   <>
@@ -469,26 +463,22 @@ export function AddAccessoryDialog({
               />
             </FormField>
             <FormField label="Warranty" htmlFor="warrantyYears">
-              <select
+              <FormSelect
                 id="warrantyYears"
                 name="warrantyYears"
-                defaultValue={source?.warrantyYears ?? 2}
-                className={selectClass}
-              >
-                {/* Keep a stored length that's no longer in the list. */}
-                {[
+                defaultValue={String(source?.warrantyYears ?? 2)}
+                options={[
                   ...new Set([
                     ...warrantyOptions,
                     ...(source ? [source.warrantyYears] : []),
                   ]),
                 ]
                   .sort((a, b) => a - b)
-                  .map((years) => (
-                    <option key={years} value={years}>
-                      {formatWarranty(years)}
-                    </option>
-                  ))}
-              </select>
+                  .map((years) => ({
+                    value: String(years),
+                    label: formatWarranty(years),
+                  }))}
+              />
             </FormField>
             {editing && (
               <FormField
