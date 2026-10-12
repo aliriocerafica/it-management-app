@@ -668,6 +668,10 @@ export function AccountabilityTable({
                 const state = formStateStyles[row.state];
                 const latest = row.latest;
                 const lastSend = latest?.sends[0];
+                // Signed, with the copy the employee uploaded to show for it.
+                const signedOnFile = Boolean(
+                  latest?.signedAt && latest.hasSignedCopy,
+                );
                 const saving = working.has(row.holderName);
                 return (
                   <tr
@@ -871,9 +875,16 @@ export function AccountabilityTable({
                           <DropdownMenuContent align="end" className="w-52">
                             {latest && (
                               <>
+                                {/* Once signed, the latest form is the
+                                    copy the employee sent back. */}
                                 <DropdownMenuItem
                                   onClick={() =>
-                                    window.open(formPdfUrl(latest.id), "_blank")
+                                    window.open(
+                                      signedOnFile
+                                        ? signedCopyUrl(latest.id)
+                                        : formPdfUrl(latest.id),
+                                      "_blank",
+                                    )
                                   }
                                 >
                                   <ExternalLinkIcon />
@@ -913,13 +924,17 @@ export function AccountabilityTable({
                                   <DropdownMenuItem
                                     onClick={() =>
                                       window.open(
-                                        signedCopyUrl(latest.id),
+                                        signedOnFile
+                                          ? formPdfUrl(latest.id)
+                                          : signedCopyUrl(latest.id),
                                         "_blank",
                                       )
                                     }
                                   >
                                     <FileCheckIcon />
-                                    View signed copy
+                                    {signedOnFile
+                                      ? "View unsigned form"
+                                      : "View signed copy"}
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem
