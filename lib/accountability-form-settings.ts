@@ -11,7 +11,10 @@ const SEEDED_IT_OFFICER = "Paul Angelo Derige"
 // Signature images are stored inline, so they're kept small.
 export const SIGNATURE_MAX_CHARS = 400_000
 
-export type ItOfficer = {
+// Which line of the form someone signs on.
+type Role = "IT" | "HR"
+
+export type Signatory = {
   id: string
   name: string
   // Copied on forms they sign when those are emailed; null if not set.
@@ -20,28 +23,23 @@ export type ItOfficer = {
   signature: string | null
 }
 
+// Without an id, someone new.
+export type SignatoryInput = Omit<Signatory, "id"> & { id?: string }
+
 export type AccountabilityFormSettings = {
+  // The HR signatory picked by default on new forms.
   hrName: string
-  hrEmail: string | null
-  // PNG or JPEG data URL, or null when no signature is on file.
-  hrSignature: string | null
-  // The officer picked by default on new forms.
+  hrOfficers: Signatory[]
+  // The IT officer picked by default on new forms.
   itOfficerName: string
-  itOfficers: ItOfficer[]
+  itOfficers: Signatory[]
 }
 
 export type AccountabilityFormSettingsInput = {
   hrName: string
-  hrEmail: string | null
-  hrSignature: string | null
+  hrOfficers: SignatoryInput[]
   itOfficerName: string
-  // Without an id, a new officer.
-  itOfficers: {
-    id?: string
-    name: string
-    email: string | null
-    signature: string | null
-  }[]
+  itOfficers: SignatoryInput[]
 }
 
 const sameName = (a: string, b: string) =>
@@ -58,20 +56,35 @@ export function isSignatureDataUrl(value: string) {
     : bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
 }
 
-async function listItOfficers(currentName: string): Promise<ItOfficer[]> {
-  const select = { id: true, name: true, email: true, signature: true }
-  const orderBy = [{ position: "asc" as const }, { createdAt: "asc" as const }]
-  const rows = await prisma.accountabilityFormSignatory.findMany({ select, orderBy })
+// The signatories for one role. The first time a role is asked for, its
+// list is started from `seed`.
+async function listSignatories(
+  role: Role,
+  seed: () => Omit<Signatory, "id">[],
+): Promise<Signatory[]> {
+  const query = {
+    where: { role },
+    select: { id: true, name: true, email: true, signature: true },
+    orderBy: [{ position: "asc" as const }, { createdAt: "asc" as const }],
+  }
+  const rows = await prisma.accountabilityFormSignatory.findMany(query)
   if (rows.length > 0) return rows
 
-  const names = [currentName, SEEDED_IT_OFFICER].filter(
-    (name, index, all) =>
-      name.trim() && all.findIndex((other) => sameName(other, name)) === index,
+  const people = seed().filter(
+    (person, index, all) =>
+      person.name.trim() &&
+      all.findIndex((other) => sameName(other.name, person.name)) === index,
   )
+  if (people.length === 0) return []
   await prisma.accountabilityFormSignatory.createMany({
-    data: names.map((name, position) => ({ name: name.trim(), position })),
+    data: people.map((person, position) => ({
+      ...person,
+      name: person.name.trim(),
+      role,
+      position,
+    })),
   })
-  return prisma.accountabilityFormSignatory.findMany({ select, orderBy })
+  return prisma.accountabilityFormSignatory.findMany(query)
 }
 
 export async function getAccountabilityFormSettings(): Promise<AccountabilityFormSettings> {
@@ -79,50 +92,64 @@ export async function getAccountabilityFormSettings(): Promise<AccountabilityFor
     where: { id: ACCOUNTABILITY_SETTINGS_ID },
   })
   const itOfficerName = row?.itOfficerName.trim() || DEFAULT_IT_OFFICER_NAME
-  return {
-    hrName: row?.hrName.trim() || DEFAULT_HR_NAME,
-    hrEmail: row?.hrEmail ?? null,
-    hrSignature: row?.hrSignature ?? null,
-    itOfficerName,
-    itOfficers: await listItOfficers(itOfficerName),
-  }
+  const hrName = row?.hrName.trim() || DEFAULT_HR_NAME
+  const [itOfficers, hrOfficers] = await Promise.all([
+    listSignatories("IT", () =>
+      [itOfficerName, SEEDED_IT_OFFICER].map((name) => ({
+        name,
+        email: null,
+        signature: null,
+      })),
+    ),
+    // HR used to be a single name kept on the settings row itself.
+    listSignatories("HR", () => [
+      {
+        name: hrName,
+        email: row?.hrEmail ?? null,
+        signature: row?.hrSignature ?? null,
+      },
+    ]),
+  ])
+  return { hrName, hrOfficers, itOfficerName, itOfficers }
 }
 
 export async function saveAccountabilityFormSettings(
   input: AccountabilityFormSettingsInput,
 ): Promise<AccountabilityFormSettings> {
-  const keptIds = input.itOfficers.flatMap((officer) => (officer.id ? [officer.id] : []))
+  const lists = [
+    { role: "IT" as const, people: input.itOfficers },
+    { role: "HR" as const, people: input.hrOfficers },
+  ]
+  const keptIds = lists.flatMap(({ people }) =>
+    people.flatMap((person) => (person.id ? [person.id] : [])),
+  )
+  const names = { hrName: input.hrName, itOfficerName: input.itOfficerName }
   await prisma.$transaction([
     prisma.accountabilityFormSettings.upsert({
       where: { id: ACCOUNTABILITY_SETTINGS_ID },
-      create: {
-        id: ACCOUNTABILITY_SETTINGS_ID,
-        hrName: input.hrName,
-        hrEmail: input.hrEmail,
-        hrSignature: input.hrSignature,
-        itOfficerName: input.itOfficerName,
-      },
-      update: {
-        hrName: input.hrName,
-        hrEmail: input.hrEmail,
-        hrSignature: input.hrSignature,
-        itOfficerName: input.itOfficerName,
-      },
+      create: { id: ACCOUNTABILITY_SETTINGS_ID, ...names },
+      update: names,
     }),
     prisma.accountabilityFormSignatory.deleteMany({
       where: { id: { notIn: keptIds } },
     }),
-    ...input.itOfficers.map((officer, position) => {
-      const data = {
-        name: officer.name,
-        email: officer.email,
-        signature: officer.signature,
-        position,
-      }
-      return officer.id
-        ? prisma.accountabilityFormSignatory.updateMany({ where: { id: officer.id }, data })
-        : prisma.accountabilityFormSignatory.create({ data })
-    }),
+    ...lists.flatMap(({ role, people }) =>
+      people.map((person, position) => {
+        const data = {
+          name: person.name,
+          email: person.email,
+          signature: person.signature,
+          role,
+          position,
+        }
+        return person.id
+          ? prisma.accountabilityFormSignatory.updateMany({
+              where: { id: person.id },
+              data,
+            })
+          : prisma.accountabilityFormSignatory.create({ data })
+      }),
+    ),
   ])
   return getAccountabilityFormSettings()
 }
@@ -130,36 +157,31 @@ export async function saveAccountabilityFormSettings(
 // Who to copy when a form is emailed to its holder: the IT Officer and HR
 // named on it, where an email address is on file for them.
 export async function signatoryEmails(form: { itOfficerName: string; hrName: string }) {
-  const [officers, settings] = await Promise.all([
-    prisma.accountabilityFormSignatory.findMany({
-      where: { email: { not: null } },
-      select: { name: true, email: true },
-    }),
-    prisma.accountabilityFormSettings.findUnique({
-      where: { id: ACCOUNTABILITY_SETTINGS_ID },
-      select: { hrName: true, hrEmail: true },
-    }),
-  ])
-  return [
-    officers.find((officer) => sameName(officer.name, form.itOfficerName))?.email,
-    settings && sameName(settings.hrName, form.hrName) ? settings.hrEmail : null,
-  ].filter((email): email is string => Boolean(email))
+  const people = await prisma.accountabilityFormSignatory.findMany({
+    where: { email: { not: null } },
+    select: { name: true, email: true, role: true },
+  })
+  const emailOf = (role: Role, name: string) =>
+    people.find((person) => person.role === role && sameName(person.name, name))?.email
+  return [emailOf("IT", form.itOfficerName), emailOf("HR", form.hrName)].filter(
+    (email): email is string => Boolean(email),
+  )
 }
 
-// The HR signature on file, if this is the HR name it belongs to.
-export async function hrSignature(name: string) {
-  const row = await prisma.accountabilityFormSettings.findUnique({
-    where: { id: ACCOUNTABILITY_SETTINGS_ID },
-    select: { hrName: true, hrSignature: true },
+async function signatureOf(role: Role, name: string) {
+  const people = await prisma.accountabilityFormSignatory.findMany({
+    where: { role, signature: { not: null } },
+    select: { name: true, signature: true },
   })
-  return row && sameName(row.hrName, name) ? row.hrSignature : null
+  return people.find((person) => sameName(person.name, name))?.signature ?? null
+}
+
+// The signature on file for whoever signs as this HR name, if any.
+export function hrSignature(name: string) {
+  return signatureOf("HR", name)
 }
 
 // The signature on file for whoever signs as this IT Officer, if any.
-export async function itOfficerSignature(name: string) {
-  const officers = await prisma.accountabilityFormSignatory.findMany({
-    where: { signature: { not: null } },
-    select: { name: true, signature: true },
-  })
-  return officers.find((officer) => sameName(officer.name, name))?.signature ?? null
+export function itOfficerSignature(name: string) {
+  return signatureOf("IT", name)
 }

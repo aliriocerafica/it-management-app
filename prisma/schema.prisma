@@ -231,9 +231,9 @@ model AccessoryAssignment {
 model AccountabilityFormSettings {
   id            String   @id
   hrName        String
-  // A small PNG or JPEG as a data URL, printed above the HR name.
+  // From when HR was a single signatory kept on this row. Only read to
+  // start the HR signatory list; see AccountabilityFormSignatory.
   hrSignature   String?
-  // Copied on forms emailed to holders.
   hrEmail       String?
   itOfficerName String
   updatedAt     DateTime @updatedAt
@@ -241,10 +241,13 @@ model AccountabilityFormSettings {
   @@map("accountability_form_settings")
 }
 
-// Someone who can sign accountability forms as the IT Officer, with the
-// signature image printed above their name when one is on file.
+// Someone who can sign accountability forms as the IT Officer or as Human
+// Resource, with the signature image printed above their name when one is
+// on file.
 model AccountabilityFormSignatory {
   id        String   @id @default(cuid())
+  // "IT" or "HR": which line of the form they sign.
+  role      String   @default("IT")
   name      String
   // Copied on forms they sign when those are emailed to holders.
   email     String?

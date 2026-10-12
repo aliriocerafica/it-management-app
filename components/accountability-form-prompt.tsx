@@ -60,6 +60,9 @@ export function AccountabilityFormPrompt({
   const [itOfficers, setItOfficers] = useState<
     AccountabilityFormSettings["itOfficers"]
   >([])
+  const [hrOfficers, setHrOfficers] = useState<
+    AccountabilityFormSettings["hrOfficers"]
+  >([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(open)
   const [celebrating, setCelebrating] = useState(open && released)
@@ -97,6 +100,7 @@ export function AccountabilityFormPrompt({
       .then(([settings, currentName]) => {
         if (cancelled) return
         setHrName(settings.hrName)
+        setHrOfficers(settings.hrOfficers)
         setItOfficers(settings.itOfficers)
         setItOfficerName(
           settings.itOfficerName ||
@@ -166,13 +170,34 @@ export function AccountabilityFormPrompt({
           </div>
           <div className="grid gap-2">
             <Label htmlFor="hr-name">Human Resource</Label>
-            <Input
-              id="hr-name"
-              value={hrName}
-              onChange={(e) => setHrName(e.target.value)}
-              placeholder="HR printed name"
-              disabled={loading}
-            />
+            {hrOfficers.length > 0 ? (
+              <>
+                <FormSelect
+                  id="hr-name"
+                  value={hrName}
+                  onChange={setHrName}
+                  options={hrOfficers.map((officer) => ({
+                    value: officer.name,
+                    label: officer.name,
+                  }))}
+                  placeholder="Choose the HR signatory"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {hrOfficers.find((officer) => officer.name === hrName)
+                    ?.signature
+                    ? "Their signature on file will be printed on the form."
+                    : "No signature on file, so the form is left for a handwritten one."}
+                </p>
+              </>
+            ) : (
+              <Input
+                id="hr-name"
+                value={hrName}
+                onChange={(e) => setHrName(e.target.value)}
+                placeholder="HR printed name"
+                disabled={loading}
+              />
+            )}
           </div>
           {loadError && (
             <p role="alert" className="text-sm text-destructive">

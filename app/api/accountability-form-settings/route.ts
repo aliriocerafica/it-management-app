@@ -10,25 +10,41 @@ import {
 
 export const dynamic = "force-dynamic"
 
-const Email = z.string().trim().toLowerCase().email().max(254).nullable()
+const Signatories = z
+  .array(
+    z.object({
+      id: z.string().min(1).optional(),
+      name: z.string().trim().min(1).max(120),
+      email: z.string().trim().toLowerCase().email().max(254).nullable(),
+      signature: z.string().refine(isSignatureDataUrl).nullable(),
+    }),
+  )
+  .min(1)
+  .max(20)
 
 const UpdateSchema = z.object({
   hrName: z.string().trim().min(1),
-  hrEmail: Email,
-  hrSignature: z.string().refine(isSignatureDataUrl).nullable(),
+  hrOfficers: Signatories,
   itOfficerName: z.string().trim().min(1),
-  itOfficers: z
-    .array(
-      z.object({
-        id: z.string().min(1).optional(),
-        name: z.string().trim().min(1).max(120),
-        email: Email,
-        signature: z.string().refine(isSignatureDataUrl).nullable(),
-      }),
-    )
-    .min(1)
-    .max(20),
+  itOfficers: Signatories,
 })
+
+// What's wrong with one role's list, or null: everyone needs their own
+// name, and the default has to be one of them.
+function listProblem(
+  label: string,
+  people: z.infer<typeof Signatories>,
+  defaultName: string,
+) {
+  const names = people.map((person) => person.name.toLowerCase())
+  if (new Set(names).size !== names.length) {
+    return `Each ${label} signatory needs a different name.`
+  }
+  if (!names.includes(defaultName.toLowerCase())) {
+    return `Pick one of the ${label} signatories as the default.`
+  }
+  return null
+}
 
 export async function GET() {
   const user = await verifySession()
@@ -51,25 +67,16 @@ export async function PUT(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Enter the HR name and a name for each IT officer. Check that any email addresses are valid and signatures are a small PNG or JPG.",
+          "Enter a name for each IT and HR signatory. Check that any email addresses are valid and signatures are a small PNG or JPG.",
       },
       { status: 400 },
     )
   }
 
-  const names = parsed.data.itOfficers.map((officer) => officer.name.toLowerCase())
-  if (new Set(names).size !== names.length) {
-    return NextResponse.json(
-      { error: "Each IT officer needs a different name." },
-      { status: 400 },
-    )
-  }
-  if (!names.includes(parsed.data.itOfficerName.toLowerCase())) {
-    return NextResponse.json(
-      { error: "Pick one of the IT officers as the default signatory." },
-      { status: 400 },
-    )
-  }
+  const problem =
+    listProblem("IT", parsed.data.itOfficers, parsed.data.itOfficerName) ??
+    listProblem("HR", parsed.data.hrOfficers, parsed.data.hrName)
+  if (problem) return NextResponse.json({ error: problem }, { status: 400 })
 
   const settings = await saveAccountabilityFormSettings(parsed.data)
   return NextResponse.json(settings)

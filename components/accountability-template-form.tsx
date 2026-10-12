@@ -152,35 +152,154 @@ function SignatoryRow({
   )
 }
 
+// One role's signatories, with which of them is picked by default.
+type SignatoryList = { people: Officer[]; defaultKey: string | null }
+
+const emptyList: SignatoryList = { people: [], defaultKey: null }
+
+function toList(
+  people: AccountabilityFormSettings["itOfficers"],
+  defaultName: string,
+): SignatoryList {
+  const next = people.map((person) => ({ ...person, key: person.id }))
+  return {
+    people: next,
+    defaultKey:
+      (
+        next.find(
+          (person) => person.name.toLowerCase() === defaultName.toLowerCase(),
+        ) ?? next[0]
+      )?.key ?? null,
+  }
+}
+
+// The editable list for one role: IT officers or HR.
+function SignatorySection({
+  title,
+  addLabel,
+  placeholder,
+  list,
+  onChange,
+  onUpload,
+  ready,
+}: {
+  title: string
+  addLabel: string
+  placeholder: string
+  list: SignatoryList
+  onChange: (list: SignatoryList) => void
+  // Reads an uploaded file and hands back the signature to store.
+  onUpload: (file: File | undefined, apply: (signature: string) => void) => void
+  ready: boolean
+}) {
+  const { people, defaultKey } = list
+
+  function update(key: string, change: Partial<Officer>) {
+    onChange({
+      people: people.map((person) =>
+        person.key === key ? { ...person, ...change } : person,
+      ),
+      defaultKey,
+    })
+  }
+
+  function add() {
+    const key = newKey()
+    onChange({
+      people: [...people, { key, name: "", email: null, signature: null }],
+      defaultKey: defaultKey ?? key,
+    })
+  }
+
+  function remove(key: string) {
+    const rest = people.filter((person) => person.key !== key)
+    onChange({
+      people: rest,
+      defaultKey: defaultKey === key ? (rest[0]?.key ?? null) : defaultKey,
+    })
+  }
+
+  return (
+    <section className="grid gap-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">{title}</h3>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          disabled={!ready}
+          onClick={add}
+        >
+          <PlusIcon />
+          {addLabel}
+        </Button>
+      </div>
+      <div className="divide-y divide-border rounded-xl border border-border">
+        {people.map((person) => (
+          <SignatoryRow
+            key={person.key}
+            name={person.name}
+            onNameChange={(name) => update(person.key, { name })}
+            placeholder={placeholder}
+            email={person.email}
+            onEmailChange={(email) => update(person.key, { email })}
+            signature={person.signature}
+            onUpload={(file) =>
+              onUpload(file, (signature) => update(person.key, { signature }))
+            }
+            onRemoveSignature={() => update(person.key, { signature: null })}
+            meta={
+              person.key === defaultKey ? (
+                <span className="inline-flex items-center gap-1 font-medium text-blue-500">
+                  <CheckIcon className="size-3" />
+                  Default signatory
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onChange({ people, defaultKey: person.key })}
+                  className="rounded outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Set as default
+                </button>
+              )
+            }
+            action={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Remove ${person.name || "this signatory"}`}
+                disabled={people.length === 1}
+                onClick={() => remove(person.key)}
+                className="shrink-0 text-muted-foreground hover:text-destructive"
+              >
+                <Trash2Icon />
+              </Button>
+            }
+          />
+        ))}
+        {people.length === 0 && (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+            {ready ? "No one added yet." : "Loading…"}
+          </p>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export function AccountabilityTemplateForm() {
-  const [hrName, setHrName] = React.useState("")
-  const [hrEmail, setHrEmail] = React.useState<string | null>(null)
-  const [hrSignature, setHrSignature] = React.useState<string | null>(null)
-  const [officers, setOfficers] = React.useState<Officer[]>([])
-  // The officer picked by default on new forms.
-  const [defaultKey, setDefaultKey] = React.useState<string | null>(null)
+  const [itList, setItList] = React.useState(emptyList)
+  const [hrList, setHrList] = React.useState(emptyList)
   const [error, setError] = React.useState<string | null>(null)
   const [success, setSuccess] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
   const [ready, setReady] = React.useState(false)
 
   function load(settings: AccountabilityFormSettings) {
-    const next = settings.itOfficers.map((officer) => ({
-      ...officer,
-      key: officer.id,
-    }))
-    setHrName(settings.hrName)
-    setHrEmail(settings.hrEmail)
-    setHrSignature(settings.hrSignature)
-    setOfficers(next)
-    setDefaultKey(
-      (
-        next.find(
-          (officer) =>
-            officer.name.toLowerCase() === settings.itOfficerName.toLowerCase(),
-        ) ?? next[0]
-      )?.key ?? null,
-    )
+    setItList(toList(settings.itOfficers, settings.itOfficerName))
+    setHrList(toList(settings.hrOfficers, settings.hrName))
   }
 
   React.useEffect(() => {
@@ -205,32 +324,6 @@ export function AccountabilityTemplateForm() {
     }
   }, [])
 
-  function updateOfficer(key: string, change: Partial<Officer>) {
-    setSuccess(false)
-    setOfficers((prev) =>
-      prev.map((officer) =>
-        officer.key === key ? { ...officer, ...change } : officer,
-      ),
-    )
-  }
-
-  function addOfficer() {
-    const key = newKey()
-    setSuccess(false)
-    setOfficers((prev) => [
-      ...prev,
-      { key, name: "", email: null, signature: null },
-    ])
-    if (!defaultKey) setDefaultKey(key)
-  }
-
-  function removeOfficer(key: string) {
-    const rest = officers.filter((officer) => officer.key !== key)
-    setSuccess(false)
-    setOfficers(rest)
-    if (defaultKey === key) setDefaultKey(rest[0]?.key ?? null)
-  }
-
   async function readSignature(
     file: File | undefined,
     apply: (signature: string) => void,
@@ -249,28 +342,33 @@ export function AccountabilityTemplateForm() {
     setError(null)
     setSuccess(false)
 
-    const chosen = officers.find((officer) => officer.key === defaultKey)
-    if (!chosen) {
-      setError("Add at least one IT officer.")
+    const defaultOf = (list: SignatoryList) =>
+      list.people.find((person) => person.key === list.defaultKey)
+    const itDefault = defaultOf(itList)
+    const hrDefault = defaultOf(hrList)
+    if (!itDefault || !hrDefault) {
+      setError("Add at least one IT officer and one HR signatory.")
       return
     }
     setLoading(true)
+
+    const payload = (list: SignatoryList) =>
+      list.people.map((person) => ({
+        id: person.id,
+        name: person.name.trim(),
+        email: person.email,
+        signature: person.signature,
+      }))
 
     try {
       const response = await fetch("/api/accountability-form-settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          hrName: hrName.trim(),
-          hrEmail,
-          hrSignature,
-          itOfficerName: chosen.name.trim(),
-          itOfficers: officers.map((officer) => ({
-            id: officer.id,
-            name: officer.name.trim(),
-            email: officer.email,
-            signature: officer.signature,
-          })),
+          hrName: hrDefault.name.trim(),
+          hrOfficers: payload(hrList),
+          itOfficerName: itDefault.name.trim(),
+          itOfficers: payload(itList),
         }),
       })
 
@@ -297,113 +395,30 @@ export function AccountabilityTemplateForm() {
         their forms are sent.
       </p>
 
-      <section className="grid gap-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium">IT Officers</h3>
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            disabled={!ready}
-            onClick={addOfficer}
-          >
-            <PlusIcon />
-            Add officer
-          </Button>
-        </div>
-        <div className="divide-y divide-border rounded-xl border border-border">
-          {officers.map((officer) => {
-            const isDefault = officer.key === defaultKey
-            return (
-              <SignatoryRow
-                key={officer.key}
-                name={officer.name}
-                onNameChange={(name) => updateOfficer(officer.key, { name })}
-                placeholder="IT Officer printed name"
-                email={officer.email}
-                onEmailChange={(email) => updateOfficer(officer.key, { email })}
-                signature={officer.signature}
-                onUpload={(file) =>
-                  void readSignature(file, (signature) =>
-                    updateOfficer(officer.key, { signature }),
-                  )
-                }
-                onRemoveSignature={() =>
-                  updateOfficer(officer.key, { signature: null })
-                }
-                meta={
-                  isDefault ? (
-                    <span className="inline-flex items-center gap-1 font-medium text-blue-500">
-                      <CheckIcon className="size-3" />
-                      Default signatory
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDefaultKey(officer.key)
-                        setSuccess(false)
-                      }}
-                      className="rounded outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      Set as default
-                    </button>
-                  )
-                }
-                action={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Remove ${officer.name || "this officer"}`}
-                    disabled={officers.length === 1}
-                    onClick={() => removeOfficer(officer.key)}
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2Icon />
-                  </Button>
-                }
-              />
-            )
-          })}
-          {officers.length === 0 && (
-            <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-              {ready ? "No IT officers yet." : "Loading…"}
-            </p>
-          )}
-        </div>
-      </section>
-
-      <section className="grid gap-2">
-        <h3 className="text-sm font-medium">Human Resource</h3>
-        <div className="rounded-xl border border-border">
-          <SignatoryRow
-            name={hrName}
-            onNameChange={(name) => {
-              setHrName(name)
-              setSuccess(false)
-            }}
-            placeholder="HR printed name"
-            email={hrEmail}
-            onEmailChange={(email) => {
-              setHrEmail(email)
-              setSuccess(false)
-            }}
-            signature={hrSignature}
-            disabled={!ready}
-            onUpload={(file) =>
-              void readSignature(file, (signature) => {
-                setHrSignature(signature)
-                setSuccess(false)
-              })
-            }
-            onRemoveSignature={() => {
-              setHrSignature(null)
-              setSuccess(false)
-            }}
-          />
-        </div>
-      </section>
+      <SignatorySection
+        title="IT Officers"
+        addLabel="Add officer"
+        placeholder="IT Officer printed name"
+        list={itList}
+        onChange={(list) => {
+          setItList(list)
+          setSuccess(false)
+        }}
+        onUpload={(file, apply) => void readSignature(file, apply)}
+        ready={ready}
+      />
+      <SignatorySection
+        title="Human Resource"
+        addLabel="Add HR"
+        placeholder="HR printed name"
+        list={hrList}
+        onChange={(list) => {
+          setHrList(list)
+          setSuccess(false)
+        }}
+        onUpload={(file, apply) => void readSignature(file, apply)}
+        ready={ready}
+      />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

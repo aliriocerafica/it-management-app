@@ -534,18 +534,18 @@ class FormLayout {
       "Employee Printed Name and Signature",
       "",
     )
-    this.y -= 28
+    this.y -= 40
     this.drawSignRow(
       data.itOfficerName,
       "IT Officer",
       data.generatedOn,
       itSignature,
     )
-    this.y -= 28
+    this.y -= 40
     this.drawSignRow(
       data.hrName.trim() || DEFAULT_HR_NAME,
       "Human Resource",
-      "",
+      data.generatedOn,
       hrSignature,
     )
     this.y -= 22
@@ -559,7 +559,7 @@ class FormLayout {
     dateValue: string,
     signature?: PDFImage,
   ) {
-    this.ensureSpace(60)
+    this.ensureSpace(72)
     const nameLineX = MARGIN_X
     const nameLineWidth = CONTENT_WIDTH * 0.48
     const dateLineWidth = CONTENT_WIDTH * 0.32
@@ -581,11 +581,11 @@ class FormLayout {
 
     // Signed over the printed name, as it would be by hand.
     if (signature) {
-      const scale = Math.min(150 / signature.width, 34 / signature.height)
+      const scale = Math.min(210 / signature.width, 54 / signature.height)
       const width = signature.width * scale
       this.page.drawImage(signature, {
         x: nameLineX + (nameLineWidth - width) / 2,
-        y: lineY + 8,
+        y: lineY + 2,
         width,
         height: signature.height * scale,
       })
