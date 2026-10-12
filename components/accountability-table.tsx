@@ -178,6 +178,10 @@ async function generate(
   return response.json() as Promise<AccountabilityRow[]>;
 }
 
+// Whether the holder's signed copy of the latest form is in.
+const signatureStates = ["Signed", "Pending"] as const;
+type SignatureState = (typeof signatureStates)[number];
+
 export function AccountabilityTable({
   initialData,
 }: {
@@ -187,6 +191,7 @@ export function AccountabilityTable({
   const [query, setQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
+  const [signatureFilter, setSignatureFilter] = useState<SignatureState[]>([]);
   const [tab, setTab] = useState<Tab>("All");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rowsPerPage, setRowsPerPage] = useState(15);
@@ -322,6 +327,15 @@ export function AccountabilityTable({
         )
       )
         return false;
+      // Only people with a form have a signature status to match.
+      if (
+        signatureFilter.length &&
+        !(
+          r.latest &&
+          signatureFilter.includes(r.latest.signedAt ? "Signed" : "Pending")
+        )
+      )
+        return false;
       if (tab !== "All" && r.state !== tab) return false;
       if (!q) return true;
       return [
@@ -332,7 +346,7 @@ export function AccountabilityTable({
         ...r.assets.map((a) => a.label),
       ].some((value) => value.toLowerCase().includes(q));
     });
-  }, [rows, query, departmentFilter, dateRange, tab]);
+  }, [rows, query, departmentFilter, signatureFilter, dateRange, tab]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const currentPage = Math.min(page, pageCount);
@@ -345,7 +359,10 @@ export function AccountabilityTable({
     filteredIds.length > 0 && selectedInView === filteredIds.length;
 
   const hasFilters =
-    query !== "" || departmentFilter.length > 0 || dateRange !== null;
+    query !== "" ||
+    departmentFilter.length > 0 ||
+    signatureFilter.length > 0 ||
+    dateRange !== null;
 
   const tabCounts = useMemo(() => {
     const counts: Record<Tab, number> = {
@@ -479,6 +496,7 @@ export function AccountabilityTable({
   function clearFilters() {
     setQuery("");
     setDepartmentFilter([]);
+    setSignatureFilter([]);
     setDateRange(null);
     setPage(1);
   }
@@ -573,6 +591,16 @@ export function AccountabilityTable({
               selected={departmentFilter}
               onChange={(value) => {
                 setDepartmentFilter(value);
+                setPage(1);
+              }}
+            />
+            <FilterMenu
+              label="Signature"
+              icon={PenLineIcon}
+              options={[...signatureStates]}
+              selected={signatureFilter}
+              onChange={(value) => {
+                setSignatureFilter(value);
                 setPage(1);
               }}
             />
