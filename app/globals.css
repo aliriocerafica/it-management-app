@@ -163,6 +163,44 @@
     box-shadow: inset 0 0 18px 6px rgb(16 185 129 / 0.16);
   }
 }
+/* Light sweep across the signed-in user's profile picture: a soft diagonal
+   band of light crosses it, then rests before the next pass. */
+.avatar-shine::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: linear-gradient(
+    115deg,
+    transparent 38%,
+    rgb(255 255 255 / 0.95) 50%,
+    transparent 62%
+  );
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  animation: avatar-shine 3.5s ease-in-out infinite;
+}
+
+@keyframes avatar-shine {
+  0%,
+  55% {
+    background-position: 100% 0;
+  }
+  85%,
+  100% {
+    background-position: 0% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-shine::before {
+    display: none;
+  }
+}
+
 /* Theme switch: a sky covers the page while the sun and moon trade places.
    Built and timed by lib/theme-transition.ts (2s, theme swaps at 50%). */
 .theme-shift {

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import {
   Bar,
   BarChart,
@@ -16,11 +16,14 @@ import {
   YAxis,
 } from "recharts"
 import {
+  AwardIcon,
   BackpackIcon,
   BatteryIcon,
   KeyboardIcon,
   BarChart3Icon,
+  BuildingIcon,
   Building2Icon,
+  CircleDotIcon,
   ClockIcon,
   HeadphonesIcon,
   LaptopIcon,
@@ -35,13 +38,20 @@ import {
   UsersIcon,
   WifiIcon,
   WrenchIcon,
+  XIcon,
   type LucideIcon,
 } from "lucide-react"
 
 import type { Accessory, AccessoryKind } from "@/lib/accessories"
 import { accessoryConfigs } from "@/lib/accessories"
-import { grades, gradeInfo, gradeLaptop, average } from "@/lib/laptop-analytics"
-import type { InventorySummary } from "@/lib/inventory-map"
+import {
+  grades,
+  gradeInfo,
+  gradeLaptop,
+  average,
+  type Grade,
+} from "@/lib/laptop-analytics"
+import type { StatusCounts } from "@/lib/inventory-map"
 import {
   formatDate,
   parseDate,
@@ -56,6 +66,22 @@ import type { SessionUser } from "@/lib/auth/dto"
 import type { UserDto } from "@/lib/user-repository"
 import { cn } from "@/lib/utils"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
+import { FilterMenu } from "@/components/laptop-inventory-table"
+import { Button } from "@/components/ui/button"
+
+const UNASSIGNED = "Unassigned"
+
+function countStatuses(items: { status: LaptopStatus }[]): StatusCounts {
+  const counts: StatusCounts = {
+    total: items.length,
+    "In use": 0,
+    Vacant: 0,
+    "In repair": 0,
+    Retired: 0,
+  }
+  for (const item of items) counts[item.status] += 1
+  return counts
+}
 
 const accessoryRoutes: Record<AccessoryKind, string> = {
   headset: "/dashboard/headsets",
@@ -156,18 +182,84 @@ function Meter({ value, className }: { value: number; className?: string }) {
 
 export function DashboardOverview({
   user,
-  summary,
-  laptops,
-  accessories,
+  laptops: allLaptops,
+  accessories: allAccessories,
   users,
 }: {
   user: SessionUser
-  summary: InventorySummary
   laptops: Laptop[]
   accessories: Accessory[]
   users: UserDto[]
 }) {
   const today = useToday()
+  const [departmentFilter, setDepartmentFilter] = useState<string[]>([])
+  const [brandFilter, setBrandFilter] = useState<string[]>([])
+  const [statusFilter, setStatusFilter] = useState<LaptopStatus[]>([])
+  const [gradeFilter, setGradeFilter] = useState<Grade[]>([])
+
+  const departments = useMemo(
+    () =>
+      [
+        ...new Set(
+          [...allLaptops, ...allAccessories].map((item) => item.department ?? UNASSIGNED),
+        ),
+      ].sort(),
+    [allLaptops, allAccessories],
+  )
+  const brands = useMemo(
+    () => [...new Set([...allLaptops, ...allAccessories].map((item) => item.brand))].sort(),
+    [allLaptops, allAccessories],
+  )
+
+  const accessories = useMemo(
+    () =>
+      allAccessories.filter(
+        (item) =>
+          (departmentFilter.length === 0 ||
+            departmentFilter.includes(item.department ?? UNASSIGNED)) &&
+          (brandFilter.length === 0 || brandFilter.includes(item.brand)) &&
+          (statusFilter.length === 0 || statusFilter.includes(item.status)),
+      ),
+    [allAccessories, departmentFilter, brandFilter, statusFilter],
+  )
+  // Grade only exists for laptops, so it narrows laptops and leaves accessories alone.
+  const laptops = useMemo(
+    () =>
+      allLaptops.filter(
+        (laptop) =>
+          (departmentFilter.length === 0 ||
+            departmentFilter.includes(laptop.department ?? UNASSIGNED)) &&
+          (brandFilter.length === 0 || brandFilter.includes(laptop.brand)) &&
+          (statusFilter.length === 0 || statusFilter.includes(laptop.status)) &&
+          (gradeFilter.length === 0 ||
+            !today ||
+            gradeFilter.includes(gradeLaptop(laptop, today).grade)),
+      ),
+    [allLaptops, departmentFilter, brandFilter, statusFilter, gradeFilter, today],
+  )
+
+  const hasFilters =
+    departmentFilter.length > 0 ||
+    brandFilter.length > 0 ||
+    statusFilter.length > 0 ||
+    gradeFilter.length > 0
+
+  function clearFilters() {
+    setDepartmentFilter([])
+    setBrandFilter([])
+    setStatusFilter([])
+    setGradeFilter([])
+  }
+
+  const summary = {
+    laptops: countStatuses(laptops),
+    ...(Object.fromEntries(
+      (Object.keys(accessoryConfigs) as AccessoryKind[]).map((kind) => [
+        kind,
+        countStatuses(accessories.filter((item) => item.kind === kind)),
+      ]),
+    ) as Record<AccessoryKind, StatusCounts>),
+  }
 
   const categories = (Object.keys(accessoryConfigs) as AccessoryKind[]).map((kind) => ({
     kind,
@@ -283,7 +375,49 @@ export function DashboardOverview({
   const categoryChartConfig = { value: { label: "Devices" } } satisfies ChartConfig
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="mb-2 flex flex-wrap items-end justify-between gap-3">
+        <h1 className="font-heading text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterMenu
+            label="Department"
+            icon={BuildingIcon}
+            options={departments}
+            selected={departmentFilter}
+            onChange={setDepartmentFilter}
+          />
+          <FilterMenu
+            label="Brand"
+            icon={LaptopIcon}
+            options={brands}
+            selected={brandFilter}
+            onChange={setBrandFilter}
+          />
+          <FilterMenu
+            label="Grade"
+            icon={AwardIcon}
+            options={grades.map((g) => gradeInfo[g].label)}
+            selected={gradeFilter.map((g) => gradeInfo[g].label)}
+            onChange={(labels) =>
+              setGradeFilter(grades.filter((g) => labels.includes(gradeInfo[g].label)))
+            }
+          />
+          <FilterMenu
+            label="Status"
+            icon={CircleDotIcon}
+            options={statuses}
+            selected={statusFilter}
+            onChange={setStatusFilter}
+          />
+          {hasFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <XIcon />
+              Clear
+            </Button>
+          )}
+        </div>
+      </div>
+
       {/* Welcome + top-line counts */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Tile className="sm:col-span-2 lg:col-span-2">
@@ -292,7 +426,9 @@ export function DashboardOverview({
             Welcome back, {user.name.split(" ")[0]}
           </p>
           <p className="text-sm text-muted-foreground">
-            {deviceTotal} devices tracked across the portal.
+            {hasFilters
+              ? `${deviceTotal} of ${allLaptops.length + allAccessories.length} devices match these filters.`
+              : `${deviceTotal} devices tracked across the portal.`}
           </p>
         </Tile>
         <Tile href="/dashboard/laptops">

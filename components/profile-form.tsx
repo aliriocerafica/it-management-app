@@ -132,7 +132,7 @@ export function ProfileForm({ user }: { user: SessionUser }) {
     <div className="flex max-w-xl flex-col gap-4">
       <div className="flex items-center gap-4 rounded-2xl border border-border p-4">
         <div className="relative shrink-0">
-          <Avatar size="lg" className="size-16">
+          <Avatar size="lg" className="avatar-shine size-16">
             {avatarUrl && <AvatarImage src={avatarUrl} alt={user.name} />}
             <AvatarFallback className="bg-neutral-900 text-base font-medium text-white dark:bg-white dark:text-neutral-900">
               {initials(user.name)}

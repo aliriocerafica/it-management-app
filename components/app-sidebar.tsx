@@ -34,6 +34,8 @@ import {
 
 import { AnyDeskIcon } from "@/components/anydesk-icon"
 import { ThemeSwitch } from "@/components/theme-switch"
+import { Mascot } from "page-mascot"
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -76,11 +78,18 @@ type NavGroup = {
   items: NavItem[]
 }
 
-const dashboardItem: NavItem = {
-  title: "Dashboard",
-  href: "/dashboard",
-  icon: LayoutDashboardIcon,
-}
+const topLevelItems: NavItem[] = [
+  {
+    title: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboardIcon,
+  },
+  {
+    title: "Laptop Analytics",
+    href: "/dashboard/analytics",
+    icon: ChartColumnIcon,
+  },
+]
 
 const navGroups: NavGroup[] = [
   {
@@ -147,11 +156,6 @@ const navGroups: NavGroup[] = [
         title: "Remote Access",
         href: "/dashboard/remote-access",
         icon: AnyDeskIcon,
-      },
-      {
-        title: "Laptop Analytics",
-        href: "/dashboard/analytics",
-        icon: ChartColumnIcon,
       },
       {
         title: "Accountability",
@@ -580,8 +584,9 @@ export function AppSidebar({
       .filter((group) => group.items.length > 0)
   }, [query, vacantCounts, pendingRequestCount])
 
-  const showDashboard =
-    !query || dashboardItem.title.toLowerCase().includes(query)
+  const visibleTopLevelItems = topLevelItems.filter(
+    (item) => !query || item.title.toLowerCase().includes(query),
+  )
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" })
@@ -608,24 +613,39 @@ export function AppSidebar({
 
       <SidebarHeader className="gap-4 p-4 group-data-[collapsible=icon]:px-3">
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-2xl p-1 text-left group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0 outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring">
-            <Avatar className="size-11 shrink-0 after:rounded-full group-data-[collapsible=icon]:size-10">
-              {user.avatarUrl && (
-                <AvatarImage src={user.avatarUrl} alt={user.name} />
+          <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+            {/* The mascot is a button of its own (click to boop it), so it
+                sits beside the menu trigger rather than inside it. */}
+            {!collapsed && (
+              <Mascot
+                directions="/mascots/cat-directions.webp"
+                reactions="/mascots/cat-reactions.webp"
+                size={84}
+                label="cat"
+              />
+            )}
+            <DropdownMenuTrigger
+              aria-label="Account menu"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl p-1 text-left group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0 outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              {/* Collapsed, there's no room for both: a still of the cat
+                  (the centre frame of its sheet) opens the menu. */}
+              {collapsed && (
+                <span
+                  aria-hidden
+                  className="block size-11 shrink-0 bg-[url(/mascots/cat-directions.webp)] bg-size-[300%_300%] bg-center bg-no-repeat"
+                />
               )}
-              <AvatarFallback className="bg-neutral-900 text-sm font-medium text-white dark:bg-white dark:text-neutral-900">
-                {initial}
-              </AvatarFallback>
-            </Avatar>
-            <div className="grid min-w-0 flex-1 leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="truncate text-base font-semibold text-sidebar-foreground">
-                {user.name}
-              </span>
-              <span className="truncate text-sm text-muted-foreground">
-                IT Management
-              </span>
-            </div>
-          </DropdownMenuTrigger>
+              <div className="grid min-w-0 flex-1 leading-tight group-data-[collapsible=icon]:hidden">
+                <span className="truncate text-base font-semibold text-sidebar-foreground">
+                  {user.name}
+                </span>
+                <span className="truncate text-sm text-muted-foreground">
+                  IT Management
+                </span>
+              </div>
+            </DropdownMenuTrigger>
+          </div>
           <DropdownMenuContent
             className="min-w-64 rounded-2xl p-2"
             side="bottom"
@@ -633,7 +653,7 @@ export function AppSidebar({
             sideOffset={8}
           >
             <div className="flex items-center gap-3 rounded-xl border border-border p-2.5">
-              <Avatar className="size-10 shrink-0 after:rounded-full">
+              <Avatar className="avatar-shine size-10 shrink-0 after:rounded-full">
                 {user.avatarUrl && (
                   <AvatarImage src={user.avatarUrl} alt={user.name} />
                 )}
@@ -700,18 +720,19 @@ export function AppSidebar({
 
       <SidebarContent className="gap-0 px-3 group-data-[collapsible=icon]:px-2">
         <nav className="flex flex-col gap-1 px-1 pb-3 group-data-[collapsible=icon]:px-0">
-          {!showDashboard && visibleGroups.length === 0 && (
+          {visibleTopLevelItems.length === 0 && visibleGroups.length === 0 && (
             <p className="px-3 py-2 text-sm text-muted-foreground">
               No results for &ldquo;{search}&rdquo;
             </p>
           )}
-          {showDashboard && (
+          {visibleTopLevelItems.map((item) => (
             <SidebarLink
-              item={dashboardItem}
+              key={item.href}
+              item={item}
               pathname={pathname}
               collapsed={collapsed}
             />
-          )}
+          ))}
           {visibleGroups.map((group) => (
             <NavGroupMenu
               key={group.id}
