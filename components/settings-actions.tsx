@@ -154,7 +154,7 @@ export function SettingsActions() {
         <SettingsRow
           icon={FileTextIcon}
           title="Accountability form"
-          description="The names printed on generated accountability forms."
+          description="The names and signatures printed on generated accountability forms."
         >
           <Dialog
             open={accountabilityOpen}
@@ -167,7 +167,7 @@ export function SettingsActions() {
               <DialogHeader>
                 <DialogTitle>Accountability form</DialogTitle>
                 <DialogDescription>
-                  These names are printed on generated accountability forms.
+                  The names and signatures printed on generated accountability forms.
                 </DialogDescription>
               </DialogHeader>
               {accountabilityOpen ? <AccountabilityTemplateForm /> : null}

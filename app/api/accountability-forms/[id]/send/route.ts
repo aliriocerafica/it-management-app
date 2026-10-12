@@ -5,6 +5,7 @@ import {
   recordFormSend,
   renderFormPdf,
 } from "@/lib/accountability-repository"
+import { signatoryEmails } from "@/lib/accountability-form-settings"
 import {
   SIGN_LINK_TTL_DAYS,
   createSignLink,
@@ -41,7 +42,7 @@ export async function POST(
   if (!rendered) return NextResponse.json({ error: "Form not found." }, { status: 404 })
   const form = await prisma.accountabilityForm.findUnique({
     where: { id },
-    select: { itOfficerName: true, signedAt: true },
+    select: { itOfficerName: true, hrName: true, signedAt: true },
   })
   // A form still waiting on its signature goes out with a private link for
   // uploading the signed copy.
@@ -52,9 +53,15 @@ export async function POST(
         days: SIGN_LINK_TTL_DAYS,
       }
 
+  // The form's signatories are kept in the loop.
+  const cc = (await signatoryEmails(form!)).filter(
+    (email) => email.toLowerCase() !== parsed.data.to.toLowerCase(),
+  )
+
   try {
     await sendEmail({
       to: parsed.data.to,
+      cc,
       subject: `Your IT accountability form (v${rendered.version})`,
       htmlContent: accountabilityFormEmailHtml(rendered.holderName, rendered.version, form!.itOfficerName, upload),
       textContent: accountabilityFormEmailText(rendered.holderName, rendered.version, form!.itOfficerName, upload),
@@ -67,5 +74,5 @@ export async function POST(
   }
 
   await recordFormSend(id, parsed.data.to, user.name)
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, cc })
 }

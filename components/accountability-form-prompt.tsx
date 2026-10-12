@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { FileTextIcon } from "lucide-react"
 
+import { FormSelect } from "@/components/form-select"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import type { AccountabilityFormSettings } from "@/lib/accountability-form-settings"
 
 const checkIcon =
   "https://media.lordicon.com/icons/system/outline/24-check-circle.gif"
@@ -54,6 +56,10 @@ export function AccountabilityFormPrompt({
 }) {
   const [hrName, setHrName] = useState("")
   const [itOfficerName, setItOfficerName] = useState("")
+  // The IT officers set up in Settings, to pick the signatory from.
+  const [itOfficers, setItOfficers] = useState<
+    AccountabilityFormSettings["itOfficers"]
+  >([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(open)
   const [celebrating, setCelebrating] = useState(open && released)
@@ -80,7 +86,7 @@ export function AccountabilityFormPrompt({
     void Promise.all([
       fetch("/api/accountability-form-settings").then(async (response) => {
         if (!response.ok) throw new Error("Failed to load")
-        return response.json() as Promise<{ hrName: string; itOfficerName: string }>
+        return response.json() as Promise<AccountabilityFormSettings>
       }),
       fetch("/api/auth/me").then(async (response) => {
         if (!response.ok) return null
@@ -91,7 +97,13 @@ export function AccountabilityFormPrompt({
       .then(([settings, currentName]) => {
         if (cancelled) return
         setHrName(settings.hrName)
-        setItOfficerName(settings.itOfficerName || currentName || "")
+        setItOfficers(settings.itOfficers)
+        setItOfficerName(
+          settings.itOfficerName ||
+            settings.itOfficers[0]?.name ||
+            currentName ||
+            "",
+        )
       })
       .catch(() => {
         if (cancelled) return
@@ -123,13 +135,34 @@ export function AccountabilityFormPrompt({
         <div className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="it-officer-name">IT Officer</Label>
-            <Input
-              id="it-officer-name"
-              value={itOfficerName}
-              onChange={(e) => setItOfficerName(e.target.value)}
-              placeholder="IT Officer printed name"
-              disabled={loading}
-            />
+            {itOfficers.length > 0 ? (
+              <>
+                <FormSelect
+                  id="it-officer-name"
+                  value={itOfficerName}
+                  onChange={setItOfficerName}
+                  options={itOfficers.map((officer) => ({
+                    value: officer.name,
+                    label: officer.name,
+                  }))}
+                  placeholder="Choose the IT Officer"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {itOfficers.find((officer) => officer.name === itOfficerName)
+                    ?.signature
+                    ? "Their signature on file will be printed on the form."
+                    : "No signature on file, so the form is left for a handwritten one."}
+                </p>
+              </>
+            ) : (
+              <Input
+                id="it-officer-name"
+                value={itOfficerName}
+                onChange={(e) => setItOfficerName(e.target.value)}
+                placeholder="IT Officer printed name"
+                disabled={loading}
+              />
+            )}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="hr-name">Human Resource</Label>

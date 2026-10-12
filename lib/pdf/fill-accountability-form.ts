@@ -26,6 +26,11 @@ export type AccountabilityFormData = {
   hrName: string
   generatedOn: string
   equipment: EquipmentRow[]
+  // PNG or JPEG data URL of the IT Officer's signature, printed above
+  // their name.
+  itOfficerSignature?: string | null
+  // The same for Human Resource.
+  hrSignature?: string | null
 }
 
 const LOGO_PATH = path.join(process.cwd(), "public/ardent-logo.png")
@@ -511,7 +516,11 @@ class FormLayout {
     }
   }
 
-  drawSignatureBlock(data: AccountabilityFormData) {
+  drawSignatureBlock(
+    data: AccountabilityFormData,
+    itSignature?: PDFImage,
+    hrSignature?: PDFImage,
+  ) {
     if (this.doc.getPages()[0] === this.page) this.addPage()
     this.y -= 4
     this.drawParagraph(
@@ -526,19 +535,30 @@ class FormLayout {
       "",
     )
     this.y -= 28
-    this.drawSignRow(data.itOfficerName, "IT Officer", data.generatedOn)
+    this.drawSignRow(
+      data.itOfficerName,
+      "IT Officer",
+      data.generatedOn,
+      itSignature,
+    )
     this.y -= 28
     this.drawSignRow(
       data.hrName.trim() || DEFAULT_HR_NAME,
       "Human Resource",
       "",
+      hrSignature,
     )
     this.y -= 22
     this.drawParagraph(RECEIVED_NOTE, 11)
     this.y -= 8
   }
 
-  private drawSignRow(name: string, caption: string, dateValue: string) {
+  private drawSignRow(
+    name: string,
+    caption: string,
+    dateValue: string,
+    signature?: PDFImage,
+  ) {
     this.ensureSpace(60)
     const nameLineX = MARGIN_X
     const nameLineWidth = CONTENT_WIDTH * 0.48
@@ -557,6 +577,18 @@ class FormLayout {
         nameLineWidth,
         12,
       )
+    }
+
+    // Signed over the printed name, as it would be by hand.
+    if (signature) {
+      const scale = Math.min(150 / signature.width, 34 / signature.height)
+      const width = signature.width * scale
+      this.page.drawImage(signature, {
+        x: nameLineX + (nameLineWidth - width) / 2,
+        y: lineY + 8,
+        width,
+        height: signature.height * scale,
+      })
     }
 
     this.page.drawLine({
@@ -609,6 +641,20 @@ class FormLayout {
   }
 }
 
+// A signature that can't be read is left off rather than failing the form.
+async function embedSignature(doc: PDFDocument, dataUrl?: string | null) {
+  const match = /^data:image\/(png|jpeg);base64,(.+)$/.exec(dataUrl ?? "")
+  if (!match) return undefined
+  try {
+    const bytes = Buffer.from(match[2], "base64")
+    return match[1] === "png"
+      ? await doc.embedPng(bytes)
+      : await doc.embedJpg(bytes)
+  } catch {
+    return undefined
+  }
+}
+
 export async function fillAccountabilityForm(data: AccountabilityFormData) {
   const doc = await PDFDocument.create()
   doc.registerFontkit(fontkit)
@@ -627,7 +673,11 @@ export async function fillAccountabilityForm(data: AccountabilityFormData) {
   layout.drawTitle("Acknowledgment of Receipt of Company Property")
   layout.drawAccountabilityTable([...kitRows(bySlot), ...extras])
   layout.drawTerms(TERMS)
-  layout.drawSignatureBlock(data)
+  layout.drawSignatureBlock(
+    data,
+    await embedSignature(doc, data.itOfficerSignature),
+    await embedSignature(doc, data.hrSignature),
+  )
 
   return Buffer.from(await doc.save())
 }

@@ -4,6 +4,10 @@ import type {
   FormState,
   FormVersion,
 } from "@/lib/accountability-forms"
+import {
+  hrSignature,
+  itOfficerSignature,
+} from "@/lib/accountability-form-settings"
 import { deleteSignedCopyFiles } from "@/lib/accountability-sign-link"
 import { accessoryConfigs, type AccessoryKind } from "@/lib/accessories"
 import type { Prisma } from "@/lib/generated/prisma"
@@ -280,6 +284,8 @@ export async function renderFormPdf(formId: string) {
     hrName: form.hrName,
     generatedOn: form.generatedOn,
     equipment: form.equipment as EquipmentRow[],
+    itOfficerSignature: await itOfficerSignature(form.itOfficerName),
+    hrSignature: await hrSignature(form.hrName),
   })
   return {
     pdf,

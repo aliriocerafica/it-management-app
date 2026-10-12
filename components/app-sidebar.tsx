@@ -1,6 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useState, type ComponentType } from "react"
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ComponentType,
+} from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -184,6 +190,40 @@ const countBadgeClass =
   "flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-semibold text-white tabular-nums"
 
 const LOCKED_GROUPS_KEY = "sidebar-locked-groups"
+
+// The locked group ids as JSON. Held here as well as in localStorage, so a
+// lock still works for the session when storage is blocked.
+let lockedGroupsJson: string | null = null
+const lockedGroupsListeners = new Set<() => void>()
+
+function subscribeLockedGroups(listener: () => void) {
+  lockedGroupsListeners.add(listener)
+  return () => {
+    lockedGroupsListeners.delete(listener)
+  }
+}
+
+function readLockedGroups() {
+  if (lockedGroupsJson === null) {
+    try {
+      lockedGroupsJson = localStorage.getItem(LOCKED_GROUPS_KEY) ?? "[]"
+    } catch {
+      // Private window, blocked storage, etc. — just start unlocked.
+      lockedGroupsJson = "[]"
+    }
+  }
+  return lockedGroupsJson
+}
+
+function writeLockedGroups(ids: string[]) {
+  lockedGroupsJson = JSON.stringify(ids)
+  try {
+    localStorage.setItem(LOCKED_GROUPS_KEY, lockedGroupsJson)
+  } catch {
+    // Ignore — the lock still works for this session.
+  }
+  for (const listener of lockedGroupsListeners) listener()
+}
 
 function vacantNoun(key: keyof VacantCounts) {
   if (key === "laptops") return "laptops"
@@ -496,45 +536,51 @@ export function AppSidebar({
     )?.id ?? null
   const [openGroupId, setOpenGroupId] = useState<string | null>(activeGroupId)
   // Groups pinned open regardless of navigation. Remembered per browser;
-  // read after mount so server and first client render still match.
-  const [lockedGroupIds, setLockedGroupIds] = useState<Set<string>>(
-    () => new Set(),
+  // the server render starts with none so it matches the first client one.
+  const lockedGroupsJson = useSyncExternalStore(
+    subscribeLockedGroups,
+    readLockedGroups,
+    () => "[]",
   )
+  const lockedGroupIds = useMemo(() => {
+    try {
+      return new Set(JSON.parse(lockedGroupsJson) as string[])
+    } catch {
+      return new Set<string>()
+    }
+  }, [lockedGroupsJson])
   const [vacantCounts, setVacantCounts] = useState(initialVacantCounts)
   const [pendingRequestCount, setPendingRequestCount] = useState(
     initialPendingRequestCount,
   )
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(LOCKED_GROUPS_KEY)
-      if (stored) setLockedGroupIds(new Set(JSON.parse(stored) as string[]))
-    } catch {
-      // Private window, blocked storage, etc. — just start unlocked.
-    }
-  }, [])
-
   function setGroupLocked(groupId: string, locked: boolean) {
-    setLockedGroupIds((prev) => {
-      const next = new Set(prev)
-      if (locked) next.add(groupId)
-      else next.delete(groupId)
-      try {
-        localStorage.setItem(LOCKED_GROUPS_KEY, JSON.stringify([...next]))
-      } catch {
-        // Ignore — the lock still works for this session.
-      }
-      return next
-    })
+    const next = new Set(lockedGroupIds)
+    if (locked) next.add(groupId)
+    else next.delete(groupId)
+    writeLockedGroups([...next])
   }
 
-  useEffect(() => {
+  // Fresh counts from the server replace whatever was fetched since.
+  const [seenVacantCounts, setSeenVacantCounts] = useState(initialVacantCounts)
+  if (seenVacantCounts !== initialVacantCounts) {
+    setSeenVacantCounts(initialVacantCounts)
     setVacantCounts(initialVacantCounts)
-  }, [initialVacantCounts])
-
-  useEffect(() => {
+  }
+  const [seenPendingCount, setSeenPendingCount] = useState(
+    initialPendingRequestCount,
+  )
+  if (seenPendingCount !== initialPendingRequestCount) {
+    setSeenPendingCount(initialPendingRequestCount)
     setPendingRequestCount(initialPendingRequestCount)
-  }, [initialPendingRequestCount])
+  }
+
+  // Navigating into a group opens it.
+  const [seenActiveGroupId, setSeenActiveGroupId] = useState(activeGroupId)
+  if (seenActiveGroupId !== activeGroupId) {
+    setSeenActiveGroupId(activeGroupId)
+    if (activeGroupId) setOpenGroupId(activeGroupId)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -559,10 +605,6 @@ export function AppSidebar({
   }, [pathname])
 
   const query = search.trim().toLowerCase()
-
-  useEffect(() => {
-    if (activeGroupId) setOpenGroupId(activeGroupId)
-  }, [activeGroupId])
 
   const visibleGroups = useMemo(() => {
     return navGroups

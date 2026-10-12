@@ -50,6 +50,9 @@ async function sendForm(formId: string, to: string) {
     };
     throw new Error(body.error ?? `Couldn't send the email (${response.status}).`);
   }
+  // Who was copied: the form's signatories with an email on file.
+  const body = (await response.json().catch(() => ({}))) as { cc?: string[] };
+  return body.cc ?? [];
 }
 
 export function SendFormDialog({
@@ -63,7 +66,7 @@ export function SendFormDialog({
   defaultEmail: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSent: (to: string) => void;
+  onSent: (to: string, cc: string[]) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -83,7 +86,7 @@ function SendForm({
 }: {
   form: FormVersion;
   defaultEmail: string | null;
-  onSent: (to: string) => void;
+  onSent: (to: string, cc: string[]) => void;
 }) {
   const [to, setTo] = useState(defaultEmail ?? "");
   const [sending, setSending] = useState(false);
@@ -97,8 +100,7 @@ function SendForm({
         setSending(true);
         setError(null);
         try {
-          await sendForm(form.id, to.trim());
-          onSent(to.trim());
+          onSent(to.trim(), await sendForm(form.id, to.trim()));
         } catch (err) {
           setError(errorMessage(err));
           setSending(false);

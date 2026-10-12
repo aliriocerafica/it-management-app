@@ -1092,9 +1092,13 @@ export function AccountabilityTable({
         defaultEmail={sending?.email ?? null}
         open={sending !== null}
         onOpenChange={(next) => !next && setSending(null)}
-        onSent={(to) => {
+        onSent={(to, cc) => {
           setSending(null);
-          setNotice(`Sent to ${to}`);
+          setNotice(
+            cc.length > 0
+              ? `Sent to ${to}, copied to ${cc.join(" and ")}`
+              : `Sent to ${to}`,
+          );
           setVersionsKey((key) => key + 1);
           void refreshRows();
         }}

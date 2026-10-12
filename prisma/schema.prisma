@@ -231,10 +231,29 @@ model AccessoryAssignment {
 model AccountabilityFormSettings {
   id            String   @id
   hrName        String
+  // A small PNG or JPEG as a data URL, printed above the HR name.
+  hrSignature   String?
+  // Copied on forms emailed to holders.
+  hrEmail       String?
   itOfficerName String
   updatedAt     DateTime @updatedAt
 
   @@map("accountability_form_settings")
+}
+
+// Someone who can sign accountability forms as the IT Officer, with the
+// signature image printed above their name when one is on file.
+model AccountabilityFormSignatory {
+  id        String   @id @default(cuid())
+  name      String
+  // Copied on forms they sign when those are emailed to holders.
+  email     String?
+  // A small PNG or JPEG as a data URL.
+  signature String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("accountability_form_signatories")
 }
 
 enum AssetRequestStatus {

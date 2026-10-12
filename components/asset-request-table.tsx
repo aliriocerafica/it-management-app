@@ -74,7 +74,6 @@ import {
   requestStatusStyles,
   type AssetRequest,
   type RequestPriority,
-  type RequestStatus,
 } from "@/lib/asset-requests";
 import type { DtrIssueCondition, DtrReturnCondition } from "@/lib/dtr";
 import {
@@ -552,8 +551,8 @@ export function AssetRequestTable({
   }
 
   function replaceRequest(saved: AssetRequest & { emailWarning?: string }) {
-    if (saved.emailWarning) setSaveError(saved.emailWarning);
-    const { emailWarning: _warning, ...request } = saved;
+    const { emailWarning, ...request } = saved;
+    if (emailWarning) setSaveError(emailWarning);
     setRequests((prev) => prev.map((r) => (r.id === request.id ? request : r)));
   }
 

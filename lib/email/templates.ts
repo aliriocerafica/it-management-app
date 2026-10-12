@@ -131,37 +131,28 @@ export function accountabilityFormEmailHtml(
   upload?: SignedCopyUpload,
 ): string {
   const safeUrl = upload ? escapeHtml(upload.url) : ""
-  const uploadBlock = upload
-    ? `
-      <p style="margin:0 0 16px;color:#3f3f46;font-size:14px;line-height:1.5;">
-        Please print it, sign it, and send back a scan or clear photo of the signed copy using the button below.
-      </p>
-      <p style="margin:0 0 20px;">
-        <a href="${safeUrl}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#111111;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;">
-          Upload signed copy
-        </a>
-      </p>
-      <p style="margin:0 0 16px;color:#71717a;font-size:12px;line-height:1.5;">
-        Or paste this link into your browser: <a href="${safeUrl}" style="color:#b42318;word-break:break-all;">${safeUrl}</a><br />
-        The link is only for you and expires in ${upload.days} days. Please don't forward this email.
-      </p>
-    `
-    : ""
-  return layout(
-    "Your accountability form",
-    `
-      <p style="margin:0 0 16px;color:#3f3f46;font-size:14px;line-height:1.5;">
-        Hi ${escapeHtml(name)}, attached is a copy of your IT equipment accountability form (version ${version}).
-      </p>
-      <p style="margin:0 0 16px;color:#3f3f46;font-size:14px;line-height:1.5;">
-        It lists the company equipment currently assigned to you. Please keep it for your records and let IT know if anything on it is wrong.
-      </p>
-      ${uploadBlock}
-      <p style="margin:0;color:#71717a;font-size:12px;line-height:1.5;">
-        Sent by ${escapeHtml(itOfficerName)}, IT Department.
-      </p>
-    `,
-  )
+  const sentBy = `Sent by ${escapeHtml(itOfficerName)}, IT Department.`
+  const keep =
+    "It lists the company equipment currently assigned to you. Please keep it for your records and let IT know if anything on it is wrong."
+  return simpleEmail({
+    icon: lordIcon(
+      "https://media.lordicon.com/icons/system/outline/56-document.gif",
+      "Accountability form",
+    ),
+    title: "Your accountability form",
+    subtitle: escapeHtml(
+      `Hi ${firstName(name)}, attached is a copy of your IT equipment accountability form (version ${version}).`,
+    ),
+    body: upload
+      ? `${keep}<br><br>Please print it, sign it, and send back a scan or clear photo of the signed copy using the button below.`
+      : keep,
+    button: upload
+      ? { label: "Upload signed copy", href: upload.url }
+      : { label: "Email IT", href: "mailto:it@ardentparalegal.com" },
+    footer: upload
+      ? `Or paste this link into your browser:<br><a href="${safeUrl}" style="color:#111111;text-decoration:underline;word-break:break-all;">${safeUrl}</a><br><br>The link is only for you and expires in ${upload.days} days. Please don't forward this email.<br><br>${sentBy}`
+      : sentBy,
+  })
 }
 
 function firstName(name: string) {
