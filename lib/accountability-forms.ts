@@ -22,6 +22,8 @@ export type FormVersion = {
   signedAt: string | null;
   // Who recorded it as signed.
   signedByName: string | null;
+  // The holder uploaded a scan or photo of the signed copy.
+  hasSignedCopy: boolean;
   sends: FormSend[];
 };
 
@@ -54,6 +56,10 @@ export const formStateStyles: Record<FormState, { dot: string; text: string }> =
     },
     "No form": { dot: "bg-red-500", text: "text-red-600 dark:text-red-400" },
   };
+
+export function signedCopyUrl(formId: string) {
+  return `/api/accountability-forms/${formId}/signed-copy`;
+}
 
 export function formPdfUrl(formId: string, download = false) {
   return `/api/accountability-forms/${formId}/pdf${download ? "?download=1" : ""}`;

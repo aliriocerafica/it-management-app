@@ -4,6 +4,7 @@ import type {
   FormState,
   FormVersion,
 } from "@/lib/accountability-forms"
+import { deleteSignedCopyFiles } from "@/lib/accountability-sign-link"
 import { accessoryConfigs, type AccessoryKind } from "@/lib/accessories"
 import type { Prisma } from "@/lib/generated/prisma"
 import { fetchHrisEmployees } from "@/lib/hris"
@@ -116,7 +117,11 @@ function assetSummary(equipment: EquipmentRow[]) {
   return [...counts].map(([label, count]) => ({ label, count }))
 }
 
-const formInclude = { sends: { orderBy: { sentAt: "desc" } } } satisfies Prisma.AccountabilityFormInclude
+const formInclude = {
+  sends: { orderBy: { sentAt: "desc" } },
+  // Only whether an upload exists; the file itself is fetched on demand.
+  signLinks: { where: { uploadedAt: { not: null } }, select: { id: true }, take: 1 },
+} satisfies Prisma.AccountabilityFormInclude
 type FormRecord = Prisma.AccountabilityFormGetPayload<{ include: typeof formInclude }>
 
 function versionFromDb(row: FormRecord): FormVersion {
@@ -132,6 +137,7 @@ function versionFromDb(row: FormRecord): FormVersion {
     createdAt: row.createdAt.toISOString(),
     signedAt: row.signedAt?.toISOString() ?? null,
     signedByName: row.signedByName,
+    hasSignedCopy: row.signLinks.length > 0,
     sends: row.sends.map((send) => ({
       id: send.id,
       toEmail: send.toEmail,
@@ -301,7 +307,13 @@ export async function setFormSigned(formId: string, signed: boolean, byName: str
 
 async function deleteForms(where: Prisma.AccountabilityFormWhereInput): Promise<FormBackup[]> {
   const rows = await prisma.accountabilityForm.findMany({ where, include: { sends: true } })
+  // The uploaded signed copies go with the forms; Undo doesn't bring them back.
+  const copies = await prisma.accountabilityFormSignLink.findMany({
+    where: { formId: { in: rows.map((row) => row.id) }, blobUrl: { not: null } },
+    select: { blobUrl: true },
+  })
   await prisma.accountabilityForm.deleteMany({ where: { id: { in: rows.map((row) => row.id) } } })
+  await deleteSignedCopyFiles(copies.flatMap((copy) => (copy.blobUrl ? [copy.blobUrl] : [])))
   return rows.map((row) => ({
     id: row.id,
     holderName: row.holderName,

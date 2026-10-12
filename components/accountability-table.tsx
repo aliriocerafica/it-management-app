@@ -17,6 +17,7 @@ import {
   DownloadIcon,
   EllipsisIcon,
   ExternalLinkIcon,
+  FileCheckIcon,
   FilePlusIcon,
   FileTextIcon,
   HeadphonesIcon,
@@ -70,6 +71,7 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   formPdfUrl,
+  signedCopyUrl,
   formStateStyles,
   formStates,
   type AccountabilityRow,
@@ -906,6 +908,19 @@ export function AccountabilityTable({
                                   <HistoryIcon />
                                   Versions ({row.versionCount})
                                 </DropdownMenuItem>
+                                {latest.hasSignedCopy && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      window.open(
+                                        signedCopyUrl(latest.id),
+                                        "_blank",
+                                      )
+                                    }
+                                  >
+                                    <FileCheckIcon />
+                                    View signed copy
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem
                                   onClick={() =>
                                     void markSigned(

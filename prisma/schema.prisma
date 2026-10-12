@@ -315,6 +315,7 @@ model AccountabilityForm {
   signedAt      DateTime?
   signedByName  String?
   sends         AccountabilityFormSend[]
+  signLinks     AccountabilityFormSignLink[]
 
   @@unique([holderName, version])
   @@index([holderName])
@@ -331,4 +332,23 @@ model AccountabilityFormSend {
 
   @@index([formId])
   @@map("accountability_form_sends")
+}
+
+// A private link emailed with a form so its holder can upload the signed
+// copy without an account. The upload is recorded on the link it came in
+// on; the file itself lives in private Vercel Blob storage.
+model AccountabilityFormSignLink {
+  id          String             @id @default(cuid())
+  formId      String
+  form        AccountabilityForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  tokenHash   String             @unique
+  expiresAt   DateTime
+  createdAt   DateTime           @default(now())
+  fileName    String?
+  contentType String?
+  blobUrl     String?
+  uploadedAt  DateTime?
+
+  @@index([formId])
+  @@map("accountability_form_sign_links")
 }

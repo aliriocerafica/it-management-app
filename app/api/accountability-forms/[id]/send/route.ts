@@ -5,6 +5,11 @@ import {
   recordFormSend,
   renderFormPdf,
 } from "@/lib/accountability-repository"
+import {
+  SIGN_LINK_TTL_DAYS,
+  createSignLink,
+} from "@/lib/accountability-sign-link"
+import { appBaseUrl } from "@/lib/auth/setup-link"
 import { verifySession } from "@/lib/auth/session"
 import { EmailSendError, sendEmail } from "@/lib/email/brevo"
 import {
@@ -36,15 +41,23 @@ export async function POST(
   if (!rendered) return NextResponse.json({ error: "Form not found." }, { status: 404 })
   const form = await prisma.accountabilityForm.findUnique({
     where: { id },
-    select: { itOfficerName: true },
+    select: { itOfficerName: true, signedAt: true },
   })
+  // A form still waiting on its signature goes out with a private link for
+  // uploading the signed copy.
+  const upload = form!.signedAt
+    ? undefined
+    : {
+        url: `${appBaseUrl(request)}/sign-form?token=${await createSignLink(id)}`,
+        days: SIGN_LINK_TTL_DAYS,
+      }
 
   try {
     await sendEmail({
       to: parsed.data.to,
       subject: `Your IT accountability form (v${rendered.version})`,
-      htmlContent: accountabilityFormEmailHtml(rendered.holderName, rendered.version, form!.itOfficerName),
-      textContent: accountabilityFormEmailText(rendered.holderName, rendered.version, form!.itOfficerName),
+      htmlContent: accountabilityFormEmailHtml(rendered.holderName, rendered.version, form!.itOfficerName, upload),
+      textContent: accountabilityFormEmailText(rendered.holderName, rendered.version, form!.itOfficerName, upload),
       attachments: [{ name: rendered.filename, content: rendered.pdf.toString("base64") }],
     })
   } catch (error) {
