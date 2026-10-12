@@ -31,7 +31,14 @@ export async function findSignLink(rawToken: string) {
       id: true,
       expiresAt: true,
       form: {
-        select: { id: true, holderName: true, version: true, signedAt: true },
+        select: {
+          id: true,
+          holderName: true,
+          version: true,
+          signedAt: true,
+          itOfficerName: true,
+          hrName: true,
+        },
       },
     },
   })

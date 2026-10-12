@@ -1,12 +1,16 @@
 import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
+import { signatoryEmails } from "@/lib/accountability-form-settings"
 import {
   SIGNED_COPY_MAX_BYTES,
   findSignLink,
   saveSignedCopy,
   signedCopyType,
 } from "@/lib/accountability-sign-link"
+import { appBaseUrl } from "@/lib/auth/setup-link"
+import { sendEmail } from "@/lib/email/brevo"
+import { signedCopyReceivedEmail } from "@/lib/email/templates"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -67,5 +71,28 @@ export async function POST(request: Request) {
     )
   }
   revalidatePath("/dashboard/accountability")
+
+  // Let the form's IT Officer and HR know. The upload has succeeded either
+  // way, so a failed notice isn't the holder's problem.
+  try {
+    const [to, ...cc] = await signatoryEmails(link.form)
+    if (to) {
+      const notice = signedCopyReceivedEmail({
+        holderName: link.form.holderName,
+        version: link.form.version,
+        pageUrl: `${appBaseUrl(request)}/dashboard/accountability`,
+      })
+      await sendEmail({
+        to,
+        cc,
+        subject: notice.subject,
+        htmlContent: notice.html,
+        textContent: notice.text,
+      })
+    }
+  } catch (error) {
+    console.error("Notifying signatories of a signed copy failed", error)
+  }
+
   return NextResponse.json({ ok: true })
 }

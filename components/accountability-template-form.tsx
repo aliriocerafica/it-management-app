@@ -1,7 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { CheckIcon, PlusIcon, Trash2Icon, UploadIcon } from "lucide-react"
+import {
+  CheckIcon,
+  MailIcon,
+  PlusIcon,
+  Trash2Icon,
+  UploadIcon,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -123,17 +129,27 @@ function SignatoryRow({
           disabled={disabled}
           className="h-7 border-transparent bg-transparent px-1.5 font-medium shadow-none hover:border-border dark:bg-transparent"
         />
-        <Input
-          type="email"
-          value={email ?? ""}
-          onChange={(event) => onEmailChange(event.target.value.trim() || null)}
-          placeholder="Email, to be copied on sent forms"
-          aria-label={`Email address of ${owner}`}
-          disabled={disabled}
-          className="h-6 border-transparent bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:border-border md:text-xs dark:bg-transparent"
-        />
-        <div className="flex min-h-4 items-center gap-2 px-1.5 text-[11px] text-muted-foreground">
+        <div className="relative">
+          <MailIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="email"
+            value={email ?? ""}
+            onChange={(event) =>
+              onEmailChange(event.target.value.trim() || null)
+            }
+            placeholder="Add email address"
+            aria-label={`Email address of ${owner}`}
+            disabled={disabled}
+            className="h-8 pl-7 text-xs md:text-xs"
+          />
+        </div>
+        <div className="flex min-h-4 flex-wrap items-center gap-x-2 px-1.5 pt-0.5 text-[11px] text-muted-foreground">
           {meta}
+          {!email && (
+            <span className="text-amber-600 dark:text-amber-400">
+              No email, so not copied on sent forms
+            </span>
+          )}
           {signature ? (
             <button
               type="button"
@@ -392,7 +408,7 @@ export function AccountabilityTemplateForm() {
       <p className="text-xs text-muted-foreground">
         A signature on file is printed above the name. Without one, the line is
         left blank to sign by hand. Signatories with an email are copied when
-        their forms are sent.
+        their forms are sent, and told when the signed copy comes back.
       </p>
 
       <SignatorySection

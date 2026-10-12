@@ -124,8 +124,6 @@ export function setupLinkEmailText(name: string, setupUrl: string, ttlHours: num
 // Where the holder uploads the signed copy, and how long the link lasts.
 export type SignedCopyUpload = { url: string; days: number }
 
-// A wide, short card: the message on the left, the one action on the
-// right. The two halves are inline blocks, so they stack on a narrow screen.
 export function accountabilityFormEmailHtml(
   name: string,
   version: number,
@@ -133,8 +131,6 @@ export function accountabilityFormEmailHtml(
 ): string {
   const safeUrl = upload ? escapeHtml(upload.url) : ""
   const text = "margin:0;font-size:14px;line-height:1.5;color:#3f3f46;"
-  const half =
-    "display:inline-block;vertical-align:middle;width:100%;text-align:left;"
   const step = (number: number, label: string) =>
     `<tr>
                 <td valign="top" style="padding:0 10px 8px 0;font-size:14px;line-height:1.5;font-weight:700;color:#111111;white-space:nowrap;">Step ${number}</td>
@@ -167,6 +163,37 @@ export function accountabilityFormEmailHtml(
           </td>
         </tr>`
     : ""
+  return wideEmail({
+    title: "Your accountability form",
+    subtitle: `Hi ${firstName(name)}, your IT equipment accountability form (version ${version}) is attached.`,
+    message,
+    action,
+    note,
+    fallback,
+  })
+}
+
+// A wide, short card: the message on the left, the one action on the
+// right. The two halves are inline blocks, so they stack on a narrow screen.
+// `title`, `subtitle` and the action label are escaped here; `message`,
+// `note` and `fallback` are HTML, and `action.href` is already escaped.
+function wideEmail({
+  title,
+  subtitle,
+  message,
+  action,
+  note = "",
+  fallback = "",
+}: {
+  title: string
+  subtitle: string
+  message: string
+  action: { label: string; href: string }
+  note?: string
+  fallback?: string
+}) {
+  const half =
+    "display:inline-block;vertical-align:middle;width:100%;text-align:left;"
   return `
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
   <tr>
@@ -177,10 +204,10 @@ export function accountabilityFormEmailHtml(
             <div style="${half}max-width:372px;">
               <div style="padding:0 16px 12px 0;">
                 <p style="margin:0 0 6px;font-size:22px;line-height:1.25;font-weight:700;color:#111111;">
-                  Your accountability form
+                  ${escapeHtml(title)}
                 </p>
                 <p style="margin:0 0 14px;font-size:14px;line-height:1.5;color:#8a8a8a;">
-                  ${escapeHtml(`Hi ${firstName(name)}, your IT equipment accountability form (version ${version}) is attached.`)}
+                  ${escapeHtml(subtitle)}
                 </p>
                 ${message}
               </div>
@@ -190,7 +217,7 @@ export function accountabilityFormEmailHtml(
                 <tr>
                   <td align="center" bgcolor="#111111" style="background:#111111;border-radius:8px;">
                     <a href="${action.href}" style="display:block;padding:14px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
-                      ${action.label}
+                      ${escapeHtml(action.label)}
                     </a>
                   </td>
                 </tr>
@@ -205,6 +232,28 @@ export function accountabilityFormEmailHtml(
   </tr>
 </table>
   `.trim()
+}
+
+// Tells a form's signatories that its holder sent back the signed copy.
+export function signedCopyReceivedEmail(input: {
+  holderName: string
+  version: number
+  // The Accountability page, where the copy can be opened.
+  pageUrl: string
+}): { subject: string; html: string; text: string } {
+  const summary = `${input.holderName} uploaded the signed copy of their IT equipment accountability form (version ${input.version}).`
+  const next =
+    "It is now marked as signed. Open the Accountability page to view the signed copy."
+  return {
+    subject: `Signed accountability form received: ${input.holderName}`,
+    html: wideEmail({
+      title: "Signed copy received",
+      subtitle: summary,
+      message: `<p style="margin:0;font-size:14px;line-height:1.5;color:#3f3f46;">${next}</p>`,
+      action: { label: "Open Accountability", href: escapeHtml(input.pageUrl) },
+    }),
+    text: [summary, "", next, input.pageUrl].join("\n"),
+  }
 }
 
 function firstName(name: string) {
