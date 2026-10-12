@@ -124,35 +124,87 @@ export function setupLinkEmailText(name: string, setupUrl: string, ttlHours: num
 // Where the holder uploads the signed copy, and how long the link lasts.
 export type SignedCopyUpload = { url: string; days: number }
 
+// A wide, short card: the message on the left, the one action on the
+// right. The two halves are inline blocks, so they stack on a narrow screen.
 export function accountabilityFormEmailHtml(
   name: string,
   version: number,
-  itOfficerName: string,
   upload?: SignedCopyUpload,
 ): string {
   const safeUrl = upload ? escapeHtml(upload.url) : ""
-  const sentBy = `Sent by ${escapeHtml(itOfficerName)}, IT Department.`
-  const keep =
-    "It lists the company equipment currently assigned to you. Please keep it for your records and let IT know if anything on it is wrong."
-  return simpleEmail({
-    icon: lordIcon(
-      "https://media.lordicon.com/icons/system/outline/56-document.gif",
-      "Accountability form",
-    ),
-    title: "Your accountability form",
-    subtitle: escapeHtml(
-      `Hi ${firstName(name)}, attached is a copy of your IT equipment accountability form (version ${version}).`,
-    ),
-    body: upload
-      ? `${keep}<br><br>Please print it, sign it, and send back a scan or clear photo of the signed copy using the button below.`
-      : keep,
-    button: upload
-      ? { label: "Upload signed copy", href: upload.url }
-      : { label: "Email IT", href: "mailto:it@ardentparalegal.com" },
-    footer: upload
-      ? `Or paste this link into your browser:<br><a href="${safeUrl}" style="color:#111111;text-decoration:underline;word-break:break-all;">${safeUrl}</a><br><br>The link is only for you and expires in ${upload.days} days. Please don't forward this email.<br><br>${sentBy}`
-      : sentBy,
-  })
+  const text = "margin:0;font-size:14px;line-height:1.5;color:#3f3f46;"
+  const half =
+    "display:inline-block;vertical-align:middle;width:100%;text-align:left;"
+  const step = (number: number, label: string) =>
+    `<tr>
+                <td valign="top" style="padding:0 10px 8px 0;font-size:14px;line-height:1.5;font-weight:700;color:#111111;white-space:nowrap;">Step ${number}</td>
+                <td valign="top" style="padding:0 0 8px;font-size:14px;line-height:1.5;color:#3f3f46;">${label}</td>
+              </tr>`
+  const message = upload
+    ? `<p style="${text}margin-bottom:14px;">
+              It lists the company equipment currently assigned to you.
+            </p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              ${step(1, "Print the attached form and sign it.")}
+              ${step(2, "Upload a scan or clear photo of the signed copy.")}
+            </table>`
+    : `<p style="${text}">
+              It lists the company equipment currently assigned to you. Please keep it for your records and let IT know if anything on it is wrong.
+            </p>`
+  const action = upload
+    ? { label: "Upload signed copy", href: safeUrl }
+    : { label: "Email IT", href: "mailto:it@ardentparalegal.com" }
+  const note = upload
+    ? `<p style="margin:10px 0 0;font-size:11px;line-height:1.5;color:#9a9a9a;text-align:center;">
+              Only for you. Expires in ${upload.days} days.
+            </p>`
+    : ""
+  const fallback = upload
+    ? `<tr>
+          <td style="padding:14px 32px 20px;border-top:1px solid #ececec;font-size:11px;line-height:1.5;color:#9a9a9a;">
+            Button not working? Paste this link into your browser:
+            <a href="${safeUrl}" style="color:#6b6b6b;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
+          </td>
+        </tr>`
+    : ""
+  return `
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:680px;background:#ffffff;">
+        <tr>
+          <td align="center" style="padding:28px 32px 24px;font-size:0;">
+            <div style="${half}max-width:372px;">
+              <div style="padding:0 16px 12px 0;">
+                <p style="margin:0 0 6px;font-size:22px;line-height:1.25;font-weight:700;color:#111111;">
+                  Your accountability form
+                </p>
+                <p style="margin:0 0 14px;font-size:14px;line-height:1.5;color:#8a8a8a;">
+                  ${escapeHtml(`Hi ${firstName(name)}, your IT equipment accountability form (version ${version}) is attached.`)}
+                </p>
+                ${message}
+              </div>
+            </div>
+            <div style="${half}max-width:236px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td align="center" bgcolor="#111111" style="background:#111111;border-radius:8px;">
+                    <a href="${action.href}" style="display:block;padding:14px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
+                      ${action.label}
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              ${note}
+            </div>
+          </td>
+        </tr>
+        ${fallback}
+      </table>
+    </td>
+  </tr>
+</table>
+  `.trim()
 }
 
 function firstName(name: string) {
@@ -382,21 +434,20 @@ export function assetRequestDeniedEmailText(input: {
 export function accountabilityFormEmailText(
   name: string,
   version: number,
-  itOfficerName: string,
   upload?: SignedCopyUpload,
 ): string {
   return [
     `Hi ${name}, attached is a copy of your IT equipment accountability form (version ${version}).`,
     "",
     "It lists the company equipment currently assigned to you. Please keep it for your records and let IT know if anything on it is wrong.",
-    "",
     ...(upload
       ? [
-          `Please print it, sign it, and upload a scan or clear photo of the signed copy here: ${upload.url}`,
-          `The link is only for you and expires in ${upload.days} days. Please don't forward this email.`,
           "",
+          "Step 1: Print the attached form and sign it.",
+          `Step 2: Upload a scan or clear photo of the signed copy here: ${upload.url}`,
+          "",
+          `The link is only for you and expires in ${upload.days} days.`,
         ]
       : []),
-    `Sent by ${itOfficerName}, IT Department.`,
   ].join("\n")
 }

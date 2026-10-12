@@ -63,8 +63,8 @@ export async function POST(
       to: parsed.data.to,
       cc,
       subject: `Your IT accountability form (v${rendered.version})`,
-      htmlContent: accountabilityFormEmailHtml(rendered.holderName, rendered.version, form!.itOfficerName, upload),
-      textContent: accountabilityFormEmailText(rendered.holderName, rendered.version, form!.itOfficerName, upload),
+      htmlContent: accountabilityFormEmailHtml(rendered.holderName, rendered.version, upload),
+      textContent: accountabilityFormEmailText(rendered.holderName, rendered.version, upload),
       attachments: [{ name: rendered.filename, content: rendered.pdf.toString("base64") }],
     })
   } catch (error) {

@@ -8,11 +8,9 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 
 // Matches the server's limit.
@@ -101,35 +99,38 @@ export function SignFormUpload({
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>Upload your signed form</CardTitle>
+        <CardTitle>Sign your accountability form</CardTitle>
         <CardDescription>
-          Hi {name}. Print your accountability form (version {version}), sign
-          it, then upload a scan or a clear photo of the signed page.
+          Hi {name}. Two steps to return your signed form (version {version})
+          to IT.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit} className="contents">
         <CardContent>
-          <FieldGroup>
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={
-                <a
-                  href={`/api/sign-form/pdf?token=${token}`}
-                  target="_blank"
-                  rel="noreferrer"
-                />
-              }
-            >
-              <FileTextIcon />
-              Open the form to print
-            </Button>
-            <Field>
-              <FieldLabel htmlFor="signed-copy">Signed copy</FieldLabel>
+          <ol className="grid gap-5">
+            <Step number={1} title="Print the form and sign it">
+              <Button
+                variant="outline"
+                nativeButton={false}
+                className="w-full"
+                render={
+                  <a
+                    href={`/api/sign-form/pdf?token=${token}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  />
+                }
+              >
+                <FileTextIcon />
+                Open the form to print
+              </Button>
+            </Step>
+            <Step number={2} title="Upload the signed copy">
               <Input
                 id="signed-copy"
                 type="file"
                 accept="application/pdf,image/jpeg,image/png"
+                aria-label="Signed copy"
                 onChange={(event) => {
                   setFile(event.target.files?.[0] ?? null)
                   setError(null)
@@ -137,23 +138,53 @@ export function SignFormUpload({
                 required
               />
               <p className="text-xs text-muted-foreground">
-                PDF, JPG or PNG, up to 4 MB.
+                A scan or a clear photo of the signed page. PDF, JPG or PNG, up
+                to 4 MB.
               </p>
-            </Field>
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-          </FieldGroup>
+              {error && (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={!file || pending}
+              >
+                {pending ? (
+                  <Loader2Icon className="animate-spin" />
+                ) : (
+                  <UploadIcon />
+                )}
+                {pending ? "Uploading…" : "Upload signed copy"}
+              </Button>
+            </Step>
+          </ol>
         </CardContent>
-        <CardFooter className="border-t-0 bg-transparent">
-          <Button type="submit" className="w-full" disabled={!file || pending}>
-            {pending ? <Loader2Icon className="animate-spin" /> : <UploadIcon />}
-            {pending ? "Uploading…" : "Upload signed copy"}
-          </Button>
-        </CardFooter>
       </form>
     </Card>
+  )
+}
+
+// One numbered step, with its controls underneath the title.
+function Step({
+  number,
+  title,
+  children,
+}: {
+  number: number
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <li className="flex gap-3">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
+        {number}
+      </span>
+      <div className="grid min-w-0 flex-1 gap-2">
+        <p className="text-sm leading-6 font-medium">{title}</p>
+        {children}
+      </div>
+    </li>
   )
 }
