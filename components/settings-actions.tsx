@@ -175,7 +175,7 @@ export function SettingsActions() {
             <DialogTrigger render={<Button variant="outline" size="sm" />}>
               Edit
             </DialogTrigger>
-            <DialogContent className="max-h-[min(90svh,40rem)] overflow-y-auto sm:max-w-3xl">
+            <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-3xl">
               <DialogHeader>
                 <DialogTitle>Accountability form</DialogTitle>
                 <DialogDescription>
