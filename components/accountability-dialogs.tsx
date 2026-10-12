@@ -278,6 +278,7 @@ function VersionList({
                 {form.generatedOn} · {form.itemCount}{" "}
                 {form.itemCount === 1 ? "item" : "items"}
                 {form.createdByName && ` · by ${form.createdByName}`}
+                {form.signedAt && " · signed"}
               </span>
               <div className="ml-auto flex items-center gap-1">
                 <Button

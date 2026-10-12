@@ -130,6 +130,8 @@ function versionFromDb(row: FormRecord): FormVersion {
     itemCount: (row.equipment as EquipmentRow[]).filter((r) => r.item !== "Laptop Charger").length,
     createdByName: row.createdByName,
     createdAt: row.createdAt.toISOString(),
+    signedAt: row.signedAt?.toISOString() ?? null,
+    signedByName: row.signedByName,
     sends: row.sends.map((send) => ({
       id: send.id,
       toEmail: send.toEmail,
@@ -285,6 +287,18 @@ export async function recordFormSend(formId: string, toEmail: string, sentByName
   await prisma.accountabilityFormSend.create({ data: { formId, toEmail, sentByName } })
 }
 
+// Records that the printed copy came back signed, or that it's pending
+// again. Returns false when there's no such form.
+export async function setFormSigned(formId: string, signed: boolean, byName: string | null) {
+  const { count } = await prisma.accountabilityForm.updateMany({
+    where: { id: formId },
+    data: signed
+      ? { signedAt: new Date(), signedByName: byName }
+      : { signedAt: null, signedByName: null },
+  })
+  return count > 0
+}
+
 async function deleteForms(where: Prisma.AccountabilityFormWhereInput): Promise<FormBackup[]> {
   const rows = await prisma.accountabilityForm.findMany({ where, include: { sends: true } })
   await prisma.accountabilityForm.deleteMany({ where: { id: { in: rows.map((row) => row.id) } } })
@@ -301,6 +315,8 @@ async function deleteForms(where: Prisma.AccountabilityFormWhereInput): Promise<
     signature: row.signature,
     createdByName: row.createdByName,
     createdAt: row.createdAt.toISOString(),
+    signedAt: row.signedAt?.toISOString() ?? null,
+    signedByName: row.signedByName,
     sends: row.sends.map((send) => ({
       id: send.id,
       toEmail: send.toEmail,
@@ -336,6 +352,8 @@ export async function restoreForms(forms: FormBackup[]) {
       signature: form.signature,
       createdByName: form.createdByName,
       createdAt: new Date(form.createdAt),
+      signedAt: form.signedAt ? new Date(form.signedAt) : null,
+      signedByName: form.signedByName ?? null,
     })),
     skipDuplicates: true,
   })

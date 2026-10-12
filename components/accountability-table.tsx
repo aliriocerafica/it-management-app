@@ -23,10 +23,12 @@ import {
   HistoryIcon,
   KeyboardIcon,
   LaptopIcon,
+  HourglassIcon,
   Loader2Icon,
   MailIcon,
   MemoryStickIcon,
   MouseIcon,
+  PenLineIcon,
   RefreshCwIcon,
   SearchIcon,
   SendIcon,
@@ -112,6 +114,8 @@ function exportCsv(rows: AccountabilityRow[]) {
     "Assets",
     "Items",
     "Form status",
+    "Signature",
+    "Signed on",
     "Latest version",
     "Generated",
     "Versions",
@@ -128,6 +132,8 @@ function exportCsv(rows: AccountabilityRow[]) {
       r.assets.map((a) => `${a.count} ${a.label}`).join("; "),
       r.itemCount,
       r.state,
+      r.latest ? (r.latest.signedAt ? "Signed" : "Pending") : "",
+      r.latest?.signedAt?.slice(0, 10) ?? "",
       r.latest ? `v${r.latest.version}` : "",
       r.latest?.generatedOn ?? "",
       r.versionCount,
@@ -216,6 +222,41 @@ export function AccountabilityTable({
         for (const holder of holders) next.delete(holder);
         return next;
       });
+    }
+  }
+
+  // Records whether the printed copy of a form came back signed.
+  async function markSigned(
+    holderName: string,
+    form: FormVersion,
+    signed: boolean,
+    undoable = true,
+  ) {
+    try {
+      const next = await track([holderName], async () => {
+        const response = await fetch(`/api/accountability-forms/${form.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ signed }),
+        });
+        if (!response.ok) {
+          throw new Error(
+            `Couldn't update the signature status (error ${response.status}).`,
+          );
+        }
+        return (await response.json()) as AccountabilityRow[];
+      });
+      setRows(next);
+      if (undoable) {
+        setUndo({
+          message: signed
+            ? `Marked ${holderName}'s form as signed`
+            : `Marked ${holderName}'s form as pending signature`,
+          run: () => void markSigned(holderName, form, !signed, false),
+        });
+      }
+    } catch (error) {
+      setSaveError(errorMessage(error));
     }
   }
 
@@ -610,6 +651,9 @@ export function AccountabilityTable({
                   Last sent
                 </ColumnHeader>
                 <ColumnHeader icon={CircleDotIcon}>Status</ColumnHeader>
+                <ColumnHeader icon={PenLineIcon} className="hidden @2xl:table-cell">
+                  Signature
+                </ColumnHeader>
                 <th className="sticky top-0 z-10 h-9 min-w-34 bg-card px-2 text-left text-[11px] font-medium whitespace-nowrap text-muted-foreground shadow-[inset_0_-1px_0_var(--color-border)]">
                   Actions
                 </th>
@@ -741,6 +785,35 @@ export function AccountabilityTable({
                         {row.state}
                       </span>
                     </td>
+                    <td className={cn(cellClass, "hidden @2xl:table-cell")}>
+                      {latest ? (
+                        <div className="leading-tight">
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[11px] font-medium",
+                              latest.signedAt
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-amber-600 dark:text-amber-400",
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "size-1.5 rounded-full",
+                                latest.signedAt ? "bg-emerald-500" : "bg-amber-500",
+                              )}
+                            />
+                            {latest.signedAt ? "Signed" : "Pending"}
+                          </span>
+                          {latest.signedAt && (
+                            <div className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                              {formatSentAt(latest.signedAt)}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       {/* Same layout on every row: one primary action in a
                           fixed-width slot, everything else in the menu.
@@ -833,6 +906,24 @@ export function AccountabilityTable({
                                   <HistoryIcon />
                                   Versions ({row.versionCount})
                                 </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    void markSigned(
+                                      row.holderName,
+                                      latest,
+                                      !latest.signedAt,
+                                    )
+                                  }
+                                >
+                                  {latest.signedAt ? (
+                                    <HourglassIcon />
+                                  ) : (
+                                    <PenLineIcon />
+                                  )}
+                                  {latest.signedAt
+                                    ? "Mark as pending signature"
+                                    : "Mark as signed"}
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                               </>
                             )}
@@ -873,7 +964,7 @@ export function AccountabilityTable({
               {pageRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-4 py-12 text-center text-sm text-muted-foreground"
                   >
                     {rows.length === 0

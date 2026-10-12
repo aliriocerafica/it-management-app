@@ -18,6 +18,10 @@ export type FormVersion = {
   itemCount: number;
   createdByName: string | null;
   createdAt: string;
+  // When the printed copy came back signed; null while that's pending.
+  signedAt: string | null;
+  // Who recorded it as signed.
+  signedByName: string | null;
   sends: FormSend[];
 };
 
@@ -69,6 +73,8 @@ export type FormBackup = {
   signature: string;
   createdByName: string | null;
   createdAt: string;
+  signedAt: string | null;
+  signedByName: string | null;
   sends: { id: string; toEmail: string; sentByName: string | null; sentAt: string }[];
   // Present only on backups the server just issued, so Undo can prove it.
   token?: string;

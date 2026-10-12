@@ -310,6 +310,10 @@ model AccountabilityForm {
   signature     String
   createdByName String?
   createdAt     DateTime @default(now())
+  // When the printed copy came back signed by the holder; null while
+  // that's still pending. Recorded by hand.
+  signedAt      DateTime?
+  signedByName  String?
   sends         AccountabilityFormSend[]
 
   @@unique([holderName, version])
