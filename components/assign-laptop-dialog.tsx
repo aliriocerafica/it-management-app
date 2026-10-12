@@ -23,16 +23,24 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  priorityStyles,
+  requestCode,
+  type AssetRequest,
+} from "@/lib/asset-requests";
 import { type Employee } from "@/lib/employees";
+import { samePerson } from "@/lib/issue-stock";
 import { useEmployeeDirectory } from "@/lib/use-employee-directory";
 import { initials, type TrackedItem } from "@/lib/laptops";
 import { cn } from "@/lib/utils";
 
 const MANUAL = "manual";
+const NO_REQUEST = "__none__";
 
 export function AssignLaptopDialog({
   laptop,
   laptops,
+  requests = [],
   open,
   onOpenChange,
   onAssign,
@@ -41,11 +49,18 @@ export function AssignLaptopDialog({
 }: {
   laptop: TrackedItem | null;
   laptops: TrackedItem[];
+  // Open requests (Pending/Approved) for this item's asset type, so the
+  // person assigning it can say which request it fulfills.
+  requests?: AssetRequest[];
   noun?: string;
   icon?: LucideIcon;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAssign: (employee: Employee, note: string) => void;
+  onAssign: (
+    employee: Employee,
+    note: string,
+    request: AssetRequest | null,
+  ) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -55,6 +70,7 @@ export function AssignLaptopDialog({
             key={laptop.assetTag}
             laptop={laptop}
             laptops={laptops}
+            requests={requests}
             onAssign={onAssign}
             noun={noun}
             icon={icon}
@@ -68,15 +84,21 @@ export function AssignLaptopDialog({
 function AssignForm({
   laptop,
   laptops,
+  requests,
   onAssign,
   noun,
   icon: Icon,
 }: {
   laptop: TrackedItem;
   laptops: TrackedItem[];
+  requests: AssetRequest[];
   noun: string;
   icon: LucideIcon;
-  onAssign: (employee: Employee, note: string) => void;
+  onAssign: (
+    employee: Employee,
+    note: string,
+    request: AssetRequest | null,
+  ) => void;
 }) {
   const { employees, status } = useEmployeeDirectory();
   const [query, setQuery] = useState("");
@@ -84,6 +106,9 @@ function AssignForm({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualDepartment, setManualDepartment] = useState("");
   const [note, setNote] = useState("");
+  // null = not yet decided by the person assigning (auto-suggest from the
+  // chosen employee's name); NO_REQUEST = explicitly not linking one.
+  const [requestChoice, setRequestChoice] = useState<string | null>(null);
 
   // Asset tags each employee currently holds, so IT can spot people who
   // already have one before handing out another.
@@ -130,6 +155,17 @@ function AssignForm({
         email: "",
       }
     : (employees.find((e) => e.id === selectedId) ?? null);
+
+  const suggestedRequest = selected
+    ? (requests.find((r) => samePerson(r.requesterName, selected.name)) ??
+      null)
+    : null;
+  const selectedRequest =
+    requestChoice === null
+      ? suggestedRequest
+      : requestChoice === NO_REQUEST
+        ? null
+        : (requests.find((r) => r.id === requestChoice) ?? null);
 
   return (
     <>
@@ -306,6 +342,72 @@ function AssignForm({
             placeholder="e.g. New hire onboarding"
           />
         </div>
+
+        {requests.length > 0 && (
+          <div
+            role="radiogroup"
+            aria-label="Fulfills request"
+            className="flex flex-col gap-1.5 border-t border-border pt-3 pb-4"
+          >
+            <span className="text-xs font-medium">
+              Fulfills a request?
+              <span className="font-normal text-muted-foreground">
+                {" "}
+                (optional)
+              </span>
+            </span>
+            <div className="flex flex-col gap-1">
+              {requests.map((request) => {
+                const isSelected = selectedRequest?.id === request.id;
+                return (
+                  <button
+                    key={request.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    onClick={() => setRequestChoice(request.id)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                      isSelected
+                        ? "border-foreground/30 bg-muted"
+                        : "border-transparent hover:bg-muted/60",
+                    )}
+                  >
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {requestCode(request)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {request.requesterName}
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded px-1.5 py-px text-[10px] font-medium",
+                        priorityStyles[request.priority],
+                      )}
+                    >
+                      {request.priority}
+                    </span>
+                  </button>
+                );
+              })}
+              {selectedRequest && (
+                <button
+                  type="button"
+                  onClick={() => setRequestChoice(NO_REQUEST)}
+                  className="self-start px-2.5 py-1 text-left text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  Don&apos;t link a request
+                </button>
+              )}
+            </div>
+            {selectedRequest && (
+              <p className="text-[11px] text-muted-foreground">
+                {requestCode(selectedRequest)} will be marked Completed once
+                this is assigned.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <DialogFooter className="mx-0 mb-0 items-center px-6 py-4">
@@ -318,7 +420,9 @@ function AssignForm({
         <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
         <Button
           disabled={!selected}
-          onClick={() => selected && onAssign(selected, note.trim())}
+          onClick={() =>
+            selected && onAssign(selected, note.trim(), selectedRequest)
+          }
         >
           <UserPlusIcon />
           Assign

@@ -23,6 +23,8 @@ export type Accessory = {
   department: string | null;
   purchaseDate: string;
   warrantyYears: number;
+  // Acquisition cost. Null for units added before this was tracked.
+  price?: number | null;
   status: LaptopStatus;
   // Kind-specific details, keyed by the kind's spec field keys.
   specs: Record<string, string>;

@@ -189,6 +189,7 @@ export function AddAccessoryDialog({
           colorHex,
           purchaseDate,
           warrantyYears: Number(get("warrantyYears")),
+          price: get("price") ? Number(get("price")) : null,
           repairIssue: get("repairIssue") || null,
           specs,
         }],
@@ -233,6 +234,7 @@ export function AddAccessoryDialog({
         department: assignedHandler && handler ? department || null : null,
         purchaseDate,
         warrantyYears: Number(get("warrantyYears")),
+        price: get("price") ? Number(get("price")) : null,
         status,
         specs,
         history: [
@@ -478,6 +480,18 @@ export function AddAccessoryDialog({
                     value: String(years),
                     label: formatWarranty(years),
                   }))}
+              />
+            </FormField>
+            <FormField label="Price" htmlFor="price" optional>
+              <Input
+                id="price"
+                name="price"
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                placeholder="e.g. 1500"
+                defaultValue={source?.price ?? ""}
               />
             </FormField>
             {editing && (

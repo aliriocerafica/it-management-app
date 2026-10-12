@@ -26,6 +26,8 @@ export type Laptop = {
   department: string | null;
   purchaseDate: string;
   warrantyYears: number;
+  // Acquisition cost. Null for units added before this was tracked.
+  price?: number | null;
   status: LaptopStatus;
   // What's wrong and still needs fixing. Set while "In repair", and kept
   // when the laptop goes back into use before the repair is complete
@@ -197,6 +199,10 @@ export function warrantyInfo(
   const state =
     daysLeft < 0 ? "Expired" : daysLeft <= 90 ? "Expiring" : "Active";
   return { end, state } as const;
+}
+
+export function formatPrice(amount: number) {
+  return `₱${amount.toLocaleString("en-PH", { maximumFractionDigits: 2 })}`;
 }
 
 export function formatDate(date: Date) {

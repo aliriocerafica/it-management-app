@@ -92,17 +92,30 @@ function dtrConfig() {
   return { baseUrl, apiKey }
 }
 
+// A hung DTR shouldn't hang the Requests page or an issue/return action
+// indefinitely — fail fast instead, with a clear message.
+const DTR_TIMEOUT_MS = 10_000
+
 async function dtrFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const { baseUrl, apiKey } = dtrConfig()
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      "x-internal-api-key": apiKey,
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-    },
-    cache: "no-store",
-  })
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        "x-internal-api-key": apiKey,
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(DTR_TIMEOUT_MS),
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error("DTR didn't respond in time. Try again shortly.")
+    }
+    throw error
+  }
 
   const text = await response.text()
   let data: unknown = null

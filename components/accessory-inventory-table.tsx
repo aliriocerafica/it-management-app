@@ -53,15 +53,18 @@ import {
 } from "@/components/pending-repair-badge";
 import { SendToRepairDialog } from "@/components/send-to-repair-dialog";
 import { UndoToast } from "@/components/undo-toast";
+import { type AssetRequest } from "@/lib/asset-requests";
 import {
   createAccessory,
   errorMessage,
   fetchLaptops,
   removeAccessories,
   saveAccessory,
+  saveAssetRequest,
   saveLaptop,
 } from "@/lib/inventory-api";
 import { returnedToVacant } from "@/lib/inventory-lifecycle";
+import { inventoryKindForAssetType } from "@/lib/issue-stock";
 import {
   ColumnHeader,
   FilterMenu,
@@ -147,7 +150,7 @@ function exportCsv(
     "Serial number",
     ...config.specFields.map((field) => field.label),
     "Color",
-    config.installsInLaptop ? "Installed in" : "Current handler",
+    config.installsInLaptop ? "Installed in / Assigned to" : "Current handler",
     "Department",
     "Purchase date",
     "Age",
@@ -165,7 +168,9 @@ function exportCsv(
       ...config.specFields.map((field) => item.specs[field.key] ?? ""),
       item.color,
       config.installsInLaptop
-        ? (hostById.get(item.laptopId ?? "")?.assetTag ?? "Not installed")
+        ? (hostById.get(item.laptopId ?? "")?.assetTag ??
+            item.handler ??
+            "Not installed")
         : (item.handler ?? "Unassigned"),
       item.department ?? "",
       item.purchaseDate,
@@ -195,11 +200,15 @@ export function AccessoryInventoryTable({
   kind,
   initialData,
   laptops = [],
+  openRequests: initialOpenRequests = [],
 }: {
   kind: AccessoryKind;
   initialData: Accessory[];
   // For kinds installed in laptops (RAM): the laptops they can go in.
   laptops?: RamHost[];
+  // Open (Pending/Approved) local requests, for linking an assignment to
+  // the request it fulfills.
+  openRequests?: AssetRequest[];
 }) {
   const config = accessoryConfigs[kind];
   const Icon = accessoryIcons[kind];
@@ -208,6 +217,11 @@ export function AccessoryInventoryTable({
   const installs = config.installsInLaptop === true;
 
   const today = useToday();
+  const [openRequests, setOpenRequests] = useState(initialOpenRequests);
+  const assignableRequests = useMemo(
+    () => openRequests.filter((r) => inventoryKindForAssetType(r.assetType) === kind),
+    [openRequests, kind],
+  );
   const [items, setItems] = useState(initialData);
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState<string[]>([]);
@@ -567,8 +581,14 @@ export function AccessoryInventoryTable({
     setReturning(null);
   }
 
-  function assignItem(id: string, employee: Employee, note: string) {
+  function assignItem(
+    id: string,
+    employee: Employee,
+    note: string,
+    request: AssetRequest | null,
+  ) {
     const todayIso = isoToday();
+    const original = items.find((i) => i.id === id);
     updateItem(id, (item) => ({
       ...item,
       handler: employee.name,
@@ -589,6 +609,21 @@ export function AccessoryInventoryTable({
       ],
     }), (item) => `Assigned ${item.assetTag} to ${employee.name}`);
     setAssignOpen(false);
+
+    if (request) {
+      setOpenRequests((prev) => prev.filter((r) => r.id !== request.id));
+      const now = new Date().toISOString();
+      persist(
+        saveAssetRequest({
+          ...request,
+          status: "Completed",
+          approvedAt: request.approvedAt ?? now,
+          completedAt: now,
+          resolutionNote: note || `Issued ${original?.assetTag ?? ""}`.trim(),
+        }),
+        () => setOpenRequests((prev) => [...prev, request]),
+      );
+    }
   }
 
   function openInstall(item: Accessory) {
@@ -818,7 +853,9 @@ export function AccessoryInventoryTable({
                   Asset tag
                 </ColumnHeader>
                 {installs ? (
-                  <ColumnHeader icon={LaptopIcon}>Installed in</ColumnHeader>
+                  <ColumnHeader icon={LaptopIcon}>
+                    Installed in / Assigned to
+                  </ColumnHeader>
                 ) : (
                   <ColumnHeader icon={UserIcon}>Handler</ColumnHeader>
                 )}
@@ -1111,6 +1148,12 @@ export function AccessoryInventoryTable({
                               <CopyIcon />
                               Duplicate
                             </DropdownMenuItem>
+                            {installs && item.status === "Vacant" && (
+                              <DropdownMenuItem onClick={() => openAssign(item)}>
+                                <UserPlusIcon />
+                                Assign to employee
+                              </DropdownMenuItem>
+                            )}
                             {item.repairIssue &&
                               item.status !== "In repair" && (
                                 <DropdownMenuItem
@@ -1346,12 +1389,13 @@ export function AccessoryInventoryTable({
       <AssignLaptopDialog
         laptop={assigning}
         laptops={items}
+        requests={assignableRequests}
         noun={noun}
         icon={Icon}
         open={assignOpen}
         onOpenChange={setAssignOpen}
-        onAssign={(employee, note) =>
-          assigning && assignItem(assigning.id, employee, note)
+        onAssign={(employee, note, request) =>
+          assigning && assignItem(assigning.id, employee, note, request)
         }
       />
 
@@ -1406,7 +1450,8 @@ export function AccessoryInventoryTable({
   );
 }
 
-// The "Installed in" cell for RAM: the laptop it's in, or that it's free.
+// The "Installed in" cell for RAM: the laptop it's in, the person it was
+// issued to directly (no laptop on file), or that it's free.
 function InstalledIn({
   item,
   host,
@@ -1414,23 +1459,42 @@ function InstalledIn({
   item: Accessory;
   host: RamHost | undefined;
 }) {
-  if (!item.laptopId) {
-    return <span className="text-muted-foreground italic">Not installed</span>;
-  }
-  if (!host) {
-    return <span className="text-muted-foreground italic">Unknown laptop</span>;
-  }
-  return (
-    <div className="flex items-center gap-2">
-      <span className="hidden size-6 shrink-0 items-center justify-center rounded-full bg-muted @2xl:flex">
-        <LaptopIcon className="size-3 text-muted-foreground" />
-      </span>
-      <div className="leading-tight">
-        <div className="font-mono">{host.assetTag}</div>
-        <div className="text-[11px] text-muted-foreground">
-          {host.brand} {host.model} · {host.ram}
+  if (item.laptopId) {
+    if (!host) {
+      return (
+        <span className="text-muted-foreground italic">Unknown laptop</span>
+      );
+    }
+    return (
+      <div className="flex items-center gap-2">
+        <span className="hidden size-6 shrink-0 items-center justify-center rounded-full bg-muted @2xl:flex">
+          <LaptopIcon className="size-3 text-muted-foreground" />
+        </span>
+        <div className="leading-tight">
+          <div className="font-mono">{host.assetTag}</div>
+          <div className="text-[11px] text-muted-foreground">
+            {host.brand} {host.model} · {host.ram}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
+  if (item.handler) {
+    return (
+      <div className="flex items-center gap-2">
+        <Avatar className="hidden size-6 after:rounded-full @2xl:flex">
+          <AvatarFallback className="bg-muted text-[9px] font-medium">
+            {initials(item.handler)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="leading-tight">
+          <div>{item.handler}</div>
+          <div className="text-[11px] text-muted-foreground">
+            {item.department ?? "Issued directly, not installed"}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return <span className="text-muted-foreground italic">Not installed</span>;
 }

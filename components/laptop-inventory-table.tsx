@@ -8,6 +8,7 @@ import {
   ChevronsLeftIcon,
   ChevronsRightIcon,
   CircleDotIcon,
+  CoinsIcon,
   CpuIcon,
   DownloadIcon,
   EllipsisIcon,
@@ -23,6 +24,7 @@ import {
   SearchIcon,
   ShieldCheckIcon,
   Trash2Icon,
+  TriangleAlertIcon,
   UserIcon,
   Undo2Icon,
   UserPlusIcon,
@@ -36,20 +38,28 @@ import { AddLaptopDialog } from "@/components/add-laptop-dialog";
 import { revalidateInventory } from "@/app/actions/revalidate-inventory";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
+import {
+  DisposeLaptopDialog,
+  type DisposalOutcome,
+} from "@/components/dispose-laptop-dialog";
 import { ErrorToast } from "@/components/error-toast";
 import {
   PendingRepairIcon,
   RepairedButton,
 } from "@/components/pending-repair-badge";
 import { UndoToast } from "@/components/undo-toast";
+import { type AssetRequest } from "@/lib/asset-requests";
+import { type FormState } from "@/lib/accountability-forms";
 import {
   createLaptop,
   errorMessage,
   removeLaptops,
   saveAccessory,
+  saveAssetRequest,
   saveLaptop,
 } from "@/lib/inventory-api";
 import { returnedToVacant } from "@/lib/inventory-lifecycle";
+import { inventoryKindForAssetType } from "@/lib/issue-stock";
 import {
   ReturnFromRepairDialog,
   type RepairOutcome,
@@ -269,13 +279,29 @@ export function FilterMenu<T extends string>({
 export function LaptopInventoryTable({
   initialData,
   ramModules: initialRamModules = [],
+  openRequests: initialOpenRequests = [],
+  formStateByHolder = {},
 }: {
   initialData: Laptop[];
   ramModules?: Accessory[];
+  // Open (Pending/Approved) local requests, for linking an assignment to
+  // the request it fulfills.
+  openRequests?: AssetRequest[];
+  // Each holder's accountability-form status, for a non-blocking flag next
+  // to their name when it's missing or stale.
+  formStateByHolder?: Record<string, FormState>;
 }) {
   const today = useToday();
   const [laptops, setLaptops] = useState(initialData);
   const [ramModules, setRamModules] = useState(initialRamModules);
+  const [openRequests, setOpenRequests] = useState(initialOpenRequests);
+  const assignableRequests = useMemo(
+    () =>
+      openRequests.filter(
+        (r) => inventoryKindForAssetType(r.assetType) === "laptop",
+      ),
+    [openRequests],
+  );
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>("All");
@@ -298,6 +324,8 @@ export function LaptopInventoryTable({
   const [sendRepairOpen, setSendRepairOpen] = useState(false);
   const [returning, setReturning] = useState<Laptop | null>(null);
   const [returnOpen, setReturnOpen] = useState(false);
+  const [disposing, setDisposing] = useState<Laptop | null>(null);
+  const [disposeOpen, setDisposeOpen] = useState(false);
   const [formPrompt, setFormPrompt] = useState<{
     laptopId: string;
     employeeName: string;
@@ -512,6 +540,11 @@ export function LaptopInventoryTable({
     setReturnOpen(true);
   }
 
+  function openDispose(laptop: Laptop) {
+    setDisposing(laptop);
+    setDisposeOpen(true);
+  }
+
   function openAccountabilityForm(
     laptopId: string,
     names: { hrName: string; itOfficerName: string },
@@ -646,6 +679,40 @@ export function LaptopInventoryTable({
     setRepairOpen(false);
   }
 
+  function disposeLaptop(
+    id: string,
+    outcome: DisposalOutcome,
+    input: { party: string; price: string; note: string },
+  ) {
+    const todayIso = isoToday();
+    const headline =
+      outcome === "sell"
+        ? `Sold${input.party ? ` to ${input.party}` : ""} for ₱${input.price}`
+        : `Donated${input.party ? ` to ${input.party}` : ""}`;
+    updateLaptop(id, (l) => ({
+      ...l,
+      status: "Retired",
+      repairIssue: null,
+      handler: null,
+      department: null,
+      history: [
+        ...l.history.map((entry) =>
+          entry.to === null ? { ...entry, to: todayIso } : entry,
+        ),
+        {
+          handler: null,
+          from: todayIso,
+          to: null,
+          note: headline + (input.note ? `. ${input.note}` : ""),
+        },
+      ],
+    }), (l) =>
+      outcome === "sell" ? `Sold ${l.assetTag}` : `Donated ${l.assetTag}`,
+    );
+    setDisposeOpen(false);
+    setDisposing(null);
+  }
+
   function returnToStock(note: string, alsoReturn: AssignedAssets) {
     const target = returning;
     if (!target) return;
@@ -681,8 +748,14 @@ export function LaptopInventoryTable({
     setReturning(null);
   }
 
-  function assignLaptop(id: string, employee: Employee, note: string) {
+  function assignLaptop(
+    id: string,
+    employee: Employee,
+    note: string,
+    request: AssetRequest | null,
+  ) {
     const todayIso = isoToday();
+    const laptop = laptops.find((l) => l.id === id);
     updateLaptop(id, (l) => {
       const history = l.history.map((entry) =>
         entry.to === null ? { ...entry, to: todayIso } : entry,
@@ -706,6 +779,22 @@ export function LaptopInventoryTable({
     }, (l) => `Assigned ${l.assetTag} to ${employee.name}`);
     setAssignOpen(false);
     setFormPrompt({ laptopId: id, employeeName: employee.name });
+
+    if (request) {
+      setOpenRequests((prev) => prev.filter((r) => r.id !== request.id));
+      const now = new Date().toISOString();
+      persist(
+        saveAssetRequest({
+          ...request,
+          status: "Completed",
+          approvedAt: request.approvedAt ?? now,
+          completedAt: now,
+          resolutionNote:
+            note || `Issued ${laptop?.assetTag ?? ""}`.trim(),
+        }),
+        () => setOpenRequests((prev) => [...prev, request]),
+      ).then(() => revalidateInventory());
+    }
   }
 
   function deleteLaptops(ids: string[]) {
@@ -972,7 +1061,21 @@ export function LaptopInventoryTable({
                             </AvatarFallback>
                           </Avatar>
                           <div className="leading-tight">
-                            <div>{laptop.handler}</div>
+                            <div className="flex items-center gap-1">
+                              {laptop.handler}
+                              {formStateByHolder[laptop.handler] &&
+                                formStateByHolder[laptop.handler] !==
+                                  "Up to date" && (
+                                  <span
+                                    title={`Accountability form: ${formStateByHolder[laptop.handler]}`}
+                                  >
+                                    <TriangleAlertIcon
+                                      className="size-3 shrink-0 text-amber-600 dark:text-amber-400"
+                                      aria-label={`Accountability form: ${formStateByHolder[laptop.handler]}`}
+                                    />
+                                  </span>
+                                )}
+                            </div>
                             <div className="text-[11px] text-muted-foreground">
                               {laptop.department}
                             </div>
@@ -1188,6 +1291,13 @@ export function LaptopInventoryTable({
                                 Accountability form
                               </DropdownMenuItem>
                             )}
+                            {(laptop.status === "Vacant" ||
+                              laptop.status === "Retired") && (
+                              <DropdownMenuItem onClick={() => openDispose(laptop)}>
+                                <CoinsIcon />
+                                Sell / donate
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               variant="destructive"
@@ -1380,10 +1490,23 @@ export function LaptopInventoryTable({
       <AssignLaptopDialog
         laptop={assigning}
         laptops={laptops}
+        requests={assignableRequests}
         open={assignOpen}
         onOpenChange={setAssignOpen}
-        onAssign={(employee, note) =>
-          assigning && assignLaptop(assigning.id, employee, note)
+        onAssign={(employee, note, request) =>
+          assigning && assignLaptop(assigning.id, employee, note, request)
+        }
+      />
+
+      <DisposeLaptopDialog
+        laptop={disposing}
+        open={disposeOpen}
+        onOpenChange={(open) => {
+          setDisposeOpen(open);
+          if (!open) setDisposing(null);
+        }}
+        onConfirm={(outcome, input) =>
+          disposing && disposeLaptop(disposing.id, outcome, input)
         }
       />
 

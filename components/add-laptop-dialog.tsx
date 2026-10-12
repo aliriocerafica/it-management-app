@@ -241,6 +241,7 @@ export function AddLaptopDialog({
           colorHex,
           purchaseDate,
           warrantyYears: Number(get("warrantyYears")),
+          price: get("price") ? Number(get("price")) : null,
           repairIssue: get("repairIssue") || null,
           charger,
           anydeskAddress,
@@ -274,6 +275,7 @@ export function AddLaptopDialog({
         department: assignedHandler && handler ? department || null : null,
         purchaseDate,
         warrantyYears: Number(get("warrantyYears")),
+        price: get("price") ? Number(get("price")) : null,
         status,
         charger,
         anydeskAddress,
@@ -493,6 +495,18 @@ export function AddLaptopDialog({
                 max={10}
                 defaultValue={laptop?.warrantyYears ?? 3}
                 required
+              />
+            </FormField>
+            <FormField label="Price" htmlFor="price" optional>
+              <Input
+                id="price"
+                name="price"
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                placeholder="e.g. 45000"
+                defaultValue={laptop?.price ?? ""}
               />
             </FormField>
             {editing && (

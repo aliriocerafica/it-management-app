@@ -45,6 +45,9 @@ model User {
   name                String
   email               String    @unique
   passwordHash        String
+  // A small data: URL (resized client-side before upload). Null for the
+  // default initials avatar.
+  avatarUrl           String?
   role                UserRole  @default(ADMIN)
   isActive            Boolean   @default(true)
   failedLoginAttempts Int       @default(0)
@@ -104,6 +107,8 @@ model Laptop {
   department    String?
   purchaseDate  DateTime    @db.Date
   warrantyYears  Int
+  // Acquisition cost. Null for units added before this was tracked.
+  price          Float?
   status         AssetStatus
   // What's wrong and still needs fixing. Kept after the laptop leaves
   // repair, so it can go back into use with a repair still pending.
@@ -167,6 +172,8 @@ model Accessory {
   department    String?
   purchaseDate  DateTime      @db.Date
   warrantyYears Int
+  // Acquisition cost. Null for units added before this was tracked.
+  price         Float?
   status        AssetStatus
   specs         Json
   // Fault still waiting to be fixed; may be set while the item is in use.

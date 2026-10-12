@@ -4,6 +4,7 @@ import {
   listAssetRequests,
   listRequestOverrides,
 } from "@/lib/asset-request-repository"
+import { verifySession } from "@/lib/auth/session"
 import { listDtrAssetRequests } from "@/lib/dtr"
 import { withRequesterEmails } from "@/lib/hris"
 import { listIssuedHoldings } from "@/lib/inventory-repository"
@@ -11,10 +12,11 @@ import { listIssuedHoldings } from "@/lib/inventory-repository"
 export const dynamic = "force-dynamic"
 
 export default async function AssetRequestsPage() {
-  const [local, overrides, issuedHoldings] = await Promise.all([
+  const [local, overrides, issuedHoldings, user] = await Promise.all([
     listAssetRequests(),
     listRequestOverrides(),
     listIssuedHoldings(),
+    verifySession(),
   ])
   let dtrError: string | null = null
   let fromDtr: Awaited<ReturnType<typeof listDtrAssetRequests>> = []
@@ -41,7 +43,11 @@ export default async function AssetRequestsPage() {
       {dtrError && (
         <p className="text-sm text-red-600 dark:text-red-400">{dtrError}</p>
       )}
-      <AssetRequestTable initialData={requests} issuedHoldings={issuedHoldings} />
+      <AssetRequestTable
+        initialData={requests}
+        issuedHoldings={issuedHoldings}
+        canDelete={user?.role === "ADMIN"}
+      />
     </div>
   )
 }

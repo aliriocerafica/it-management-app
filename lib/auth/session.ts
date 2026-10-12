@@ -82,6 +82,7 @@ export const verifySession = cache(async (): Promise<SessionUser | null> => {
     name: session.user.name,
     email: session.user.email,
     role: session.user.role,
+    avatarUrl: session.user.avatarUrl,
   }
 })
 

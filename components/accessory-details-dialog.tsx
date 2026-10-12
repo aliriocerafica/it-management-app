@@ -32,6 +32,7 @@ import {
 import {
   formatAge,
   formatDate,
+  formatPrice,
   initials,
   parseDate,
   statusStyles,
@@ -209,6 +210,9 @@ function AccessoryDetails({
             <Detail label="Purchased">
               {formatDate(parseDate(item.purchaseDate))}
             </Detail>
+            {item.price != null && (
+              <Detail label="Price">{formatPrice(item.price)}</Detail>
+            )}
             <Detail label="Age">
               {today ? formatAge(item.purchaseDate, today) : "—"}
             </Detail>

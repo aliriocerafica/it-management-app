@@ -1,7 +1,8 @@
 import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
 
-import { withRequestEmail } from "@/lib/asset-request-notify"
+import { withRequestEmail, withStatusEmail } from "@/lib/asset-request-notify"
+import type { RequestStatus } from "@/lib/asset-requests"
 import { saveRequestOverride } from "@/lib/asset-request-repository"
 import { verifySession } from "@/lib/auth/session"
 import {
@@ -25,11 +26,16 @@ export async function POST(
 
   try {
     let saved
+    // Set only on the local-override fallback, where we already fetch the
+    // current row and so can avoid re-emailing if a retry lands on a
+    // request that's already Approved.
+    let previousStatus: RequestStatus | undefined
     try {
       saved = await approveDtrAssetRequest(id, note)
     } catch (error) {
       if (!isMissingDtrEndpoint(error)) throw error
       const current = await getDtrAssetRequest(id)
+      previousStatus = current.status
       await saveRequestOverride(id, "Approved", note)
       saved = {
         ...current,
@@ -38,7 +44,10 @@ export async function POST(
         resolutionNote: note || null,
       }
     }
-    const payload = await withRequestEmail(saved, "approved")
+    const payload =
+      previousStatus !== undefined
+        ? await withStatusEmail(saved, previousStatus)
+        : await withRequestEmail(saved, "approved")
     revalidatePath("/dashboard/requests")
     return NextResponse.json(payload)
   } catch (error) {

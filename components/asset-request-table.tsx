@@ -67,6 +67,7 @@ import {
   openRequestStatuses,
   previousStatusAfterUnarchive,
   priorityStyles,
+  requestAssetTypes,
   requestCode,
   requestPriorities,
   requestQueueStatuses,
@@ -181,9 +182,13 @@ function daysAgo(iso: string, today: Date) {
 export function AssetRequestTable({
   initialData,
   issuedHoldings,
+  canDelete = false,
 }: {
   initialData: AssetRequest[];
   issuedHoldings: IssuedHolding[];
+  // Only admins can permanently delete a request; everyone else can still
+  // do everything short of that.
+  canDelete?: boolean;
 }) {
   const today = useToday();
   const [requests, setRequests] = useState(initialData);
@@ -227,15 +232,29 @@ export function AssetRequestTable({
   } | null>(null);
   const pendingSaves = usePendingSaves();
 
-  const assetTypes = useMemo(
-    () => [...new Set(requests.map((r) => r.assetType))].sort(),
-    [requests],
-  );
+  // Groups asset types case-insensitively ("RAM" vs "Ram") so near-duplicate
+  // labels from different sources collapse into one filter option. Prefers
+  // the app's own canonical label when there is one for that type.
+  const assetTypes = useMemo(() => {
+    const canonicalByKey = new Map(
+      requestAssetTypes.map((type) => [type.toLowerCase(), type]),
+    );
+    const byKey = new Map<string, string>();
+    for (const r of requests) {
+      const key = r.assetType.trim().toLowerCase();
+      if (!byKey.has(key)) {
+        byKey.set(key, canonicalByKey.get(key) ?? r.assetType);
+      }
+    }
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b));
+  }, [requests]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const types = new Set(typeFilter.map((t) => t.toLowerCase()));
     return requests.filter((r) => {
-      if (typeFilter.length && !typeFilter.includes(r.assetType)) return false;
+      if (types.size > 0 && !types.has(r.assetType.trim().toLowerCase()))
+        return false;
       if (priorityFilter.length && !priorityFilter.includes(r.priority))
         return false;
       if (r.status === "Deleted") return false;
@@ -571,9 +590,7 @@ export function AssetRequestTable({
       .map((id) => requests.find((r) => r.id === id))
       .filter(
         (r): r is AssetRequest =>
-          r != null &&
-          (r.status === "Pending" ||
-            (r.status === "Approved" && r.source !== "dtr")),
+          r != null && (r.status === "Pending" || r.status === "Approved"),
       );
     if (originals.length === 0) return;
     setDenying(null);
@@ -834,7 +851,7 @@ export function AssetRequestTable({
                   </Button>
                 </>
               )}
-              {selectedDeletable.length > 0 && (
+              {canDelete && selectedDeletable.length > 0 && (
                 <Button
                   variant="destructive"
                   size="sm"
@@ -1180,7 +1197,7 @@ export function AssetRequestTable({
                             <ArchiveIcon />
                             Archive
                           </Button>
-                        ) : request.status === "Archived" ? (
+                        ) : request.status === "Archived" && canDelete ? (
                           <Button
                             variant="outline"
                             size="xs"
@@ -1248,15 +1265,33 @@ export function AssetRequestTable({
                                 Deny request
                               </DropdownMenuItem>
                             )}
-                            {request.status === "Approved" && !fromDtr && (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  setConfirming({ request, action: "deny" })
-                                }
-                              >
-                                <XCircleIcon />
-                                Cancel request
-                              </DropdownMenuItem>
+                            {request.status === "Approved" && (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setConfirming({ request, action: "reopen" })
+                                  }
+                                >
+                                  <RotateCcwIcon />
+                                  Back to pending
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setConfirming({ request, action: "deny" })
+                                  }
+                                >
+                                  <XCircleIcon />
+                                  Cancel request
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setConfirming({ request, action: "archive" })
+                                  }
+                                >
+                                  <ArchiveIcon />
+                                  Archive
+                                </DropdownMenuItem>
+                              </>
                             )}
                             {request.status === "Archived" && (
                               <DropdownMenuItem
@@ -1288,7 +1323,7 @@ export function AssetRequestTable({
                                 Reopen as pending
                               </DropdownMenuItem>
                             )}
-                            {!fromDtr && request.status !== "Archived" && (
+                            {!fromDtr && request.status !== "Archived" && canDelete && (
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -1476,7 +1511,9 @@ export function AssetRequestTable({
                       ? `${requestCode(confirming.request)} leaves the active queue. You can restore it from Archived, or undo.`
                       : confirming.action === "unarchive"
                         ? `Move ${requestCode(confirming.request)} back to ${previousStatusAfterUnarchive(confirming.request)}. You can undo this afterward.`
-                        : `Move ${requestCode(confirming.request)} back to Pending? Its ${confirming.request.status === "Denied" ? "denial" : "completion"} and note will be cleared. You can undo this afterward.`
+                        : confirming.request.status === "Approved"
+                          ? `Move ${requestCode(confirming.request)} back to Pending? Its approval will be cleared. You can undo this afterward.`
+                          : `Move ${requestCode(confirming.request)} back to Pending? Its ${confirming.request.status === "Denied" ? "denial" : "completion"} and note will be cleared. You can undo this afterward.`
         }
         confirmLabel={
           confirming?.action === "approve"

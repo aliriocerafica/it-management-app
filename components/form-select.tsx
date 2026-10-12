@@ -7,20 +7,37 @@ import { selectClass } from "@/components/add-laptop-dialog";
 import { cn } from "@/lib/utils";
 
 // A select whose menu is positioned on the viewport. Native menus are cut
-// off inside dialogs, which scroll and are centered with a transform.
+// off inside dialogs, which scroll and are centered with a transform, and
+// (unlike a plain <select>) its popup is always themed for dark mode
+// instead of falling back to the OS/browser's native rendering.
+//
+// Uncontrolled by default (read `name` from FormData on submit, like a
+// plain <select>). Pass `value` + `onChange` to use it as a controlled
+// input instead.
 export function FormSelect({
   id,
   name,
   options,
   defaultValue,
+  value: controlledValue,
+  onChange,
+  placeholder,
+  autoFocus = false,
 }: {
   id: string;
-  name: string;
+  name?: string;
   options: { value: string; label: string }[];
   defaultValue?: string;
+  value?: string;
+  onChange?: (value: string) => void;
+  // Shown when `value` doesn't match any option (e.g. nothing picked yet).
+  placeholder?: string;
+  autoFocus?: boolean;
 }) {
+  const controlled = controlledValue !== undefined;
   const initial = defaultValue ?? options[0]?.value ?? "";
-  const [value, setValue] = useState(initial);
+  const [internalValue, setInternalValue] = useState(initial);
+  const value = controlled ? controlledValue : internalValue;
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<{
     top: number;
@@ -83,13 +100,16 @@ export function FormSelect({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
+        autoFocus={autoFocus}
         className={cn(selectClass, "flex items-center justify-between gap-2 text-left")}
         onClick={() => (open ? setOpen(false) : openMenu())}
       >
-        <span className="truncate">{selected?.label ?? "Select"}</span>
+        <span className={cn("truncate", !selected && "text-muted-foreground")}>
+          {selected?.label ?? placeholder ?? "Select"}
+        </span>
         <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
       </button>
-      <input type="hidden" name={name} value={value} />
+      {name && <input type="hidden" name={name} value={value} />}
       {open && menu && (
         <div
           role="listbox"
@@ -116,7 +136,8 @@ export function FormSelect({
                   isSelected && "bg-accent text-accent-foreground",
                 )}
                 onClick={() => {
-                  setValue(option.value);
+                  if (!controlled) setInternalValue(option.value);
+                  onChange?.(option.value);
                   setOpen(false);
                   buttonRef.current?.focus();
                 }}

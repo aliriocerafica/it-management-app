@@ -1,4 +1,5 @@
 import { AccessoryInventoryTable } from "@/components/accessory-inventory-table"
+import { listOpenLocalAssetRequests } from "@/lib/asset-request-repository"
 import { listAccessories, listLaptops } from "@/lib/inventory-repository"
 import { toRamHost } from "@/lib/ram"
 
@@ -6,9 +7,10 @@ export const dynamic = "force-dynamic"
 
 export default async function Page() {
   // RAM is installed in laptops, so the table needs them to pick from.
-  const [items, laptops] = await Promise.all([
+  const [items, laptops, openRequests] = await Promise.all([
     listAccessories("ram"),
     listLaptops(),
+    listOpenLocalAssetRequests(),
   ])
 
   return (
@@ -20,6 +22,7 @@ export default async function Page() {
         kind="ram"
         initialData={items}
         laptops={laptops.map(toRamHost)}
+        openRequests={openRequests}
       />
     </div>
   )

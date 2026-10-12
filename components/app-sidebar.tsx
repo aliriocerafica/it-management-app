@@ -14,10 +14,11 @@ import {
   FileTextIcon,
   ChevronLeftIcon,
   HeadphonesIcon,
-  KeyRoundIcon,
   LaptopIcon,
   LayersIcon,
   LayoutDashboardIcon,
+  LockIcon,
+  LockOpenIcon,
   LogOutIcon,
   MemoryStickIcon,
   MouseIcon,
@@ -26,19 +27,19 @@ import {
   SettingsIcon,
   ShieldIcon,
   TvMinimalIcon,
+  UserIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react"
 
 import { AnyDeskIcon } from "@/components/anydesk-icon"
 import { ThemeSwitch } from "@/components/theme-switch"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -179,6 +180,8 @@ const navGroups: NavGroup[] = [
 const countBadgeClass =
   "flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-semibold text-white tabular-nums"
 
+const LOCKED_GROUPS_KEY = "sidebar-locked-groups"
+
 function vacantNoun(key: keyof VacantCounts) {
   if (key === "laptops") return "laptops"
   return lowerNoun(accessoryConfigs[key].plural)
@@ -305,12 +308,16 @@ function NavGroupMenu({
   collapsed,
   open,
   onOpenChange,
+  locked,
+  onLockChange,
 }: {
   group: NavGroup
   pathname: string
   collapsed: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
+  locked: boolean
+  onLockChange: (locked: boolean) => void
 }) {
   const childActive = group.items.some((item) => item.href === pathname)
   const total = badgeTotal(group.items)
@@ -384,11 +391,17 @@ function NavGroupMenu({
 
   return (
     <div>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         aria-expanded={open}
         aria-controls={`nav-group-${group.id}`}
         onClick={() => onOpenChange(!open)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return
+          event.preventDefault()
+          onOpenChange(!open)
+        }}
         className={cn(
           "flex h-10 w-full cursor-pointer items-center gap-3 rounded-xl px-3 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring",
           open || childActive
@@ -403,13 +416,35 @@ function NavGroupMenu({
             {total}
           </span>
         )}
+        <button
+          type="button"
+          aria-pressed={locked}
+          aria-label={locked ? `Unlock ${group.title}` : `Keep ${group.title} open`}
+          title={locked ? "Unlock — it can collapse again" : "Keep this group open"}
+          onClick={(event) => {
+            event.stopPropagation()
+            onLockChange(!locked)
+          }}
+          className={cn(
+            "flex size-6 shrink-0 items-center justify-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+            locked
+              ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+              : "text-muted-foreground/50 hover:bg-sidebar-accent hover:text-muted-foreground",
+          )}
+        >
+          {locked ? (
+            <LockIcon className="size-3.5" />
+          ) : (
+            <LockOpenIcon className="size-3.5" />
+          )}
+        </button>
         <ChevronDownIcon
           className={cn(
             "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
             open && "rotate-180 text-foreground",
           )}
         />
-      </button>
+      </div>
       <div
         className={cn(
           "grid transition-[grid-template-rows] duration-200 ease-out",
@@ -457,10 +492,38 @@ export function AppSidebar({
       group.items.some((item) => item.href === pathname),
     )?.id ?? null
   const [openGroupId, setOpenGroupId] = useState<string | null>(activeGroupId)
+  // Groups pinned open regardless of navigation. Remembered per browser;
+  // read after mount so server and first client render still match.
+  const [lockedGroupIds, setLockedGroupIds] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [vacantCounts, setVacantCounts] = useState(initialVacantCounts)
   const [pendingRequestCount, setPendingRequestCount] = useState(
     initialPendingRequestCount,
   )
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(LOCKED_GROUPS_KEY)
+      if (stored) setLockedGroupIds(new Set(JSON.parse(stored) as string[]))
+    } catch {
+      // Private window, blocked storage, etc. — just start unlocked.
+    }
+  }, [])
+
+  function setGroupLocked(groupId: string, locked: boolean) {
+    setLockedGroupIds((prev) => {
+      const next = new Set(prev)
+      if (locked) next.add(groupId)
+      else next.delete(groupId)
+      try {
+        localStorage.setItem(LOCKED_GROUPS_KEY, JSON.stringify([...next]))
+      } catch {
+        // Ignore — the lock still works for this session.
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     setVacantCounts(initialVacantCounts)
@@ -547,6 +610,9 @@ export function AppSidebar({
         <DropdownMenu>
           <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-2xl p-1 text-left group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0 outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring">
             <Avatar className="size-11 shrink-0 after:rounded-full group-data-[collapsible=icon]:size-10">
+              {user.avatarUrl && (
+                <AvatarImage src={user.avatarUrl} alt={user.name} />
+              )}
               <AvatarFallback className="bg-neutral-900 text-sm font-medium text-white dark:bg-white dark:text-neutral-900">
                 {initial}
               </AvatarFallback>
@@ -561,33 +627,54 @@ export function AppSidebar({
             </div>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="min-w-56 rounded-xl"
+            className="min-w-64 rounded-2xl p-2"
             side="bottom"
             align="start"
             sideOffset={8}
           >
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium">{user.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {user.email}
-                  </span>
-                </div>
-              </DropdownMenuLabel>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
-                <KeyRoundIcon />
-                Change password
+            <div className="flex items-center gap-3 rounded-xl border border-border p-2.5">
+              <Avatar className="size-10 shrink-0 after:rounded-full">
+                {user.avatarUrl && (
+                  <AvatarImage src={user.avatarUrl} alt={user.name} />
+                )}
+                <AvatarFallback className="bg-neutral-900 text-sm font-medium text-white dark:bg-white dark:text-neutral-900">
+                  {initial}
+                </AvatarFallback>
+              </Avatar>
+              <div className="grid min-w-0 flex-1 leading-tight">
+                <span className="truncate text-sm font-semibold">
+                  {user.name}
+                </span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {user.email}
+                </span>
+              </div>
+            </div>
+            <DropdownMenuGroup className="mt-2 flex flex-col gap-0.5">
+              <DropdownMenuItem
+                className="h-10 rounded-lg px-2.5"
+                onClick={() => router.push("/dashboard/profile")}
+              >
+                <UserIcon />
+                Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="h-10 rounded-lg px-2.5"
+                onClick={() => router.push("/dashboard/settings")}
+              >
+                <SettingsIcon />
+                Settings
               </DropdownMenuItem>
             </DropdownMenuGroup>
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator className="my-2" />
             <DropdownMenuGroup>
-              <DropdownMenuItem variant="destructive" onClick={handleLogout}>
+              <DropdownMenuItem
+                variant="destructive"
+                className="h-10 rounded-lg px-2.5"
+                onClick={handleLogout}
+              >
                 <LogOutIcon />
-                Log out
+                Sign out
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
@@ -631,11 +718,17 @@ export function AppSidebar({
               group={group}
               pathname={pathname}
               collapsed={collapsed}
-              open={query.length > 0 || openGroupId === group.id}
+              open={
+                query.length > 0 ||
+                openGroupId === group.id ||
+                lockedGroupIds.has(group.id)
+              }
               onOpenChange={(next) => {
                 if (query) return
                 setOpenGroupId(next ? group.id : null)
               }}
+              locked={lockedGroupIds.has(group.id)}
+              onLockChange={(locked) => setGroupLocked(group.id, locked)}
             />
           ))}
         </nav>

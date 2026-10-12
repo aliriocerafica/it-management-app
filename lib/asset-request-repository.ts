@@ -1,7 +1,8 @@
-import type {
-  AssetRequest,
-  RequestPriority,
-  RequestStatus,
+import {
+  openRequestStatuses,
+  type AssetRequest,
+  type RequestPriority,
+  type RequestStatus,
 } from "@/lib/asset-requests"
 import type {
   AssetRequestPriority,
@@ -91,6 +92,14 @@ export async function listAssetRequests(): Promise<AssetRequest[]> {
     orderBy: { requestNo: "desc" },
   })
   return rows.map(requestFromDb)
+}
+
+// Open (Pending/Approved) local requests only — excludes DTR-sourced ones,
+// which have their own issue flow on the Requests page. Lets an inventory
+// assignment say which request it fulfills, completing it automatically.
+export async function listOpenLocalAssetRequests(): Promise<AssetRequest[]> {
+  const rows = await listAssetRequests()
+  return rows.filter((r) => openRequestStatuses.includes(r.status))
 }
 
 // Restoring a deleted request (undo) passes its old id, number and

@@ -26,6 +26,7 @@ import {
   formatAge,
   formatSpan,
   formatDate,
+  formatPrice,
   initials,
   parseDate,
   statusStyles,
@@ -389,6 +390,9 @@ function LaptopDetails({
             <Detail label="Purchased">
               {formatDate(parseDate(laptop.purchaseDate))}
             </Detail>
+            {laptop.price != null && (
+              <Detail label="Price">{formatPrice(laptop.price)}</Detail>
+            )}
             <Detail label="Age">
               {today ? formatAge(laptop.purchaseDate, today) : "—"}
             </Detail>

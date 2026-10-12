@@ -44,6 +44,12 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const user = await verifySession()
   if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 })
+  if (user.role !== "ADMIN") {
+    return NextResponse.json(
+      { error: "Only an admin can permanently delete requests." },
+      { status: 403 },
+    )
+  }
 
   const { ids } = (await request.json()) as { ids: string[] }
   await deleteAssetRequests(ids)

@@ -27,7 +27,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { FormField, selectClass } from "@/components/add-laptop-dialog";
+import { FormField } from "@/components/add-laptop-dialog";
+import { FormSelect } from "@/components/form-select";
 import { Detail, Pill, Section } from "@/components/laptop-details-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -279,19 +280,15 @@ function RequestForm({
           />
         </FormField>
         <FormField label="Asset type" htmlFor="assetType">
-          <select
+          <FormSelect
             id="assetType"
-            name="assetType"
             value={assetType}
-            onChange={(event) => setAssetType(event.target.value)}
-            className={selectClass}
-          >
-            {requestAssetTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
+            onChange={setAssetType}
+            options={requestAssetTypes.map((type) => ({
+              value: type,
+              label: type,
+            }))}
+          />
         </FormField>
         <FormField label="Quantity" htmlFor="quantity">
           <Input
@@ -320,18 +317,15 @@ function RequestForm({
           </FormField>
         )}
         <FormField label="Priority" htmlFor="priority">
-          <select
+          <FormSelect
             id="priority"
             name="priority"
             defaultValue={request?.priority ?? "Normal"}
-            className={selectClass}
-          >
-            {requestPriorities.map((priority) => (
-              <option key={priority} value={priority}>
-                {priority}
-              </option>
-            ))}
-          </select>
+            options={requestPriorities.map((priority) => ({
+              value: priority,
+              label: priority,
+            }))}
+          />
         </FormField>
         <FormField label="Needed by" htmlFor="neededBy" optional>
           <Input
@@ -808,20 +802,17 @@ function IssueForm({
           />
         )}
         <FormField label="Condition" htmlFor="dtr-condition">
-          <select
+          <FormSelect
             id="dtr-condition"
             value={conditionIssued}
-            onChange={(event) =>
-              setConditionIssued(event.target.value as DtrIssueCondition)
+            onChange={(value) =>
+              setConditionIssued(value as DtrIssueCondition)
             }
-            className={selectClass}
-          >
-            {dtrIssueConditions.map((condition) => (
-              <option key={condition} value={condition}>
-                {conditionLabels[condition]}
-              </option>
-            ))}
-          </select>
+            options={dtrIssueConditions.map((condition) => ({
+              value: condition,
+              label: conditionLabels[condition],
+            }))}
+          />
         </FormField>
       </div>
 
@@ -962,20 +953,17 @@ function IssueManyForm({
 
       <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-6 py-5">
         <FormField label="Condition" htmlFor="dtr-batch-condition">
-          <select
+          <FormSelect
             id="dtr-batch-condition"
             value={conditionIssued}
-            onChange={(event) =>
-              setConditionIssued(event.target.value as DtrIssueCondition)
+            onChange={(value) =>
+              setConditionIssued(value as DtrIssueCondition)
             }
-            className={selectClass}
-          >
-            {dtrIssueConditions.map((condition) => (
-              <option key={condition} value={condition}>
-                {conditionLabels[condition]}
-              </option>
-            ))}
-          </select>
+            options={dtrIssueConditions.map((condition) => ({
+              value: condition,
+              label: conditionLabels[condition],
+            }))}
+          />
         </FormField>
         <div className="flex flex-col gap-3">
           {rows.map(({ request, items, holding }) => (
@@ -1176,24 +1164,17 @@ function InventoryPick({
             />
           )}
           <FormField label={`Vacant ${one}`} htmlFor="dtr-stock">
-            <select
+            <FormSelect
               id="dtr-stock"
               value={selectedId}
-              onChange={(event) => onSelect(event.target.value)}
-              className={selectClass}
-              required
+              onChange={onSelect}
               autoFocus
-            >
-              <option value="" disabled>
-                Select a vacant {one}
-              </option>
-              {filtered.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.assetTag} · {item.brand} {item.model} ·{" "}
-                  {item.serialNumber}
-                </option>
-              ))}
-            </select>
+              placeholder={`Select a vacant ${one}`}
+              options={filtered.map((item) => ({
+                value: item.id,
+                label: `${item.assetTag} · ${item.brand} ${item.model} · ${item.serialNumber}`,
+              }))}
+            />
           </FormField>
           {selected && <DetectedStock kind={kind} item={selected} compact />}
         </div>
@@ -1289,22 +1270,16 @@ function RamHostField({
   if (hosts.length > 1) {
     return (
       <FormField label="Install in" htmlFor="dtr-ram-host">
-        <select
+        <FormSelect
           id="dtr-ram-host"
           value={hostId}
-          onChange={(event) => onHost(event.target.value)}
-          className={selectClass}
-          required
-        >
-          <option value="" disabled>
-            {requesterName}&apos;s laptop
-          </option>
-          {hosts.map((laptop) => (
-            <option key={laptop.id} value={laptop.id}>
-              {laptop.assetTag} · {laptop.brand} {laptop.model}
-            </option>
-          ))}
-        </select>
+          onChange={onHost}
+          placeholder={`${requesterName}'s laptop`}
+          options={hosts.map((laptop) => ({
+            value: laptop.id,
+            label: `${laptop.assetTag} · ${laptop.brand} ${laptop.model}`,
+          }))}
+        />
       </FormField>
     );
   }
@@ -1369,20 +1344,17 @@ function ReturnForm({
 
       <div className="px-6 py-5">
         <FormField label="Return condition" htmlFor="dtr-return-condition">
-          <select
+          <FormSelect
             id="dtr-return-condition"
             value={returnCondition}
-            onChange={(event) =>
-              setReturnCondition(event.target.value as DtrReturnCondition)
+            onChange={(value) =>
+              setReturnCondition(value as DtrReturnCondition)
             }
-            className={selectClass}
-          >
-            {dtrReturnConditions.map((condition) => (
-              <option key={condition} value={condition}>
-                {conditionLabels[condition]}
-              </option>
-            ))}
-          </select>
+            options={dtrReturnConditions.map((condition) => ({
+              value: condition,
+              label: conditionLabels[condition],
+            }))}
+          />
         </FormField>
       </div>
 
@@ -1428,7 +1400,7 @@ export function RequestDetailsDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
         {request && <Details request={request} holdings={holdings} />}
       </DialogContent>
     </Dialog>
@@ -1653,7 +1625,7 @@ function Details({
         </div>
       </DialogHeader>
 
-      <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 py-5 text-sm scrollbar-none sm:grid-cols-2 [&::-webkit-scrollbar]:hidden">
+      <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 py-5 text-sm scrollbar-none sm:grid-cols-3 [&::-webkit-scrollbar]:hidden">
         <div className="flex flex-col gap-4">
           <Section title="Requested by" icon={UserIcon}>
             <div className="flex items-center gap-3">
@@ -1686,7 +1658,10 @@ function Details({
               )}
             </Detail>
           </Section>
+          <AlreadyIssued holdings={holdings} request={request} />
+        </div>
 
+        <div className="flex flex-col gap-4">
           <Section title="Request" icon={ClipboardListIcon}>
             <Detail label="Asset">{request.assetType}</Detail>
             <Detail label="Quantity">{request.quantity}</Detail>
@@ -1712,7 +1687,6 @@ function Details({
               )}
             </Detail>
           </Section>
-          <AlreadyIssued holdings={holdings} request={request} />
         </div>
 
         <section className="rounded-xl border border-border p-4">
@@ -1773,7 +1747,7 @@ function Details({
           </ol>
         </section>
 
-        <section className="rounded-xl border border-border p-4 sm:col-span-2">
+        <section className="rounded-xl border border-border p-4 sm:col-span-3">
           <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
             <MessageSquareTextIcon className="size-3.5" />
             Reason
@@ -1784,7 +1758,7 @@ function Details({
         {request.resolutionNote && (
           <section
             className={cn(
-              "rounded-xl border p-4 sm:col-span-2",
+              "rounded-xl border p-4 sm:col-span-3",
               cancelled
                 ? "border-red-500/30 bg-red-500/5"
                 : "border-emerald-500/30 bg-emerald-500/5",

@@ -375,7 +375,10 @@ export function RemoteAccessTable({
                     {index === 0 && (
                       <td
                         rowSpan={lines.length}
-                        className="w-9 border-r border-border pl-3 align-top"
+                        className={cn(
+                          "w-9 border-r border-border pl-3",
+                          lines.length > 1 ? "align-top" : "align-middle",
+                        )}
                       >
                         <Checkbox
                           aria-label={`Select ${employee.name}`}
@@ -387,7 +390,13 @@ export function RemoteAccessTable({
                       </td>
                     )}
                     {index === 0 && (
-                      <td rowSpan={lines.length} className={cn(cellClass, "align-top")}>
+                      <td
+                        rowSpan={lines.length}
+                        className={cn(
+                          cellClass,
+                          lines.length > 1 && "align-top",
+                        )}
+                      >
                       <div className="flex items-center gap-2.5">
                         <Avatar className="size-7">
                           <AvatarFallback className="text-[10px]">

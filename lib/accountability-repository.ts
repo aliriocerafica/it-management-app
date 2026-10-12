@@ -198,6 +198,17 @@ export async function listAccountabilityRows(): Promise<AccountabilityRow[]> {
     .sort((a, b) => a.holderName.localeCompare(b.holderName))
 }
 
+// Per-holder form status ("No form" / "Needs update" / "Up to date"), for
+// surfacing on the inventory tables themselves — not just the standalone
+// Accountability page — so a missing/stale form is visible where IT is
+// actually assigning equipment, without blocking the assignment.
+export async function listFormStateByHolder(): Promise<
+  Record<string, FormState>
+> {
+  const rows = await listAccountabilityRows()
+  return Object.fromEntries(rows.map((row) => [row.holderName, row.state]))
+}
+
 // Saves a new form version for what the holder has now. Reuses the latest
 // version when nothing on it would change, unless `force` is set.
 export async function generateForm(
