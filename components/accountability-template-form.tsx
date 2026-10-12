@@ -47,9 +47,17 @@ async function signatureDataUrl(file: File) {
   return canvas.toDataURL("image/png")
 }
 
-// One signatory: the signature (click to upload or replace it), the printed
-// name, and a line of status underneath. `meta` and `action` are the parts
-// that differ between IT officers and HR.
+// The columns every signatory row shares, so the header lines up with them.
+const rowGrid =
+  "grid gap-x-3 gap-y-2 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_1.75rem]"
+
+const hintClass = "min-h-4 px-0.5 text-[11px] text-muted-foreground"
+const linkClass =
+  "rounded outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+
+// One signatory across three columns: the signature (click to upload or
+// replace it), the printed name, and the email they're copied at. `meta`
+// and `action` are the parts that differ between rows.
 function SignatoryRow({
   name,
   onNameChange,
@@ -77,60 +85,80 @@ function SignatoryRow({
 }) {
   const owner = name.trim() || "this signatory"
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5">
-      <label
-        title={signature ? "Replace signature" : "Upload signature"}
-        className={cn(
-          "group relative flex h-11 w-24 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border text-[11px] text-muted-foreground transition-colors focus-within:ring-2 focus-within:ring-ring",
-          // White, as on paper, so a dark-ink signature shows in dark mode.
-          signature
-            ? "border-border bg-white"
-            : "gap-1 border-dashed border-border hover:bg-muted hover:text-foreground",
-          disabled && "pointer-events-none opacity-50",
+    <div className={cn(rowGrid, "items-start px-3 py-3")}>
+      <div className="grid gap-1">
+        <label
+          title={signature ? "Replace signature" : "Upload signature"}
+          className={cn(
+            "group relative flex h-11 w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border text-[11px] text-muted-foreground transition-colors focus-within:ring-2 focus-within:ring-ring",
+            // White, as on paper, so a dark-ink signature shows in dark mode.
+            signature
+              ? "border-border bg-white"
+              : "gap-1 border-dashed border-border hover:bg-muted hover:text-foreground",
+            disabled && "pointer-events-none opacity-50",
+          )}
+        >
+          {signature ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={signature}
+                alt={`Signature of ${owner}`}
+                className="max-h-full max-w-full object-contain p-0.5"
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-black/65 font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                Replace
+              </span>
+            </>
+          ) : (
+            <>
+              <UploadIcon className="size-3.5" />
+              Upload
+            </>
+          )}
+          <input
+            type="file"
+            accept="image/png,image/jpeg"
+            aria-label={`Upload a signature for ${owner}`}
+            className="sr-only"
+            disabled={disabled}
+            onChange={(event) => {
+              onUpload(event.target.files?.[0])
+              event.target.value = ""
+            }}
+          />
+        </label>
+        {signature && (
+          <button
+            type="button"
+            onClick={onRemoveSignature}
+            className={cn(linkClass, "text-[11px] text-muted-foreground")}
+          >
+            Remove
+          </button>
         )}
-      >
-        {signature ? (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={signature}
-              alt={`Signature of ${owner}`}
-              className="max-h-full max-w-full object-contain p-0.5"
-            />
-            <span className="absolute inset-0 flex items-center justify-center bg-black/65 font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-              Replace
-            </span>
-          </>
-        ) : (
-          <>
-            <UploadIcon className="size-3.5" />
-            Signature
-          </>
-        )}
-        <input
-          type="file"
-          accept="image/png,image/jpeg"
-          aria-label={`Upload a signature for ${owner}`}
-          className="sr-only"
-          disabled={disabled}
-          onChange={(event) => {
-            onUpload(event.target.files?.[0])
-            event.target.value = ""
-          }}
-        />
-      </label>
-      <div className="grid min-w-0 flex-1 gap-0.5">
+      </div>
+
+      <div className="grid gap-1">
         <Input
           value={name}
           onChange={(event) => onNameChange(event.target.value)}
           placeholder={placeholder}
           aria-label={placeholder}
-          required
           disabled={disabled}
-          className="h-7 border-transparent bg-transparent px-1.5 font-medium shadow-none hover:border-border dark:bg-transparent"
+          className="h-9 font-medium"
         />
+        <div className={hintClass}>{meta}</div>
+      </div>
+
+      <div className="grid gap-1">
         <div className="relative">
-          <MailIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <MailIcon
+            className={cn(
+              "pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2",
+              email ? "text-muted-foreground" : "text-amber-500",
+            )}
+          />
           <Input
             type="email"
             value={email ?? ""}
@@ -140,30 +168,25 @@ function SignatoryRow({
             placeholder="Add email address"
             aria-label={`Email address of ${owner}`}
             disabled={disabled}
-            className="h-8 pl-7 text-xs md:text-xs"
+            className={cn(
+              "h-9 pl-8",
+              // Still to fill in: stands out until an address is there.
+              !email &&
+                "border-amber-500/70 bg-amber-500/10 placeholder:text-amber-700/80 dark:bg-amber-500/10 dark:placeholder:text-amber-300/80",
+            )}
           />
         </div>
-        <div className="flex min-h-4 flex-wrap items-center gap-x-2 px-1.5 pt-0.5 text-[11px] text-muted-foreground">
-          {meta}
-          {!email && (
-            <span className="text-amber-600 dark:text-amber-400">
-              No email, so not copied on sent forms
-            </span>
+        <div
+          className={cn(
+            hintClass,
+            !email && "text-amber-600 dark:text-amber-400",
           )}
-          {signature ? (
-            <button
-              type="button"
-              onClick={onRemoveSignature}
-              className="rounded outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Remove signature
-            </button>
-          ) : (
-            !meta && <span>No signature yet</span>
-          )}
+        >
+          {email ? "Copied on their forms" : "Needed to copy them on forms"}
         </div>
       </div>
-      {action}
+
+      <div className="flex h-9 items-center">{action}</div>
     </div>
   )
 }
@@ -251,6 +274,16 @@ function SignatorySection({
         </Button>
       </div>
       <div className="divide-y divide-border rounded-xl border border-border">
+        <div
+          className={cn(
+            rowGrid,
+            "hidden bg-muted/40 px-3 py-1.5 text-[11px] font-medium text-muted-foreground sm:grid",
+          )}
+        >
+          <span>Signature</span>
+          <span>Printed name</span>
+          <span>Email</span>
+        </div>
         {people.map((person) => (
           <SignatoryRow
             key={person.key}
@@ -274,7 +307,7 @@ function SignatorySection({
                 <button
                   type="button"
                   onClick={() => onChange({ people, defaultKey: person.key })}
-                  className="rounded outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                  className={linkClass}
                 >
                   Set as default
                 </button>
@@ -305,7 +338,21 @@ function SignatorySection({
   )
 }
 
-export function AccountabilityTemplateForm() {
+// A row nothing was typed into, such as one added by mistake.
+const isBlank = (person: Officer) =>
+  !person.name.trim() && !person.email && !person.signature
+
+export function AccountabilityTemplateForm({
+  onDirtyChange,
+}: {
+  // Told whenever there are edits that haven't been saved yet.
+  onDirtyChange?: (dirty: boolean) => void
+}) {
+  const [dirty, setDirtyState] = React.useState(false)
+  function setDirty(next: boolean) {
+    setDirtyState(next)
+    onDirtyChange?.(next)
+  }
   const [itList, setItList] = React.useState(emptyList)
   const [hrList, setHrList] = React.useState(emptyList)
   const [error, setError] = React.useState<string | null>(null)
@@ -358,18 +405,26 @@ export function AccountabilityTemplateForm() {
     setError(null)
     setSuccess(false)
 
+    // Rows left completely empty are dropped rather than blocking the save.
+    const filled = (list: SignatoryList) =>
+      list.people.filter((person) => !isBlank(person))
     const defaultOf = (list: SignatoryList) =>
-      list.people.find((person) => person.key === list.defaultKey)
+      filled(list).find((person) => person.key === list.defaultKey) ??
+      filled(list)[0]
     const itDefault = defaultOf(itList)
     const hrDefault = defaultOf(hrList)
     if (!itDefault || !hrDefault) {
       setError("Add at least one IT officer and one HR signatory.")
       return
     }
+    if ([...filled(itList), ...filled(hrList)].some((p) => !p.name.trim())) {
+      setError("Every signatory needs a printed name.")
+      return
+    }
     setLoading(true)
 
     const payload = (list: SignatoryList) =>
-      list.people.map((person) => ({
+      filled(list).map((person) => ({
         id: person.id,
         name: person.name.trim(),
         email: person.email,
@@ -395,6 +450,7 @@ export function AccountabilityTemplateForm() {
       }
 
       load((await response.json()) as AccountabilityFormSettings)
+      setDirty(false)
       setSuccess(true)
     } catch {
       setError("Something went wrong. Please try again.")
@@ -419,6 +475,7 @@ export function AccountabilityTemplateForm() {
         onChange={(list) => {
           setItList(list)
           setSuccess(false)
+          setDirty(true)
         }}
         onUpload={(file, apply) => void readSignature(file, apply)}
         ready={ready}
@@ -431,6 +488,7 @@ export function AccountabilityTemplateForm() {
         onChange={(list) => {
           setHrList(list)
           setSuccess(false)
+          setDirty(true)
         }}
         onUpload={(file, apply) => void readSignature(file, apply)}
         ready={ready}
@@ -441,10 +499,16 @@ export function AccountabilityTemplateForm() {
           {error}
         </p>
       )}
-      <div className="flex items-center gap-3">
+      {/* Stays in view while the lists scroll, so saving isn't missed. */}
+      <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center gap-3 border-t border-border bg-popover px-4 py-3">
         <Button type="submit" disabled={loading || !ready}>
           {loading ? "Saving…" : "Save template"}
         </Button>
+        {dirty && !loading && (
+          <span className="text-sm text-amber-600 dark:text-amber-400">
+            Unsaved changes
+          </span>
+        )}
         {success && (
           <span className="inline-flex items-center gap-1 text-sm text-emerald-600 dark:text-emerald-400">
             <CheckIcon className="size-3.5" />

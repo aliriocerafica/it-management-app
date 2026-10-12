@@ -82,6 +82,7 @@ function SettingsRow({
 
 export function SettingsActions() {
   const [accountabilityOpen, setAccountabilityOpen] = React.useState(false)
+  const [accountabilityDirty, setAccountabilityDirty] = React.useState(false)
   const [securityOpen, setSecurityOpen] = React.useState(false)
   const { resolvedTheme, setTheme } = useTheme()
   const animationsEnabled = useThemeTransitionEnabled()
@@ -158,19 +159,34 @@ export function SettingsActions() {
         >
           <Dialog
             open={accountabilityOpen}
-            onOpenChange={setAccountabilityOpen}
+            onOpenChange={(open) => {
+              // Closing with edits still unsaved asks first.
+              if (
+                !open &&
+                accountabilityDirty &&
+                !window.confirm("Close without saving your changes?")
+              ) {
+                return
+              }
+              setAccountabilityDirty(false)
+              setAccountabilityOpen(open)
+            }}
           >
             <DialogTrigger render={<Button variant="outline" size="sm" />}>
               Edit
             </DialogTrigger>
-            <DialogContent className="max-h-[min(90svh,40rem)] overflow-y-auto sm:max-w-md">
+            <DialogContent className="max-h-[min(90svh,40rem)] overflow-y-auto sm:max-w-3xl">
               <DialogHeader>
                 <DialogTitle>Accountability form</DialogTitle>
                 <DialogDescription>
                   The names and signatures printed on generated accountability forms.
                 </DialogDescription>
               </DialogHeader>
-              {accountabilityOpen ? <AccountabilityTemplateForm /> : null}
+              {accountabilityOpen ? (
+                <AccountabilityTemplateForm
+                  onDirtyChange={setAccountabilityDirty}
+                />
+              ) : null}
             </DialogContent>
           </Dialog>
         </SettingsRow>
