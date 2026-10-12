@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar"
+import { DataRefresher } from "@/components/data-refresher"
 import {
   SidebarInset,
   SidebarProvider,
@@ -22,6 +23,7 @@ export default async function DashboardLayout({
 
   return (
     <TooltipProvider>
+      <DataRefresher />
       <SidebarProvider
         className="h-svh min-h-0 overflow-hidden"
         style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}

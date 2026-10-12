@@ -103,6 +103,7 @@ import { usePendingSaves } from "@/lib/save-queue";
 import { useToday } from "@/lib/use-today";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { anyInDateRange, type DateRange } from "@/lib/date-range";
+import { useServerState } from "@/lib/use-server-state";
 import { cn } from "@/lib/utils";
 
 type Tab = "All" | (typeof requestQueueStatuses)[number];
@@ -192,7 +193,7 @@ export function AssetRequestTable({
   canDelete?: boolean;
 }) {
   const today = useToday();
-  const [requests, setRequests] = useState(initialData);
+  const [requests, setRequests] = useServerState(initialData);
   const [holdings, setHoldings] = useState(issuedHoldings);
   const [query, setQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | null>(null);

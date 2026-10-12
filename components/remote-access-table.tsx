@@ -54,6 +54,7 @@ import {
 import type { RemoteAccessRow } from "@/lib/remote-access"
 import { DateRangeFilter } from "@/components/date-range-filter"
 import { anyInDateRange, type DateRange } from "@/lib/date-range"
+import { useServerState } from "@/lib/use-server-state"
 import { cn } from "@/lib/utils"
 
 type Tab = "All" | "In use" | "In repair" | "Unassigned"
@@ -70,7 +71,7 @@ export function RemoteAccessTable({
 }: {
   rows: RemoteAccessRow[]
 }) {
-  const [rows, setRows] = useState(initialRows)
+  const [rows, setRows] = useServerState(initialRows)
   // The laptop whose AnyDesk address is being typed in, if any.
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState("")

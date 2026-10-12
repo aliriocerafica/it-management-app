@@ -83,6 +83,7 @@ import { errorMessage } from "@/lib/inventory-api";
 import { initials } from "@/lib/laptops";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { anyInDateRange, type DateRange } from "@/lib/date-range";
+import { useServerState } from "@/lib/use-server-state";
 import { cn } from "@/lib/utils";
 
 type Tab = "All" | FormState;
@@ -182,7 +183,7 @@ export function AccountabilityTable({
 }: {
   initialData: AccountabilityRow[];
 }) {
-  const [rows, setRows] = useState(initialData);
+  const [rows, setRows] = useServerState(initialData);
   const [query, setQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);

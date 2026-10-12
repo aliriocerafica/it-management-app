@@ -125,6 +125,7 @@ import { usePendingSaves } from "@/lib/save-queue";
 import { useToday } from "@/lib/use-today";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { anyInDateRange, type DateRange } from "@/lib/date-range";
+import { useServerState } from "@/lib/use-server-state";
 import { cn } from "@/lib/utils";
 
 export const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
@@ -199,11 +200,14 @@ function exportCsv(
   URL.revokeObjectURL(url);
 }
 
+// A stable default: the table re-syncs whenever this prop changes identity.
+const noRequests: AssetRequest[] = [];
+
 export function AccessoryInventoryTable({
   kind,
   initialData,
   laptops = [],
-  openRequests: initialOpenRequests = [],
+  openRequests: initialOpenRequests = noRequests,
 }: {
   kind: AccessoryKind;
   initialData: Accessory[];
@@ -220,12 +224,13 @@ export function AccessoryInventoryTable({
   const installs = config.installsInLaptop === true;
 
   const today = useToday();
-  const [openRequests, setOpenRequests] = useState(initialOpenRequests);
+  const [openRequests, setOpenRequests] =
+    useServerState(initialOpenRequests);
   const assignableRequests = useMemo(
     () => openRequests.filter((r) => inventoryKindForAssetType(r.assetType) === kind),
     [openRequests, kind],
   );
-  const [items, setItems] = useState(initialData);
+  const [items, setItems] = useServerState(initialData);
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | null>(null);

@@ -36,6 +36,11 @@ export function queued<T>(keys: string[], run: () => Promise<T>): Promise<T> {
   return next
 }
 
+// Whether any save is still in flight.
+export function savesPending() {
+  return counts.size > 0
+}
+
 function subscribe(listener: () => void) {
   listeners.add(listener)
   return () => listeners.delete(listener)

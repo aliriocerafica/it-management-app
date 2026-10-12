@@ -39,6 +39,7 @@ import {
 import type { UserDto, UserRole } from "@/lib/user-repository"
 import { DateRangeFilter } from "@/components/date-range-filter"
 import { anyInDateRange, type DateRange } from "@/lib/date-range"
+import { useServerState } from "@/lib/use-server-state"
 import { cn } from "@/lib/utils"
 
 const cellClass = "border-r border-border px-2.5 py-2 align-middle whitespace-nowrap"
@@ -55,7 +56,7 @@ function formatDate(iso: string) {
 }
 
 export function UsersTable({ initialData }: { initialData: UserDto[] }) {
-  const [users, setUsers] = useState(initialData)
+  const [users, setUsers] = useServerState(initialData)
   const [query, setQuery] = useState("")
   const [dateRange, setDateRange] = useState<DateRange | null>(null)
   const [roleFilter, setRoleFilter] = useState<(typeof roleOptions)[number][]>([])

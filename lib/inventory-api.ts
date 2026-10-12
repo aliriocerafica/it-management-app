@@ -5,7 +5,8 @@ import { queued } from "@/lib/save-queue"
 
 export const INVENTORY_CHANGED = "inventory-changed"
 
-function notifyInventoryChanged() {
+// Tells the open page that saved data changed, so it can re-fetch.
+export function notifyInventoryChanged() {
   if (typeof window === "undefined") return
   window.dispatchEvent(new Event(INVENTORY_CHANGED))
 }

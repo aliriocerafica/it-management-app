@@ -114,6 +114,7 @@ import {
   toRamHost,
 } from "@/lib/ram";
 import { anyInDateRange, type DateRange } from "@/lib/date-range";
+import { useServerState } from "@/lib/use-server-state";
 import { cn } from "@/lib/utils";
 
 type Tab = "All" | LaptopStatus;
@@ -279,10 +280,14 @@ export function FilterMenu<T extends string>({
   );
 }
 
+// Stable defaults: the tables re-sync whenever these props change identity.
+const noRamModules: Accessory[] = [];
+const noRequests: AssetRequest[] = [];
+
 export function LaptopInventoryTable({
   initialData,
-  ramModules: initialRamModules = [],
-  openRequests: initialOpenRequests = [],
+  ramModules: initialRamModules = noRamModules,
+  openRequests: initialOpenRequests = noRequests,
   formStateByHolder = {},
 }: {
   initialData: Laptop[];
@@ -295,9 +300,10 @@ export function LaptopInventoryTable({
   formStateByHolder?: Record<string, FormState>;
 }) {
   const today = useToday();
-  const [laptops, setLaptops] = useState(initialData);
-  const [ramModules, setRamModules] = useState(initialRamModules);
-  const [openRequests, setOpenRequests] = useState(initialOpenRequests);
+  const [laptops, setLaptops] = useServerState(initialData);
+  const [ramModules, setRamModules] = useServerState(initialRamModules);
+  const [openRequests, setOpenRequests] =
+    useServerState(initialOpenRequests);
   const assignableRequests = useMemo(
     () =>
       openRequests.filter(
