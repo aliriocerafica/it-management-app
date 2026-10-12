@@ -62,7 +62,7 @@ export function accountCreatedEmailHtml(name: string, loginUrl: string): string 
   const safeName = escapeHtml(name)
   const safeUrl = escapeHtml(loginUrl)
   return layout(
-    "Your IT portal account is ready",
+    "Your IT Management account is ready",
     `
       <p style="margin:0 0 16px;color:#3f3f46;font-size:14px;line-height:1.5;">
         Hi ${safeName}, an account was created for you on the Ardent IT Asset Management portal.
@@ -79,7 +79,7 @@ export function accountCreatedEmailHtml(name: string, loginUrl: string): string 
 
 export function accountCreatedEmailText(name: string, loginUrl: string): string {
   return [
-    "Your IT portal account is ready",
+    "Your IT Management account is ready",
     "",
     `Hi ${name}, an account was created for you on the Ardent IT Asset Management portal.`,
     `Sign in here: ${loginUrl}`,

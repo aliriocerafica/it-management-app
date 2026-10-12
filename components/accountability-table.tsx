@@ -3,6 +3,8 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  BackpackIcon,
+  BatteryIcon,
   BoxIcon,
   BuildingIcon,
   ChevronDownIcon,
@@ -17,15 +19,22 @@ import {
   ExternalLinkIcon,
   FilePlusIcon,
   FileTextIcon,
+  HeadphonesIcon,
   HistoryIcon,
+  KeyboardIcon,
+  LaptopIcon,
   Loader2Icon,
   MailIcon,
+  MemoryStickIcon,
+  MouseIcon,
   RefreshCwIcon,
   SearchIcon,
   SendIcon,
   Trash2Icon,
+  TvMinimalIcon,
   UserIcon,
   XIcon,
+  type LucideIcon,
 } from "lucide-react";
 
 import {
@@ -78,6 +87,18 @@ const tabHints: Record<Tab, string> = {
   "Up to date": "Latest form matches what they hold now",
   "Needs update": "Equipment changed since the latest form",
   "No form": "No form generated yet",
+};
+
+// Icon for each kind of assigned equipment, keyed by the asset label.
+const assetIcons: Record<string, LucideIcon> = {
+  Laptop: LaptopIcon,
+  Headset: HeadphonesIcon,
+  Mouse: MouseIcon,
+  Keyboard: KeyboardIcon,
+  Monitor: TvMinimalIcon,
+  "Laptop bag": BackpackIcon,
+  Battery: BatteryIcon,
+  "RAM module": MemoryStickIcon,
 };
 
 function exportCsv(rows: AccountabilityRow[]) {
@@ -541,7 +562,7 @@ export function AccountabilityTable({
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
-                <th className="sticky top-0 z-10 h-9 w-9 border-r border-border bg-card pl-3 shadow-[inset_0_-1px_0_var(--color-border)]">
+                <th className="sticky top-0 z-10 h-9 w-10 border-r border-border bg-card px-3 shadow-[inset_0_-1px_0_var(--color-border)]">
                   <Checkbox
                     aria-label={
                       filtered.length === 0
@@ -586,7 +607,7 @@ export function AccountabilityTable({
                     data-state={isSelected ? "selected" : undefined}
                     className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
                   >
-                    <td className="w-9 border-r border-border pl-3">
+                    <td className="w-10 border-r border-border px-3">
                       <Checkbox
                         aria-label={`Select ${row.holderName}`}
                         checked={isSelected}
@@ -619,19 +640,30 @@ export function AccountabilityTable({
                       )}
                     >
                       <div className="flex max-w-64 flex-wrap gap-1">
-                        {row.assets.map((asset) => (
-                          <span
-                            key={asset.label}
-                            className="rounded border border-border px-1.5 py-px text-[11px]"
-                          >
-                            {asset.count > 1 && (
-                              <span className="tabular-nums">
-                                {asset.count}×{" "}
-                              </span>
-                            )}
-                            {asset.label}
-                          </span>
-                        ))}
+                        {row.assets.map((asset) => {
+                          const Icon = assetIcons[asset.label] ?? BoxIcon;
+                          const label =
+                            asset.count > 1
+                              ? `${asset.count}× ${asset.label}`
+                              : asset.label;
+                          return (
+                            <span
+                              key={asset.label}
+                              title={label}
+                              className={cn(
+                                "inline-flex h-6 min-w-6 items-center justify-center gap-1 rounded-full bg-emerald-100 text-[11px] text-emerald-700 dark:bg-emerald-500/25 dark:text-white",
+                                asset.count > 1 && "px-2",
+                              )}
+                            >
+                              <Icon className="size-3.5" aria-label={label} />
+                              {asset.count > 1 && (
+                                <span className="tabular-nums" aria-hidden>
+                                  {asset.count}×
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })}
                       </div>
                     </td>
                     <td className={cn(cellClass, "hidden @3xl:table-cell")}>

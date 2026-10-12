@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   try {
     await sendEmail({
       to: user.email,
-      subject: "Your IT portal account is ready",
+      subject: "Your IT Management account is ready",
       htmlContent: accountCreatedEmailHtml(user.name, loginUrl),
       textContent: accountCreatedEmailText(user.name, loginUrl),
     })

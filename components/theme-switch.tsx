@@ -4,6 +4,7 @@ import * as React from "react"
 import { useTheme } from "next-themes"
 
 import { Switch } from "@/components/ui/switch"
+import { playThemeTransition } from "@/lib/theme-transition"
 import { cn } from "@/lib/utils"
 
 const subscribeNever = () => () => {}
@@ -31,7 +32,10 @@ export function ThemeSwitch({ className }: { className?: string }) {
       </span>
       <Switch
         checked={isDark}
-        onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+        onCheckedChange={(checked) => {
+          const next = checked ? "dark" : "light"
+          playThemeTransition(next, () => setTheme(next))
+        }}
         disabled={!mounted}
         aria-label="Toggle dark mode"
         className="data-checked:bg-blue-500 data-unchecked:bg-input"

@@ -59,7 +59,7 @@ export function LoginForm() {
     <Card className="w-full ring-foreground/10 shadow-lg shadow-black/[0.03] dark:shadow-black/20">
         <CardHeader className="gap-1.5 px-6 pt-6 pb-2 text-center">
           <CardTitle className="text-xl">Welcome back</CardTitle>
-          <CardDescription>Sign in to access the IT portal</CardDescription>
+          <CardDescription>Sign in to access IT Management</CardDescription>
         </CardHeader>
         <CardContent className="px-6 pt-4">
           <form id="login-form" onSubmit={handleSubmit}>

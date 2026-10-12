@@ -970,7 +970,7 @@ export function AssetRequestTable({
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
-                <th className="sticky top-0 z-10 h-9 w-9 border-r border-border bg-card pl-3 shadow-[inset_0_-1px_0_var(--color-border)]">
+                <th className="sticky top-0 z-10 h-9 w-10 border-r border-border bg-card px-3 shadow-[inset_0_-1px_0_var(--color-border)]">
                   <Checkbox
                     aria-label={
                       filtered.length === 0
@@ -1025,7 +1025,7 @@ export function AssetRequestTable({
                     data-state={isSelected ? "selected" : undefined}
                     className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
                   >
-                    <td className="w-9 border-r border-border pl-3">
+                    <td className="w-10 border-r border-border px-3">
                       <Checkbox
                         aria-label={`Select ${code}`}
                         checked={isSelected}

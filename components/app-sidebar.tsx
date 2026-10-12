@@ -622,7 +622,7 @@ export function AppSidebar({
                 {user.name}
               </span>
               <span className="truncate text-sm text-muted-foreground">
-                IT Portal
+                IT Management
               </span>
             </div>
           </DropdownMenuTrigger>

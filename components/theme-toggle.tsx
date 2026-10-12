@@ -5,6 +5,7 @@ import { MoonIcon, SunIcon } from "lucide-react"
 import { useTheme } from "next-themes"
 
 import { Button } from "@/components/ui/button"
+import { playThemeTransition } from "@/lib/theme-transition"
 
 const subscribeNever = () => () => {}
 
@@ -32,7 +33,10 @@ export function ThemeToggle() {
       variant="outline"
       size="icon"
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      onClick={() => setTheme(isDark ? "light" : "dark")}
+      onClick={() => {
+        const next = isDark ? "light" : "dark"
+        playThemeTransition(next, () => setTheme(next))
+      }}
     >
       {isDark ? <SunIcon /> : <MoonIcon />}
     </Button>

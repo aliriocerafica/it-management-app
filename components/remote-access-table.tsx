@@ -335,7 +335,7 @@ export function RemoteAccessTable({
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border">
-                <th className="sticky top-0 z-10 h-9 w-9 border-r border-border bg-card pl-3 shadow-[inset_0_-1px_0_var(--color-border)]">
+                <th className="sticky top-0 z-10 h-9 w-10 border-r border-border bg-card px-3 shadow-[inset_0_-1px_0_var(--color-border)]">
                   <Checkbox
                     aria-label={
                       filtered.length === 0
@@ -376,8 +376,9 @@ export function RemoteAccessTable({
                       <td
                         rowSpan={lines.length}
                         className={cn(
-                          "w-9 border-r border-border pl-3",
-                          lines.length > 1 ? "align-top" : "align-middle",
+                          "w-10 border-r border-border px-3",
+                          // Lines up with the avatar when the row spans laptops.
+                          lines.length > 1 ? "pt-3 align-top" : "align-middle",
                         )}
                       >
                         <Checkbox
