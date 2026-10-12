@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CheckIcon, PlusIcon } from "lucide-react";
 
 import { AssignmentFields } from "@/components/assignment-fields";
+import { FormSelect } from "@/components/form-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -508,21 +509,15 @@ export function AddLaptopDialog({
 
           <FormSection title="Charger">
             <FormField label="Connector" htmlFor="chargerConnector">
-              <select
+              <FormSelect
                 id="chargerConnector"
                 name="chargerConnector"
                 defaultValue={laptop?.charger.connector ?? "USB-C"}
-                className={selectClass}
-              >
-                {(laptop && !connectors.includes(laptop.charger.connector)
+                options={(laptop && !connectors.includes(laptop.charger.connector)
                   ? [laptop.charger.connector, ...connectors]
                   : connectors
-                ).map((connector) => (
-                  <option key={connector} value={connector}>
-                    {connector}
-                  </option>
-                ))}
-              </select>
+                ).map((connector) => ({ value: connector, label: connector }))}
+              />
             </FormField>
             <FormField label="Power (W)" htmlFor="chargerWattage">
               <Input
@@ -536,18 +531,15 @@ export function AddLaptopDialog({
               />
             </FormField>
             <FormField label="Condition" htmlFor="chargerCondition">
-              <select
+              <FormSelect
                 id="chargerCondition"
                 name="chargerCondition"
                 defaultValue={laptop?.charger.condition ?? "Good"}
-                className={selectClass}
-              >
-                {chargerConditions.map((condition) => (
-                  <option key={condition} value={condition}>
-                    {condition}
-                  </option>
-                ))}
-              </select>
+                options={chargerConditions.map((condition) => ({
+                  value: condition,
+                  label: condition,
+                }))}
+              />
             </FormField>
             <FormField label="Part number" htmlFor="chargerPartNumber" optional>
               <Input

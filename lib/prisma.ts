@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string
 }
 
-const SCHEMA_VERSION = "asset-request-deleted-1"
+const SCHEMA_VERSION = "account-setup-token-1"
 
 function createPrismaClient() {
   const adapter = new PrismaNeon({

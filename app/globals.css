@@ -131,6 +131,13 @@
   html {
     @apply font-sans;
   }
+  /* Native <select> menus are drawn by the OS and otherwise pair the
+     select's light dark-mode text with a white popup. */
+  option,
+  optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
 }
 
 @keyframes undo-border-timer {

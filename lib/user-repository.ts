@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { hashPassword } from "@/lib/crypto"
+import { generateOpaqueToken, hashPassword } from "@/lib/crypto"
 import type { UserRole } from "@/lib/generated/prisma"
 
 export type { UserRole }
@@ -10,6 +10,8 @@ export type UserDto = {
   email: string
   role: UserRole
   isActive: boolean
+  // Invited by email and hasn't set a password yet.
+  setupPending: boolean
   lastLoginAt: string | null
   createdAt: string
 }
@@ -20,6 +22,7 @@ function toDto(user: {
   email: string
   role: UserRole
   isActive: boolean
+  mustSetPassword: boolean
   lastLoginAt: Date | null
   createdAt: Date
 }): UserDto {
@@ -29,6 +32,7 @@ function toDto(user: {
     email: user.email,
     role: user.role,
     isActive: user.isActive,
+    setupPending: user.mustSetPassword,
     lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
     createdAt: user.createdAt.toISOString(),
   }
@@ -53,18 +57,21 @@ export async function listActiveItEmails(): Promise<string[]> {
   ]
 }
 
+// Without a password, the user is invited: they can't sign in until they
+// choose one through an emailed setup link.
 export async function createUser(input: {
   name: string
   email: string
-  password: string
+  password?: string
   role?: UserRole
 }): Promise<UserDto> {
-  const passwordHash = await hashPassword(input.password)
+  const passwordHash = await hashPassword(input.password ?? generateOpaqueToken())
   const user = await prisma.user.create({
     data: {
       name: input.name,
       email: input.email.toLowerCase(),
       passwordHash,
+      mustSetPassword: input.password === undefined,
       role: input.role ?? "ADMIN",
     },
   })

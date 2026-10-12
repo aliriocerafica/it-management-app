@@ -329,6 +329,7 @@ export function LaptopInventoryTable({
   const [formPrompt, setFormPrompt] = useState<{
     laptopId: string;
     employeeName: string;
+    released?: boolean;
   } | null>(null);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   // Asks before clearing a pending-repair alert.
@@ -778,7 +779,11 @@ export function LaptopInventoryTable({
       };
     }, (l) => `Assigned ${l.assetTag} to ${employee.name}`);
     setAssignOpen(false);
-    setFormPrompt({ laptopId: id, employeeName: employee.name });
+    setFormPrompt({
+      laptopId: id,
+      employeeName: employee.name,
+      released: true,
+    });
 
     if (request) {
       setOpenRequests((prev) => prev.filter((r) => r.id !== request.id));
@@ -1558,6 +1563,7 @@ export function LaptopInventoryTable({
         open={formPrompt !== null}
         onOpenChange={(next) => !next && setFormPrompt(null)}
         employeeName={formPrompt?.employeeName}
+        released={formPrompt?.released}
         onGenerate={(names) =>
           formPrompt && openAccountabilityForm(formPrompt.laptopId, names)
         }

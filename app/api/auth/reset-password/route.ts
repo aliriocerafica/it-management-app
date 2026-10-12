@@ -36,10 +36,19 @@ export async function POST(request: Request) {
   await prisma.$transaction([
     prisma.user.update({
       where: { id: result.user.id },
-      data: { passwordHash, failedLoginAttempts: 0, lockedUntil: null },
+      data: {
+        passwordHash,
+        mustSetPassword: false,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
     }),
     prisma.passwordResetOtp.update({
       where: { id: result.otp.id },
+      data: { consumedAt: new Date() },
+    }),
+    prisma.accountSetupToken.updateMany({
+      where: { userId: result.user.id, consumedAt: null },
       data: { consumedAt: new Date() },
     }),
   ])

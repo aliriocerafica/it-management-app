@@ -53,12 +53,29 @@ model User {
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
   lastLoginAt         DateTime?
+  // Invited by email and hasn't chosen a password yet; the stored hash is
+  // of a random value nobody knows, so sign-in is impossible until then.
+  mustSetPassword     Boolean   @default(false)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   sessions            Session[]
   resetOtps           PasswordResetOtp[]
+  setupTokens         AccountSetupToken[]
 
   @@map("users")
+}
+
+model AccountSetupToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("account_setup_tokens")
 }
 
 model Session {

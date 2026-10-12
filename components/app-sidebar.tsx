@@ -33,9 +33,8 @@ import {
 } from "lucide-react"
 
 import { AnyDeskIcon } from "@/components/anydesk-icon"
+import { MascotStill, SidebarMascot } from "@/components/sidebar-mascot"
 import { ThemeSwitch } from "@/components/theme-switch"
-import { Mascot } from "page-mascot"
-
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -616,26 +615,14 @@ export function AppSidebar({
           <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
             {/* The mascot is a button of its own (click to boop it), so it
                 sits beside the menu trigger rather than inside it. */}
-            {!collapsed && (
-              <Mascot
-                directions="/mascots/cat-directions.webp"
-                reactions="/mascots/cat-reactions.webp"
-                size={84}
-                label="cat"
-              />
-            )}
+            {!collapsed && <SidebarMascot user={user} />}
             <DropdownMenuTrigger
               aria-label="Account menu"
               className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl p-1 text-left group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0 outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
-              {/* Collapsed, there's no room for both: a still of the cat
-                  (the centre frame of its sheet) opens the menu. */}
-              {collapsed && (
-                <span
-                  aria-hidden
-                  className="block size-11 shrink-0 bg-[url(/mascots/cat-directions.webp)] bg-size-[300%_300%] bg-center bg-no-repeat"
-                />
-              )}
+              {/* Collapsed, there's no room for both: a still of the mascot
+                  opens the menu. */}
+              {collapsed && <MascotStill user={user} className="size-11" />}
               <div className="grid min-w-0 flex-1 leading-tight group-data-[collapsible=icon]:hidden">
                 <span className="truncate text-base font-semibold text-sidebar-foreground">
                   {user.name}

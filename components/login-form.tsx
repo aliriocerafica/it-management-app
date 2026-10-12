@@ -87,7 +87,7 @@ export function LoginForm() {
                     id="password"
                     name="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
+                    placeholder="Enter your password"
                     autoComplete="current-password"
                     className="h-9 pr-9 pl-8"
                     required
@@ -97,7 +97,7 @@ export function LoginForm() {
                     onClick={() => setShowPassword((prev) => !prev)}
                     aria-label={showPassword ? "Hide password" : "Show password"}
                     aria-pressed={showPassword}
-                    className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
+                    className="absolute top-1/2 right-1 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     {showPassword ? (
                       <EyeOffIcon className="size-3.5" />

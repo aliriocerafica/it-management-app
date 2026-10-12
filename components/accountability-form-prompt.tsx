@@ -16,21 +16,47 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+const checkIcon =
+  "https://media.lordicon.com/icons/system/outline/24-check-circle.gif"
+const documentIcon =
+  "https://media.lordicon.com/icons/system/outline/56-document.gif"
+// How long the success check plays before the document takes its place.
+const CHECK_MS = 1800
+
+// An animated Lordicon. They're drawn on white, so it sits on a white disc
+// that also reads as a badge in dark mode.
+function LordIcon({ src }: { src: string }) {
+  return (
+    <span
+      key={src}
+      className="mx-auto flex size-20 animate-in items-center justify-center overflow-hidden rounded-full bg-white ring-1 ring-foreground/10 duration-300 fade-in zoom-in-50"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="" width={64} height={64} className="size-16" />
+    </span>
+  )
+}
+
 export function AccountabilityFormPrompt({
   open,
   onOpenChange,
   employeeName,
+  released = false,
   onGenerate,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   employeeName: string | undefined
+  // The asset was just released to them: open on a success check before
+  // offering the form.
+  released?: boolean
   onGenerate: (names: { hrName: string; itOfficerName: string }) => void
 }) {
   const [hrName, setHrName] = useState("")
   const [itOfficerName, setItOfficerName] = useState("")
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(open)
+  const [celebrating, setCelebrating] = useState(open && released)
   // Show the spinner as soon as the dialog opens, before the effect runs.
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
@@ -38,8 +64,15 @@ export function AccountabilityFormPrompt({
     if (open) {
       setLoading(true)
       setLoadError(null)
+      setCelebrating(released)
     }
   }
+
+  useEffect(() => {
+    if (!open || !released) return
+    const timer = window.setTimeout(() => setCelebrating(false), CHECK_MS)
+    return () => window.clearTimeout(timer)
+  }, [open, released])
 
   useEffect(() => {
     if (!open) return
@@ -77,8 +110,11 @@ export function AccountabilityFormPrompt({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent showCloseButton={false} className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Assigned to {employeeName}</DialogTitle>
+        <LordIcon src={celebrating ? checkIcon : documentIcon} />
+        <DialogHeader className="text-center">
+          <DialogTitle>
+            {released ? "Released" : "Assigned"} to {employeeName}
+          </DialogTitle>
           <DialogDescription>
             Generate the accountability form covering everything currently assigned to
             them?

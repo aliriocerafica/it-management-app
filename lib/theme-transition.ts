@@ -1,4 +1,40 @@
+import { useSyncExternalStore } from "react"
+
 const DURATION_MS = 2000
+
+const storageKey = "theme-transition"
+const listeners = new Set<() => void>()
+
+function subscribe(listener: () => void) {
+  listeners.add(listener)
+  window.addEventListener("storage", listener)
+  return () => {
+    listeners.delete(listener)
+    window.removeEventListener("storage", listener)
+  }
+}
+
+// On unless this browser turned it off in Settings.
+function themeTransitionEnabled() {
+  try {
+    return window.localStorage.getItem(storageKey) !== "off"
+  } catch {
+    return true
+  }
+}
+
+export function setThemeTransitionEnabled(enabled: boolean) {
+  try {
+    window.localStorage.setItem(storageKey, enabled ? "on" : "off")
+  } catch {
+    // Storage blocked: the choice just won't be remembered.
+  }
+  for (const listener of listeners) listener()
+}
+
+export function useThemeTransitionEnabled() {
+  return useSyncExternalStore(subscribe, themeTransitionEnabled, () => true)
+}
 
 // Plays the sky animation (styled in globals.css as `.theme-shift`) over the
 // whole page: the sun sets and the moon rises going dark, the reverse going
@@ -6,6 +42,7 @@ const DURATION_MS = 2000
 // page, so the new theme is what's revealed when it fades out.
 export function playThemeTransition(to: "light" | "dark", apply: () => void) {
   if (
+    !themeTransitionEnabled() ||
     window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
     document.querySelector(".theme-shift")
   ) {

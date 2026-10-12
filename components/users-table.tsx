@@ -213,6 +213,30 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
     })
   }
 
+  async function sendSetupLink(user: UserDto) {
+    setError(null)
+    setInfo(null)
+    await track([user.id], async () => {
+      const response = await fetch(`/api/users/${user.id}/setup-link`, { method: "POST" })
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null
+        setError(body?.error ?? `Could not email a setup link to ${user.email}.`)
+        return
+      }
+      setInfo(`Setup link sent to ${user.email}.`)
+    })
+  }
+
+  function confirmSetupLink(user: UserDto) {
+    setConfirm({
+      title: `Resend the setup link to ${user.name}?`,
+      description: `A new link will be emailed to ${user.email}. Any earlier link stops working.`,
+      label: "Send link",
+      icon: MailIcon,
+      run: () => sendSetupLink(user),
+    })
+  }
+
   function confirmToggle(user: UserDto) {
     setConfirm({
       title: `${user.isActive ? "Deactivate" : "Reactivate"} ${user.name}?`,
@@ -327,7 +351,22 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
               setPage(1)
             }}
           />
-          <AddUserDialog onAdd={(user) => setUsers((prev) => [...prev, user])} />
+          <AddUserDialog
+            users={users}
+            onAdd={(user, emailError) => {
+              setUsers((prev) => [...prev, user])
+              setError(
+                emailError
+                  ? `${user.name} was created, but the setup link email failed: ${emailError} Use "Resend setup link" to try again.`
+                  : null,
+              )
+              setInfo(
+                user.setupPending && !emailError
+                  ? `Setup link sent to ${user.email}.`
+                  : null,
+              )
+            }}
+          />
         </div>
       </div>
 
@@ -417,6 +456,12 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
                       />
                       {user.isActive ? "Active" : "Deactivated"}
                     </span>
+                    {user.setupPending && (
+                      <span className="ml-1 inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                        <MailIcon className="size-3" />
+                        Invite pending
+                      </span>
+                    )}
                   </td>
                   <td className={cellClass}>
                     {user.lastLoginAt ? formatDate(user.lastLoginAt) : "Never"}
@@ -451,10 +496,20 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
                           </DropdownMenuRadioItem>
                         </DropdownMenuRadioGroup>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => confirmPasswordReset(user)}>
-                          <MailIcon />
-                          Send password reset
-                        </DropdownMenuItem>
+                        {user.setupPending ? (
+                          <DropdownMenuItem
+                            disabled={!user.isActive}
+                            onClick={() => confirmSetupLink(user)}
+                          >
+                            <MailIcon />
+                            Resend setup link
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => confirmPasswordReset(user)}>
+                            <MailIcon />
+                            Send password reset
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           variant={user.isActive ? "destructive" : undefined}

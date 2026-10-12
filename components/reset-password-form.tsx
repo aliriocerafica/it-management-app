@@ -202,7 +202,7 @@ export function ResetPasswordForm() {
                     onClick={() => setShowNewPassword((prev) => !prev)}
                     aria-label={showNewPassword ? "Hide password" : "Show password"}
                     aria-pressed={showNewPassword}
-                    className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
+                    className="absolute top-1/2 right-1 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     {showNewPassword ? (
                       <EyeOffIcon className="size-3.5" />
@@ -232,7 +232,7 @@ export function ResetPasswordForm() {
                     onClick={() => setShowConfirmPassword((prev) => !prev)}
                     aria-label={showConfirmPassword ? "Hide password" : "Show password"}
                     aria-pressed={showConfirmPassword}
-                    className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
+                    className="absolute top-1/2 right-1 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     {showConfirmPassword ? (
                       <EyeOffIcon className="size-3.5" />

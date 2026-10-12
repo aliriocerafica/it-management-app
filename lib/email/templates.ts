@@ -88,6 +88,39 @@ export function accountCreatedEmailText(name: string, loginUrl: string): string 
   ].join("\n")
 }
 
+export function setupLinkEmailHtml(name: string, setupUrl: string, ttlHours: number): string {
+  const safeUrl = escapeHtml(setupUrl)
+  return layout(
+    "Set up your account",
+    `
+      <p style="margin:0 0 16px;color:#3f3f46;font-size:14px;line-height:1.5;">
+        Hi ${escapeHtml(name)}, an account was created for you on the Ardent IT Asset Management portal. Choose a password to finish setting it up.
+      </p>
+      <p style="margin:0 0 20px;">
+        <a href="${safeUrl}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#111111;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;">
+          Set your password
+        </a>
+      </p>
+      <p style="margin:0 0 8px;color:#71717a;font-size:12px;line-height:1.5;">
+        Or paste this link into your browser: <a href="${safeUrl}" style="color:#b42318;word-break:break-all;">${safeUrl}</a>
+      </p>
+      <p style="margin:0;color:#71717a;font-size:12px;line-height:1.5;">
+        The link works once and expires in ${ttlHours} hours. If it expires, ask IT to send a new one.
+      </p>
+    `,
+  )
+}
+
+export function setupLinkEmailText(name: string, setupUrl: string, ttlHours: number): string {
+  return [
+    `Hi ${name}, an account was created for you on the Ardent IT Asset Management portal.`,
+    "",
+    `Choose a password to finish setting it up: ${setupUrl}`,
+    "",
+    `The link works once and expires in ${ttlHours} hours. If it expires, ask IT to send a new one.`,
+  ].join("\n")
+}
+
 export function accountabilityFormEmailHtml(
   name: string,
   version: number,

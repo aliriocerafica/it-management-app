@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { appBaseUrl, sendSetupLink } from "@/lib/auth/setup-link"
 import { verifySession } from "@/lib/auth/session"
 import { createUser, listUsers } from "@/lib/user-repository"
-import { sendEmail } from "@/lib/email/brevo"
+import { EmailSendError, sendEmail } from "@/lib/email/brevo"
 import {
   accountCreatedEmailHtml,
   accountCreatedEmailText,
@@ -16,7 +17,8 @@ export const dynamic = "force-dynamic"
 const CreateUserSchema = z.object({
   name: z.string().trim().min(1),
   email: z.string().email(),
-  password: z.string(),
+  // Omit to invite the user: they get an emailed link to choose their own.
+  password: z.string().optional(),
   role: z.enum(["ADMIN", "STAFF"]).optional(),
 })
 
@@ -47,9 +49,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 })
   }
 
-  const strength = passwordError(parsed.data.password)
-  if (strength) {
-    return NextResponse.json({ error: strength }, { status: 400 })
+  const { password } = parsed.data
+  if (password !== undefined) {
+    const strength = passwordError(password)
+    if (strength) {
+      return NextResponse.json({ error: strength }, { status: 400 })
+    }
   }
 
   const existing = await prisma.user.findUnique({
@@ -60,8 +65,22 @@ export async function POST(request: Request) {
   }
 
   const user = await createUser(parsed.data)
-  const origin = new URL(request.url).origin
-  const loginUrl = `${process.env.APP_URL?.replace(/\/$/, "") || origin}/login`
+  const baseUrl = appBaseUrl(request)
+
+  if (password === undefined) {
+    // The account exists either way; a failed email can be resent from the table.
+    let emailError: string | null = null
+    try {
+      await sendSetupLink(user, baseUrl)
+    } catch (error) {
+      console.error("[email:error] Setup link email failed", error)
+      emailError =
+        error instanceof EmailSendError ? error.message : "The setup link email could not be sent."
+    }
+    return NextResponse.json({ ...user, emailError }, { status: 201 })
+  }
+
+  const loginUrl = `${baseUrl}/login`
   try {
     await sendEmail({
       to: user.email,
