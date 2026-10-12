@@ -103,6 +103,7 @@ import {
 import { type Employee } from "@/lib/employees";
 import {
   formatAge,
+  activityDates,
   formatDate,
   initials,
   parseDate,
@@ -122,6 +123,8 @@ import {
 } from "@/lib/ram";
 import { usePendingSaves } from "@/lib/save-queue";
 import { useToday } from "@/lib/use-today";
+import { DateRangeFilter } from "@/components/date-range-filter";
+import { anyInDateRange, type DateRange } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
 
 export const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
@@ -225,6 +228,7 @@ export function AccessoryInventoryTable({
   const [items, setItems] = useState(initialData);
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [tab, setTab] = useState<Tab>("All");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rowsPerPage, setRowsPerPage] = useState(15);
@@ -280,6 +284,7 @@ export function AccessoryInventoryTable({
     const q = query.trim().toLowerCase();
     return items.filter((item) => {
       if (brandFilter.length && !brandFilter.includes(item.brand)) return false;
+      if (!anyInDateRange(activityDates(item), dateRange)) return false;
       if (tab !== "All" && item.status !== tab) return false;
       if (!q) return true;
       return [
@@ -301,7 +306,7 @@ export function AccessoryInventoryTable({
       const host = item.laptopId ? hostById.get(item.laptopId) : undefined;
       return host ? [host.assetTag, host.brand, host.model] : [];
     }
-  }, [items, query, brandFilter, tab, hostById]);
+  }, [items, query, brandFilter, dateRange, tab, hostById]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const currentPage = Math.min(page, pageCount);
@@ -313,7 +318,8 @@ export function AccessoryInventoryTable({
   const allSelected =
     filteredIds.length > 0 && selectedInView === filteredIds.length;
 
-  const hasFilters = query !== "" || brandFilter.length > 0;
+  const hasFilters =
+    query !== "" || brandFilter.length > 0 || dateRange !== null;
 
   const tabCounts = useMemo(() => {
     const counts: Record<Tab, number> = {
@@ -712,6 +718,7 @@ export function AccessoryInventoryTable({
   function clearFilters() {
     setQuery("");
     setBrandFilter([]);
+    setDateRange(null);
     setPage(1);
   }
 
@@ -791,6 +798,14 @@ export function AccessoryInventoryTable({
               selected={brandFilter}
               onChange={(value) => {
                 setBrandFilter(value);
+                setPage(1);
+              }}
+            />
+            <DateRangeFilter
+              label="Activity"
+              value={dateRange}
+              onChange={(value) => {
+                setDateRange(value);
                 setPage(1);
               }}
             />

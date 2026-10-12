@@ -36,7 +36,23 @@ export type Laptop = {
   anydeskAddress?: string | null;
   charger: Charger;
   history: OwnershipEntry[];
+  // ISO timestamps of when the record was added and last changed. Absent
+  // on a laptop that hasn't been saved yet.
+  createdAt?: string;
+  updatedAt?: string;
 };
+
+// Every date something happened to an item: it was added, its details
+// changed, or it was released to or returned by someone.
+export function activityDates(
+  item: Pick<Laptop, "history" | "createdAt" | "updatedAt">,
+) {
+  return [
+    item.createdAt,
+    item.updatedAt,
+    ...item.history.flatMap((entry) => [entry.from, entry.to]),
+  ];
+}
 
 // One stint with a laptop, oldest first. A null handler means the laptop
 // was back with IT (storage, re-imaging, awaiting disposal). The last entry

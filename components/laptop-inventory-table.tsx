@@ -35,6 +35,7 @@ import {
 
 import { AccountabilityFormPrompt } from "@/components/accountability-form-prompt";
 import { AddLaptopDialog } from "@/components/add-laptop-dialog";
+import { DateRangeFilter } from "@/components/date-range-filter";
 import { revalidateInventory } from "@/app/actions/revalidate-inventory";
 import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
@@ -89,6 +90,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
+  activityDates,
   formatAge,
   formatDate,
   initials,
@@ -111,6 +113,7 @@ import {
   removeRamFromLaptop,
   toRamHost,
 } from "@/lib/ram";
+import { anyInDateRange, type DateRange } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
 
 type Tab = "All" | LaptopStatus;
@@ -304,6 +307,7 @@ export function LaptopInventoryTable({
   );
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [tab, setTab] = useState<Tab>("All");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rowsPerPage, setRowsPerPage] = useState(15);
@@ -353,6 +357,7 @@ export function LaptopInventoryTable({
     const q = query.trim().toLowerCase();
     return laptops.filter((l) => {
       if (brandFilter.length && !brandFilter.includes(l.brand)) return false;
+      if (!anyInDateRange(activityDates(l), dateRange)) return false;
       if (tab !== "All" && l.status !== tab) return false;
       if (!q) return true;
       return [
@@ -366,7 +371,7 @@ export function LaptopInventoryTable({
         l.repairIssue ?? "",
       ].some((value) => value.toLowerCase().includes(q));
     });
-  }, [laptops, query, brandFilter, tab]);
+  }, [laptops, query, brandFilter, dateRange, tab]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const currentPage = Math.min(page, pageCount);
@@ -378,7 +383,8 @@ export function LaptopInventoryTable({
   const allSelected =
     filteredIds.length > 0 && selectedInView === filteredIds.length;
 
-  const hasFilters = query !== "" || brandFilter.length > 0;
+  const hasFilters =
+    query !== "" || brandFilter.length > 0 || dateRange !== null;
 
   const tabCounts = useMemo(() => {
     const counts: Record<Tab, number> = {
@@ -847,6 +853,7 @@ export function LaptopInventoryTable({
   function clearFilters() {
     setQuery("");
     setBrandFilter([]);
+    setDateRange(null);
     setPage(1);
   }
 
@@ -926,6 +933,14 @@ export function LaptopInventoryTable({
               selected={brandFilter}
               onChange={(value) => {
                 setBrandFilter(value);
+                setPage(1);
+              }}
+            />
+            <DateRangeFilter
+              label="Activity"
+              value={dateRange}
+              onChange={(value) => {
+                setDateRange(value);
                 setPage(1);
               }}
             />

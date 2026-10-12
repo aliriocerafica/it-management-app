@@ -156,6 +156,8 @@ export function laptopFromDb(record: LaptopRecord): Laptop {
       condition: chargerFromDb[record.charger.condition],
     },
     history: toHistory(record.assignments),
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
   }
 }
 
@@ -179,6 +181,8 @@ export function accessoryFromDb(record: AccessoryRecord): Accessory {
     repairIssue: record.repairIssue,
     laptopId: record.laptopId,
     history: toHistory(record.assignments),
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
   }
 }
 

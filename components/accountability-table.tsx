@@ -77,6 +77,8 @@ import {
 } from "@/lib/accountability-forms";
 import { errorMessage } from "@/lib/inventory-api";
 import { initials } from "@/lib/laptops";
+import { DateRangeFilter } from "@/components/date-range-filter";
+import { anyInDateRange, type DateRange } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
 
 type Tab = "All" | FormState;
@@ -174,6 +176,7 @@ export function AccountabilityTable({
 }) {
   const [rows, setRows] = useState(initialData);
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>("All");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -267,6 +270,14 @@ export function AccountabilityTable({
         !departmentFilter.includes(r.department ?? "")
       )
         return false;
+      // A form being generated or emailed counts as activity.
+      if (
+        !anyInDateRange(
+          [r.latest?.createdAt, ...(r.latest?.sends ?? []).map((s) => s.sentAt)],
+          dateRange,
+        )
+      )
+        return false;
       if (tab !== "All" && r.state !== tab) return false;
       if (!q) return true;
       return [
@@ -277,7 +288,7 @@ export function AccountabilityTable({
         ...r.assets.map((a) => a.label),
       ].some((value) => value.toLowerCase().includes(q));
     });
-  }, [rows, query, departmentFilter, tab]);
+  }, [rows, query, departmentFilter, dateRange, tab]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const currentPage = Math.min(page, pageCount);
@@ -289,7 +300,8 @@ export function AccountabilityTable({
   const allSelected =
     filteredIds.length > 0 && selectedInView === filteredIds.length;
 
-  const hasFilters = query !== "" || departmentFilter.length > 0;
+  const hasFilters =
+    query !== "" || departmentFilter.length > 0 || dateRange !== null;
 
   const tabCounts = useMemo(() => {
     const counts: Record<Tab, number> = {
@@ -423,6 +435,7 @@ export function AccountabilityTable({
   function clearFilters() {
     setQuery("");
     setDepartmentFilter([]);
+    setDateRange(null);
     setPage(1);
   }
 
@@ -516,6 +529,14 @@ export function AccountabilityTable({
               selected={departmentFilter}
               onChange={(value) => {
                 setDepartmentFilter(value);
+                setPage(1);
+              }}
+            />
+            <DateRangeFilter
+              label="Activity"
+              value={dateRange}
+              onChange={(value) => {
+                setDateRange(value);
                 setPage(1);
               }}
             />

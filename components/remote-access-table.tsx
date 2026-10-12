@@ -45,8 +45,15 @@ import {
   parseAnydeskAddress,
 } from "@/lib/anydesk"
 import { errorMessage, saveLaptop } from "@/lib/inventory-api"
-import { initials, statusStyles, type Laptop } from "@/lib/laptops"
+import {
+  activityDates,
+  initials,
+  statusStyles,
+  type Laptop,
+} from "@/lib/laptops"
 import type { RemoteAccessRow } from "@/lib/remote-access"
+import { DateRangeFilter } from "@/components/date-range-filter"
+import { anyInDateRange, type DateRange } from "@/lib/date-range"
 import { cn } from "@/lib/utils"
 
 type Tab = "All" | "In use" | "In repair" | "Unassigned"
@@ -70,6 +77,7 @@ export function RemoteAccessTable({
   const [editError, setEditError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [query, setQuery] = useState("")
+  const [dateRange, setDateRange] = useState<DateRange | null>(null)
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([])
   const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [tab, setTab] = useState<Tab>("All")
@@ -101,6 +109,14 @@ export function RemoteAccessTable({
       ) {
         return false
       }
+      if (
+        dateRange &&
+        !laptops.some((laptop) =>
+          anyInDateRange(activityDates(laptop), dateRange),
+        )
+      ) {
+        return false
+      }
       if (tab !== "All" && rowStatus(row) !== tab) {
         return false
       }
@@ -120,7 +136,7 @@ export function RemoteAccessTable({
         laptops.length === 0 ? "Unassigned" : "",
       ].some((value) => value.toLowerCase().includes(q))
     })
-  }, [brandFilter, departmentFilter, query, rows, tab])
+  }, [brandFilter, dateRange, departmentFilter, query, rows, tab])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage))
   const currentPage = Math.min(page, pageCount)
@@ -129,7 +145,11 @@ export function RemoteAccessTable({
   const filteredIds = filtered.map((row) => row.employee.id)
   const selectedInView = filteredIds.filter((id) => selected.has(id)).length
   const allSelected = filteredIds.length > 0 && selectedInView === filteredIds.length
-  const hasFilters = query !== "" || departmentFilter.length > 0 || brandFilter.length > 0
+  const hasFilters =
+    query !== "" ||
+    departmentFilter.length > 0 ||
+    brandFilter.length > 0 ||
+    dateRange !== null
 
   const tabCounts = useMemo(() => {
     const counts = Object.fromEntries(tabs.map((t) => [t, 0])) as Record<Tab, number>
@@ -177,6 +197,7 @@ export function RemoteAccessTable({
     setQuery("")
     setDepartmentFilter([])
     setBrandFilter([])
+    setDateRange(null)
     setPage(1)
   }
 
@@ -307,6 +328,14 @@ export function RemoteAccessTable({
               selected={brandFilter}
               onChange={(value) => {
                 setBrandFilter(value)
+                setPage(1)
+              }}
+            />
+            <DateRangeFilter
+              label="Activity"
+              value={dateRange}
+              onChange={(value) => {
+                setDateRange(value)
                 setPage(1)
               }}
             />

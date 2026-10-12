@@ -7,7 +7,7 @@ import { playClickSound, playOpenSound } from "@/lib/ui-sounds"
 const clickable =
   'button, a[href], summary, [role="button"], [role="menuitem"], [role="switch"], [role="checkbox"], [role="tab"]'
 const opened =
-  '[data-slot="dialog-content"], [data-slot="sheet-content"], [data-slot="dropdown-menu-content"]'
+  '[data-slot="dialog-content"], [data-slot="sheet-content"], [data-slot="dropdown-menu-content"], [data-slot="date-range-content"]'
 
 // Plays the interface sounds for the whole app: a tick on anything clickable
 // and a pop when a dialog, sheet or menu appears. Renders nothing.

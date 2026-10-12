@@ -102,6 +102,8 @@ import {
 import { formatDate, initials, parseDate } from "@/lib/laptops";
 import { usePendingSaves } from "@/lib/save-queue";
 import { useToday } from "@/lib/use-today";
+import { DateRangeFilter } from "@/components/date-range-filter";
+import { anyInDateRange, type DateRange } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
 
 type Tab = "All" | (typeof requestQueueStatuses)[number];
@@ -194,6 +196,7 @@ export function AssetRequestTable({
   const [requests, setRequests] = useState(initialData);
   const [holdings, setHoldings] = useState(issuedHoldings);
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<RequestPriority[]>([]);
   const [tab, setTab] = useState<Tab>("All");
@@ -257,6 +260,14 @@ export function AssetRequestTable({
         return false;
       if (priorityFilter.length && !priorityFilter.includes(r.priority))
         return false;
+      // Filed, approved, issued or denied inside the range.
+      if (
+        !anyInDateRange(
+          [r.createdAt, r.approvedAt, r.completedAt, r.cancelledAt],
+          dateRange,
+        )
+      )
+        return false;
       if (r.status === "Deleted") return false;
       if (tab === "All" && r.status === "Archived") return false;
       if (tab !== "All" && r.status !== tab) return false;
@@ -272,7 +283,7 @@ export function AssetRequestTable({
         r.resolutionNote ?? "",
       ].some((value) => value.toLowerCase().includes(q));
     });
-  }, [requests, query, typeFilter, priorityFilter, tab]);
+  }, [requests, query, typeFilter, priorityFilter, dateRange, tab]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const currentPage = Math.min(page, pageCount);
@@ -298,7 +309,10 @@ export function AssetRequestTable({
   const confirmingBatch = confirmingCount > 1;
 
   const hasFilters =
-    query !== "" || typeFilter.length > 0 || priorityFilter.length > 0;
+    query !== "" ||
+    typeFilter.length > 0 ||
+    priorityFilter.length > 0 ||
+    dateRange !== null;
 
   const tabCounts = useMemo(() => {
     const counts: Record<Tab, number> = {
@@ -750,6 +764,7 @@ export function AssetRequestTable({
     setQuery("");
     setTypeFilter([]);
     setPriorityFilter([]);
+    setDateRange(null);
     setPage(1);
   }
 
@@ -920,6 +935,14 @@ export function AssetRequestTable({
               selected={priorityFilter}
               onChange={(value) => {
                 setPriorityFilter(value);
+                setPage(1);
+              }}
+            />
+            <DateRangeFilter
+              label="Activity"
+              value={dateRange}
+              onChange={(value) => {
+                setDateRange(value);
                 setPage(1);
               }}
             />

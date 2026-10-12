@@ -33,6 +33,9 @@ export type Accessory = {
   // RAM only: the laptop it's installed in (instead of a handler).
   laptopId?: string | null;
   history: OwnershipEntry[];
+  // ISO timestamps of when the record was added and last changed.
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 // A type name for use mid-sentence: lowercased, except acronyms such as

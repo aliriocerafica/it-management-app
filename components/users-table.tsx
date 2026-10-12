@@ -37,6 +37,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import type { UserDto, UserRole } from "@/lib/user-repository"
+import { DateRangeFilter } from "@/components/date-range-filter"
+import { anyInDateRange, type DateRange } from "@/lib/date-range"
 import { cn } from "@/lib/utils"
 
 const cellClass = "border-r border-border px-2.5 py-2 align-middle whitespace-nowrap"
@@ -55,6 +57,7 @@ function formatDate(iso: string) {
 export function UsersTable({ initialData }: { initialData: UserDto[] }) {
   const [users, setUsers] = useState(initialData)
   const [query, setQuery] = useState("")
+  const [dateRange, setDateRange] = useState<DateRange | null>(null)
   const [roleFilter, setRoleFilter] = useState<(typeof roleOptions)[number][]>([])
   const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number][]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -87,13 +90,15 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
         const label = user.role === "ADMIN" ? "Admin" : "Staff"
         if (!roleFilter.includes(label)) return false
       }
+      // Added or last signed in inside the range.
+      if (!anyInDateRange([user.createdAt, user.lastLoginAt], dateRange)) return false
       if (statusFilter.length > 0) {
         const label = user.isActive ? "Active" : "Deactivated"
         if (!statusFilter.includes(label)) return false
       }
       return true
     })
-  }, [users, query, roleFilter, statusFilter])
+  }, [users, query, roleFilter, statusFilter, dateRange])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage))
   const currentPage = Math.min(page, pageCount)
@@ -348,6 +353,14 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
             selected={statusFilter}
             onChange={(value) => {
               setStatusFilter(value)
+              setPage(1)
+            }}
+          />
+          <DateRangeFilter
+            label="Activity"
+            value={dateRange}
+            onChange={(value) => {
+              setDateRange(value)
               setPage(1)
             }}
           />
