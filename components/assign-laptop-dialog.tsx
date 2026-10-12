@@ -34,7 +34,7 @@ import { useEmployeeDirectory } from "@/lib/use-employee-directory";
 import { initials, type TrackedItem } from "@/lib/laptops";
 import { cn } from "@/lib/utils";
 
-const MANUAL = "manual";
+export const MANUAL = "manual";
 const NO_REQUEST = "__none__";
 
 export function AssignLaptopDialog({
@@ -81,6 +81,192 @@ export function AssignLaptopDialog({
   );
 }
 
+// A name typed in the search box that isn't in the directory. People missing
+// from HRIS (or HRIS being down) can still be typed in.
+export function typedEmployee(query: string, employees: Employee[]) {
+  const typedName = query.trim().replace(/\s+/g, " ");
+  const inDirectory = employees.some(
+    (e) => e.name.toLowerCase() === typedName.toLowerCase(),
+  );
+  return { typedName, canTypeName: typedName.length > 0 && !inDirectory };
+}
+
+// The search box and employee list shared by the assign dialog and the
+// handler picker on the "Add" forms.
+export function EmployeePickList({
+  employees,
+  status,
+  query,
+  onQueryChange,
+  selectedId,
+  onSelect,
+  heldBy,
+  noun,
+}: {
+  employees: Employee[];
+  status: "loading" | "ready" | "error";
+  query: string;
+  onQueryChange: (query: string) => void;
+  // An employee id, or MANUAL for the name typed in the search box.
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  // Asset tags each person currently holds, by name.
+  heldBy: Map<string, string[]>;
+  noun: string;
+}) {
+  const list = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return employees
+      .filter(
+        (e) =>
+          !q ||
+          [e.name, e.id, e.department, e.title, e.email].some((value) =>
+            value.toLowerCase().includes(q),
+          ),
+      )
+      .sort((a, b) => {
+        const aHas = heldBy.has(a.name) ? 1 : 0;
+        const bHas = heldBy.has(b.name) ? 1 : 0;
+        return aHas - bHas || a.name.localeCompare(b.name);
+      });
+  }, [employees, query, heldBy]);
+  const { typedName, canTypeName } = typedEmployee(query, employees);
+  const manualSelected = selectedId === MANUAL && canTypeName;
+
+  return (
+    <>
+      <div className="relative">
+        <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder={
+            employees.length
+              ? "Search, or type a full name"
+              : "Type the employee's full name"
+          }
+          className="pl-8"
+          autoFocus
+        />
+      </div>
+
+      <div
+        role="radiogroup"
+        aria-label="Employees"
+        aria-busy={status === "loading"}
+        className="-mx-2 flex max-h-80 min-h-0 flex-col gap-1 overflow-y-auto px-2 pb-1"
+      >
+        {canTypeName && (
+          <button
+            type="button"
+            role="radio"
+            aria-checked={manualSelected}
+            onClick={() => onSelect(MANUAL)}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+              manualSelected
+                ? "border-foreground/30 bg-muted"
+                : "border-dashed border-border hover:bg-muted/60",
+            )}
+          >
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+              <PenLineIcon className="size-4 text-muted-foreground" />
+            </span>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="truncate text-sm font-medium">
+                Assign to &ldquo;{typedName}&rdquo;
+              </div>
+              <div className="truncate text-xs text-muted-foreground">
+                Typed manually, not in the employee directory
+              </div>
+            </div>
+            {heldBy.has(typedName) && (
+              <span className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-700 dark:text-amber-400">
+                Has {heldBy.get(typedName)!.join(", ")}
+              </span>
+            )}
+            <span
+              className={cn(
+                "flex size-5 shrink-0 items-center justify-center rounded-full border",
+                manualSelected
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-input",
+              )}
+            >
+              {manualSelected && <CheckIcon className="size-3" />}
+            </span>
+          </button>
+        )}
+        {list.map((employee) => {
+          const isSelected = employee.id === selectedId;
+          const held = heldBy.get(employee.name);
+          return (
+            <button
+              key={employee.id}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              onClick={() => onSelect(employee.id)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                isSelected
+                  ? "border-foreground/30 bg-muted"
+                  : "border-transparent hover:bg-muted/60",
+              )}
+            >
+              <Avatar className="size-9 after:rounded-full">
+                <AvatarFallback className="bg-muted text-xs font-medium">
+                  {initials(employee.name)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="truncate text-sm font-medium">
+                  {employee.name}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {[employee.id, employee.title, employee.department]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </div>
+              </div>
+              {held ? (
+                <span className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-700 dark:text-amber-400">
+                  Has {held.join(", ")}
+                </span>
+              ) : (
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  No {noun}
+                </span>
+              )}
+              <span
+                className={cn(
+                  "flex size-5 shrink-0 items-center justify-center rounded-full border",
+                  isSelected
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-input",
+                )}
+              >
+                {isSelected && <CheckIcon className="size-3" />}
+              </span>
+            </button>
+          );
+        })}
+        {list.length === 0 && !canTypeName && (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {status === "loading"
+              ? "Loading employees from HRIS…"
+              : status === "error"
+                ? "Couldn't reach the HRIS employee directory. Type the person's full name above."
+                : employees.length
+                  ? "No employees match your search."
+                  : "No employees found in HRIS. Type the person's full name above."}
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
 function AssignForm({
   laptop,
   laptops,
@@ -121,29 +307,7 @@ function AssignForm({
     return map;
   }, [laptops]);
 
-  const list = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return employees
-      .filter(
-        (e) =>
-          !q ||
-          [e.name, e.id, e.department, e.title, e.email].some((value) =>
-            value.toLowerCase().includes(q),
-          ),
-      )
-      .sort((a, b) => {
-        const aHas = heldBy.has(a.name) ? 1 : 0;
-        const bHas = heldBy.has(b.name) ? 1 : 0;
-        return aHas - bHas || a.name.localeCompare(b.name);
-      });
-  }, [employees, query, heldBy]);
-
-  // People missing from HRIS (or HRIS being down) can still be typed in.
-  const typedName = query.trim().replace(/\s+/g, " ");
-  const inDirectory = employees.some(
-    (e) => e.name.toLowerCase() === typedName.toLowerCase(),
-  );
-  const canTypeName = typedName.length > 0 && !inDirectory;
+  const { typedName, canTypeName } = typedEmployee(query, employees);
   const manualSelected = selectedId === MANUAL && canTypeName;
 
   const selected: Employee | null = manualSelected
@@ -157,8 +321,7 @@ function AssignForm({
     : (employees.find((e) => e.id === selectedId) ?? null);
 
   const suggestedRequest = selected
-    ? (requests.find((r) => samePerson(r.requesterName, selected.name)) ??
-      null)
+    ? (requests.find((r) => samePerson(r.requesterName, selected.name)) ?? null)
     : null;
   const selectedRequest =
     requestChoice === null
@@ -182,134 +345,16 @@ function AssignForm({
       </DialogHeader>
 
       <div className="flex min-h-0 flex-col gap-3 px-6 pt-4">
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={
-              employees.length
-                ? "Search, or type a full name"
-                : "Type the employee's full name"
-            }
-            className="pl-8"
-            autoFocus
-          />
-        </div>
-
-        <div
-          role="radiogroup"
-          aria-label="Employees"
-          aria-busy={status === "loading"}
-          className="-mx-2 flex max-h-80 min-h-0 flex-col gap-1 overflow-y-auto px-2 pb-1"
-        >
-          {canTypeName && (
-            <button
-              type="button"
-              role="radio"
-              aria-checked={manualSelected}
-              onClick={() => setSelectedId(MANUAL)}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                manualSelected
-                  ? "border-foreground/30 bg-muted"
-                  : "border-dashed border-border hover:bg-muted/60",
-              )}
-            >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
-                <PenLineIcon className="size-4 text-muted-foreground" />
-              </span>
-              <div className="min-w-0 flex-1 leading-tight">
-                <div className="truncate text-sm font-medium">
-                  Assign to &ldquo;{typedName}&rdquo;
-                </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  Typed manually, not in the employee directory
-                </div>
-              </div>
-              {heldBy.has(typedName) && (
-                <span className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-700 dark:text-amber-400">
-                  Has {heldBy.get(typedName)!.join(", ")}
-                </span>
-              )}
-              <span
-                className={cn(
-                  "flex size-5 shrink-0 items-center justify-center rounded-full border",
-                  manualSelected
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-input",
-                )}
-              >
-                {manualSelected && <CheckIcon className="size-3" />}
-              </span>
-            </button>
-          )}
-          {list.map((employee) => {
-            const isSelected = employee.id === selectedId;
-            const held = heldBy.get(employee.name);
-            return (
-              <button
-                key={employee.id}
-                type="button"
-                role="radio"
-                aria-checked={isSelected}
-                onClick={() => setSelectedId(employee.id)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                  isSelected
-                    ? "border-foreground/30 bg-muted"
-                    : "border-transparent hover:bg-muted/60",
-                )}
-              >
-                <Avatar className="size-9 after:rounded-full">
-                  <AvatarFallback className="bg-muted text-xs font-medium">
-                    {initials(employee.name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1 leading-tight">
-                  <div className="truncate text-sm font-medium">
-                    {employee.name}
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {[employee.id, employee.title, employee.department]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </div>
-                </div>
-                {held ? (
-                  <span className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-700 dark:text-amber-400">
-                    Has {held.join(", ")}
-                  </span>
-                ) : (
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
-                    No {noun}
-                  </span>
-                )}
-                <span
-                  className={cn(
-                    "flex size-5 shrink-0 items-center justify-center rounded-full border",
-                    isSelected
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-input",
-                  )}
-                >
-                  {isSelected && <CheckIcon className="size-3" />}
-                </span>
-              </button>
-            );
-          })}
-          {list.length === 0 && !canTypeName && (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {status === "loading"
-                ? "Loading employees from HRIS…"
-                : status === "error"
-                  ? "Couldn't reach the HRIS employee directory. Type the person's full name above."
-                  : employees.length
-                    ? "No employees match your search."
-                    : "No employees found in HRIS. Type the person's full name above."}
-            </p>
-          )}
-        </div>
+        <EmployeePickList
+          employees={employees}
+          status={status}
+          query={query}
+          onQueryChange={setQuery}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          heldBy={heldBy}
+          noun={noun}
+        />
 
         {manualSelected && (
           <div className="flex flex-col gap-1.5">

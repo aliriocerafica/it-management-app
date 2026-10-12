@@ -141,7 +141,7 @@ async function dtrFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T
 }
 
-function conditionLabel(value: string) {
+export function conditionLabel(value: string) {
   return value.charAt(0) + value.slice(1).toLowerCase()
 }
 

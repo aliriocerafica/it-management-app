@@ -43,13 +43,20 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  nested = false,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  // For a dialog opened on top of another: nested dialogs get no backdrop by
+  // default, so force a darker one to dim the dialog underneath.
+  nested?: boolean
 }) {
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay
+        forceRender={nested}
+        className={nested ? "bg-black/40" : undefined}
+      />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(

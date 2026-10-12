@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CheckIcon, PlusIcon } from "lucide-react";
 
+import { AssignmentFields } from "@/components/assignment-fields";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -449,32 +450,11 @@ export function AddLaptopDialog({
 
           <FormSection title={editing ? "Purchase" : "Assignment & purchase"}>
             {!editing && (
-              <>
-                <FormField label="Status" htmlFor="status">
-                  <select
-                    id="status"
-                    name="status"
-                    defaultValue="Vacant"
-                    className={selectClass}
-                  >
-                    {statuses.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
-                <FormField label="Handler" htmlFor="handler" optional>
-                  <Input id="handler" name="handler" placeholder="Full name" />
-                </FormField>
-                <FormField label="Department" htmlFor="department" optional>
-                  <Input
-                    id="department"
-                    name="department"
-                    placeholder="e.g. Engineering"
-                  />
-                </FormField>
-              </>
+              <AssignmentFields
+                statuses={statuses}
+                holders={laptops}
+                noun="laptop"
+              />
             )}
             <FormField label="Purchase date" htmlFor="purchaseDate">
               <Input

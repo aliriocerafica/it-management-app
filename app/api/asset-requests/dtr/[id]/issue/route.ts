@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { withRequestEmail } from "@/lib/asset-request-notify"
 import { verifySession } from "@/lib/auth/session"
 import {
+  conditionLabel,
   dtrIssueConditions,
   issueDtrAssetRequest,
   type DtrIssueCondition,
@@ -46,7 +47,15 @@ export async function POST(
         resolutionNote:
           saved.resolutionNote ?? `Issued ${serialNumber}.`,
       },
-      "completed",
+      "issued",
+      [
+        { label: "Item", value: saved.assetType },
+        { label: "Serial number", value: serialNumber },
+        {
+          label: "Condition",
+          value: conditionLabel(conditionIssued as DtrIssueCondition),
+        },
+      ],
     )
     revalidatePath("/dashboard/requests")
     return NextResponse.json(payload)

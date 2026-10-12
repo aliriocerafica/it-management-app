@@ -8,6 +8,7 @@ import {
   FormSection,
   toIsoDate,
 } from "@/components/add-laptop-dialog";
+import { AssignmentFields } from "@/components/assignment-fields";
 import { FormSelect } from "@/components/form-select";
 import { Button } from "@/components/ui/button";
 import {
@@ -418,41 +419,12 @@ export function AddAccessoryDialog({
 
           <FormSection title={editing ? "Purchase" : "Assignment & purchase"}>
             {!editing && (
-              <>
-                <FormField label="Status" htmlFor="status">
-                  <FormSelect
-                    id="status"
-                    name="status"
-                    defaultValue="Vacant"
-                    options={addStatuses.map((status) => ({
-                      value: status,
-                      label: status,
-                    }))}
-                  />
-                </FormField>
-                {!installs && (
-                  <>
-                    <FormField label="Handler" htmlFor="handler" optional>
-                      <Input
-                        id="handler"
-                        name="handler"
-                        placeholder="Full name"
-                      />
-                    </FormField>
-                    <FormField
-                      label="Department"
-                      htmlFor="department"
-                      optional
-                    >
-                      <Input
-                        id="department"
-                        name="department"
-                        placeholder="e.g. Engineering"
-                      />
-                    </FormField>
-                  </>
-                )}
-              </>
+              <AssignmentFields
+                statuses={addStatuses}
+                holders={items}
+                noun={noun}
+                showHandler={!installs}
+              />
             )}
             <FormField label="Purchase date" htmlFor="purchaseDate">
               <Input

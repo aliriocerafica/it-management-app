@@ -2,6 +2,7 @@ import type { AssetRequest } from "@/lib/asset-requests"
 import { EmailSendError, sendEmail } from "@/lib/email/brevo"
 import {
   assetRequestStatusEmail,
+  type RequestEmailDetail,
   type RequestEmailKind,
 } from "@/lib/email/templates"
 import { lookupDtrEmployeeEmail } from "@/lib/dtr"
@@ -51,6 +52,7 @@ function emailKindForStatus(
 export async function notifyAssetRequest(
   request: AssetRequest,
   kind: RequestEmailKind,
+  details?: RequestEmailDetail[],
 ) {
   if (kind === "denied" && !request.resolutionNote?.trim()) return
 
@@ -69,7 +71,10 @@ export async function notifyAssetRequest(
     note:
       kind === "pending"
         ? request.reason
-        : request.resolutionNote,
+        : kind === "issued"
+          ? null
+          : request.resolutionNote,
+    details,
   })
 
   const itEmails = await listActiveItEmails()
@@ -88,9 +93,10 @@ export type AssetRequestSave = AssetRequest & { emailWarning?: string }
 export async function withRequestEmail(
   request: AssetRequest,
   kind: RequestEmailKind,
+  details?: RequestEmailDetail[],
 ): Promise<AssetRequestSave> {
   try {
-    await notifyAssetRequest(request, kind)
+    await notifyAssetRequest(request, kind, details)
     return request
   } catch (error) {
     console.error(`[email:error] ${kind} email failed`, error)

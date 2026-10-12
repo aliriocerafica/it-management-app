@@ -117,7 +117,14 @@ function assetLabel(quantity: number, assetType: string) {
   return quantity > 1 ? `${quantity}× ${assetType}` : assetType
 }
 
-export type RequestEmailKind = "pending" | "approved" | "denied" | "completed"
+export type RequestEmailKind =
+  | "pending"
+  | "approved"
+  | "denied"
+  | "completed"
+  | "issued"
+
+export type RequestEmailDetail = { label: string; value: string }
 
 function lordIcon(src: string, alt: string) {
   return `<img src="${src}" width="72" height="72" alt="${escapeHtml(alt)}" style="display:block;margin:0 auto;border:0;width:72px;height:72px;" />`
@@ -153,6 +160,15 @@ const requestEmailCopy: Record<
     title: "Request completed",
     subject: "Request completed",
     subtitle: "your request for",
+  },
+  issued: {
+    icon: lordIcon(
+      "https://media.lordicon.com/icons/system/outline/24-check-circle.gif",
+      "Asset issued",
+    ),
+    title: "Asset issued",
+    subject: "Asset issued",
+    subtitle: "your",
   },
   denied: {
     icon: lordIcon(
@@ -242,6 +258,7 @@ export function assetRequestStatusEmail(kind: RequestEmailKind, input: {
   assetType: string
   quantity: number
   note?: string | null
+  details?: RequestEmailDetail[]
 }): { subject: string; html: string; text: string } {
   const copy = requestEmailCopy[kind]
   const asset = assetLabel(input.quantity, input.assetType)
@@ -253,16 +270,30 @@ export function assetRequestStatusEmail(kind: RequestEmailKind, input: {
         ? " was approved."
         : kind === "completed"
           ? " is complete."
-          : " was denied."
+          : kind === "issued"
+            ? " has been issued to you."
+            : " was denied."
   const subtitle = `Hi ${name}, ${copy.subtitle} ${asset}${ending}`
   const note = input.note?.trim()
+  const details = (input.details ?? []).filter((detail) => detail.value.trim())
+  const body = [
+    details
+      .map(
+        (detail) =>
+          `<span style="color:#8a8a8a;">${escapeHtml(detail.label)}:</span> ${escapeHtml(detail.value)}`,
+      )
+      .join("<br>"),
+    note ? escapeHtml(note).replace(/\n/g, "<br>") : "",
+  ]
+    .filter(Boolean)
+    .join("<br><br>")
   return {
     subject: `${copy.subject}: ${asset}`,
     html: simpleEmail({
       icon: copy.icon,
       title: copy.title,
       subtitle: escapeHtml(subtitle),
-      body: note ? escapeHtml(note).replace(/\n/g, "<br>") : undefined,
+      body: body || undefined,
       button: {
         label: "Email IT",
         href: "mailto:it@ardentparalegal.com",
@@ -273,6 +304,9 @@ export function assetRequestStatusEmail(kind: RequestEmailKind, input: {
     text: [
       subtitle,
       "",
+      ...(details.length > 0
+        ? [...details.map((detail) => `${detail.label}: ${detail.value}`), ""]
+        : []),
       ...(note ? [note, ""] : []),
       "Questions? Message IT on Slack or it@ardentparalegal.com",
     ].join("\n"),
