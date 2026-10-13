@@ -2,7 +2,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark, .dark *, .neutral, .neutral *, .authkit, .authkit *, .authkit-sharp, .authkit-sharp *));
+@custom-variant authkit (&:is(.authkit *, .authkit-sharp *));
 
 @theme inline {
   --color-background: var(--background);
@@ -121,6 +122,121 @@
   --sidebar-ring: #5b8def;
 }
 
+.neutral {
+  color-scheme: dark;
+  --background: #2b2b2b;
+  --foreground: #f4f4f5;
+  --card: #3a3a3a;
+  --card-foreground: #f4f4f5;
+  --popover: #3a3a3a;
+  --popover-foreground: #f4f4f5;
+  --primary: #3e7bfa;
+  --primary-foreground: #ffffff;
+  --secondary: #454545;
+  --secondary-foreground: #f4f4f5;
+  --muted: #454545;
+  --muted-foreground: #b4b4b4;
+  --accent: #454545;
+  --accent-foreground: #f4f4f5;
+  --destructive: #ff5c5c;
+  --border: rgb(255 255 255 / 12%);
+  --input: rgb(255 255 255 / 16%);
+  --ring: #5b8def;
+  --chart-1: #5b8def;
+  --chart-2: #39d98a;
+  --chart-3: #fdac42;
+  --chart-4: #73dfe7;
+  --chart-5: #ac5dd9;
+  --sidebar: #242424;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #3e7bfa;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #3a3a3a;
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: rgb(255 255 255 / 10%);
+  --sidebar-ring: #5b8def;
+}
+
+.authkit-light,
+.authkit {
+  --radius: 0.5rem;
+}
+
+.authkit-sharp {
+  --radius: 0;
+}
+
+.authkit-light {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #111113;
+  --card: #ffffff;
+  --card-foreground: #111113;
+  --popover: #ffffff;
+  --popover-foreground: #111113;
+  --primary: #111113;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #111113;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #111113;
+  --destructive: #e5484d;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #111113;
+  --chart-1: #111113;
+  --chart-2: #3e63dd;
+  --chart-3: #12a594;
+  --chart-4: #e54d2e;
+  --chart-5: #8e4ec6;
+  --sidebar: #fafafa;
+  --sidebar-foreground: #111113;
+  --sidebar-primary: #111113;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #111113;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #111113;
+}
+
+.authkit,
+.authkit-sharp {
+  color-scheme: dark;
+  --background: #0c0c0d;
+  --foreground: #eeeeef;
+  --card: #18181b;
+  --card-foreground: #eeeeef;
+  --popover: #18181b;
+  --popover-foreground: #eeeeef;
+  --primary: #eeeeef;
+  --primary-foreground: #0c0c0d;
+  --secondary: #27272a;
+  --secondary-foreground: #eeeeef;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #eeeeef;
+  --destructive: #e5484d;
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 14%);
+  --ring: #eeeeef;
+  --chart-1: #eeeeef;
+  --chart-2: #3e63dd;
+  --chart-3: #12a594;
+  --chart-4: #e54d2e;
+  --chart-5: #8e4ec6;
+  --sidebar: #09090b;
+  --sidebar-foreground: #eeeeef;
+  --sidebar-primary: #eeeeef;
+  --sidebar-primary-foreground: #0c0c0d;
+  --sidebar-accent: #18181b;
+  --sidebar-accent-foreground: #eeeeef;
+  --sidebar-border: rgb(255 255 255 / 10%);
+  --sidebar-ring: #eeeeef;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -171,7 +287,12 @@
   }
 }
 /* Light sweep across the signed-in user's profile picture: a soft diagonal
-   band of light crosses it, then rests before the next pass. */
+   band of light crosses it, then rests before the next pass. The avatar is
+   its own stacking context so the band stays under a button on its corner. */
+.avatar-shine {
+  isolation: isolate;
+}
+
 .avatar-shine::before {
   content: "";
   position: absolute;
@@ -354,6 +475,35 @@
   }
 }
 
+.theme-shift-star-up {
+  display: none;
+  position: absolute;
+  z-index: 1;
+  border-radius: 9999px;
+  background: #e8f0ff;
+  box-shadow: 0 0 6px rgb(186 215 247 / 0.9);
+  opacity: 0;
+}
+
+.theme-shift[data-to="dark"] .theme-shift-star-up {
+  display: block;
+  animation: theme-shift-star-up 1.6s ease-out both;
+}
+
+@keyframes theme-shift-star-up {
+  0% {
+    opacity: 0;
+    transform: translateY(18vh);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.15;
+    transform: translateY(-55vh);
+  }
+}
+
 /* A satellite gliding across the night sky: a grey body with a red
    light, and a blue solar panel on each side. */
 .theme-shift-satellite {
@@ -450,24 +600,6 @@
 .theme-shift[data-to="light"] .theme-shift-cloud {
   display: block;
   animation: theme-shift-cloud 1.2s 0.8s ease-out both;
-}
-
-.theme-shift-cloud:nth-of-type(6) {
-  top: 20%;
-  left: 10%;
-}
-
-.theme-shift-cloud:nth-of-type(7) {
-  top: 32%;
-  left: 70%;
-  scale: 0.8;
-  --drift: -7vw;
-}
-
-.theme-shift-cloud:nth-of-type(8) {
-  top: 10%;
-  left: 52%;
-  scale: 0.55;
 }
 
 @keyframes theme-shift-cloud {

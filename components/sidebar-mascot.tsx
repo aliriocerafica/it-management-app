@@ -114,7 +114,9 @@ export function MascotStill({
 }) {
   const chosen = useMascot()
   if (!name && chosen === "profile" && user) {
-    return <ProfileAvatar user={user} className={className} />
+    return (
+      <ProfileAvatar user={user} className={cn("avatar-shine", className)} />
+    )
   }
   const shown = name ?? (chosen === "profile" ? defaultMascot : chosen)
   return (
@@ -140,7 +142,7 @@ export function SidebarMascot({ user }: { user: ProfileUser }) {
   return (
     <div className="relative shrink-0">
       {chosen === "profile" ? (
-        <ProfileAvatar user={user} className="size-11 text-base" />
+        <ProfileAvatar user={user} className="avatar-shine size-11 text-base" />
       ) : (
         <Mascot
           key={chosen}

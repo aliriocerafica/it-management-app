@@ -1,13 +1,14 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react"
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  LabelList,
   Line,
   LineChart,
   Pie,
@@ -28,12 +29,14 @@ import {
   HeadphonesIcon,
   LaptopIcon,
   MemoryStickIcon,
+  MessageCircleIcon,
   MouseIcon,
   PlugIcon,
   PackageIcon,
   PieChartIcon,
   ShieldCheckIcon,
   TrendingUpIcon,
+  TriangleAlertIcon,
   TvMinimalIcon,
   UserCheckIcon,
   UsersIcon,
@@ -47,6 +50,7 @@ import type { Accessory, AccessoryKind } from "@/lib/accessories"
 import { accessoryConfigs } from "@/lib/accessories"
 import {
   grades,
+  gradeHex,
   gradeInfo,
   gradeLaptop,
   average,
@@ -62,6 +66,7 @@ import {
   type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops"
+import { useAnimatedNumber } from "@/lib/use-animated-number"
 import { useToday } from "@/lib/use-today"
 import type { SessionUser } from "@/lib/auth/dto"
 import type { UserDto } from "@/lib/user-repository"
@@ -112,12 +117,23 @@ const warrantyStyles = {
   Expired: { dot: "bg-red-500", text: "text-red-600 dark:text-red-400" },
 } as const
 
-// Reuse the same semantic colors as the status dots/badges elsewhere in the app.
 const statusChartColors: Record<LaptopStatus, string> = {
   "In use": "var(--color-emerald-500)",
   Vacant: "var(--color-sky-500)",
   "In repair": "var(--color-amber-500)",
   Retired: "var(--color-red-500)",
+}
+
+const shortCategory: Record<string, string> = {
+  Laptops: "Laptops",
+  Headsets: "Headsets",
+  Mice: "Mice",
+  Keyboards: "Keys",
+  Monitors: "Monitors",
+  "Laptop bags": "Bags",
+  Batteries: "Batteries",
+  "RAM modules": "RAM",
+  Chargers: "Chargers",
 }
 
 function TooltipBox({ children }: { children: ReactNode }) {
@@ -128,12 +144,27 @@ function TooltipBox({ children }: { children: ReactNode }) {
   )
 }
 
-function TooltipRow({ color, label, value }: { color?: string; label: string; value: ReactNode }) {
+function TooltipRow({
+  color,
+  label,
+  value,
+}: {
+  color?: string
+  label: string
+  value: ReactNode
+}) {
   return (
     <div className="flex items-center gap-2">
-      {color && <span className="size-2.5 shrink-0 rounded-[2px]" style={{ background: color }} />}
+      {color && (
+        <span
+          className="size-2.5 shrink-0 rounded-[2px]"
+          style={{ background: color }}
+        />
+      )}
       <span className="text-muted-foreground">{label}</span>
-      <span className="ml-auto pl-3 font-mono font-medium text-foreground tabular-nums">{value}</span>
+      <span className="ml-auto pl-3 font-mono font-medium text-foreground tabular-nums">
+        {value}
+      </span>
     </div>
   )
 }
@@ -162,25 +193,115 @@ function Tile({
   return <div className={classes}>{children}</div>
 }
 
-function TileHeader({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+function TileHeader({
+  icon: Icon,
+  label,
+  hint,
+}: {
+  icon: LucideIcon
+  label: string
+  hint?: ReactNode
+}) {
   return (
-    <span className="flex items-center gap-2 text-xs tracking-wide text-muted-foreground">
-      <Icon className="size-3.5" />
-      {label}
-    </span>
+    <div className="flex items-start justify-between gap-3">
+      <span className="flex items-center gap-2 text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+        <Icon className="size-3.5" />
+        {label}
+      </span>
+      {hint && (
+        <span className="text-[11px] text-muted-foreground tabular-nums">{hint}</span>
+      )}
+    </div>
+  )
+}
+
+function AnimatedNumber({
+  value,
+  delay = 0,
+  duration = 900,
+  suffix = "",
+}: {
+  value: number
+  delay?: number
+  duration?: number
+  suffix?: string
+}) {
+  const n = useAnimatedNumber(value, { duration, delay })
+  return (
+    <>
+      {Math.round(n).toLocaleString()}
+      {suffix}
+    </>
   )
 }
 
 function Meter({ value, className }: { value: number; className?: string }) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true))
+    return () => cancelAnimationFrame(id)
+  }, [])
   const pct = Math.max(0, Math.min(100, Math.round(value * 100)))
+  const reduce =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
       <div
-        className={cn("h-full rounded-full bg-foreground", className)}
-        style={{ width: `${pct}%` }}
+        className={cn("h-full rounded-full bg-primary", className)}
+        style={{
+          width: ready || reduce ? `${pct}%` : "0%",
+          transition: reduce
+            ? undefined
+            : "width 0.9s cubic-bezier(0.16, 1, 0.3, 1)",
+        }}
       />
     </div>
   )
+}
+
+function MiniSpark({
+  data,
+  color = "var(--color-chart-1)",
+}: {
+  data: { value: number }[]
+  color?: string
+}) {
+  if (data.length < 2) return null
+  return (
+    <ChartContainer
+      config={{ value: { label: "Trend", color } }}
+      className="aspect-auto h-9 w-full"
+    >
+      <LineChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+        <Line
+          dataKey="value"
+          type="monotone"
+          stroke={color}
+          strokeWidth={1.5}
+          dot={false}
+          animationDuration={900}
+        />
+      </LineChart>
+    </ChartContainer>
+  )
+}
+
+type Attention = {
+  href: string
+  tag: string
+  title: string
+  reason: string
+  tone: "red" | "amber" | "sky"
+}
+
+type Activity = {
+  key: string
+  href: string
+  tag: string
+  title: string
+  detail: string
+  when: string
 }
 
 export function DashboardOverview({
@@ -195,6 +316,8 @@ export function DashboardOverview({
   users: UserDto[]
 }) {
   const today = useToday()
+  const growthFillId = useId().replace(/:/g, "")
+  const assignFillId = useId().replace(/:/g, "")
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([])
   const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<LaptopStatus[]>([])
@@ -204,13 +327,16 @@ export function DashboardOverview({
     () =>
       [
         ...new Set(
-          [...allLaptops, ...allAccessories].map((item) => item.department ?? UNASSIGNED),
+          [...allLaptops, ...allAccessories].map(
+            (item) => item.department ?? UNASSIGNED,
+          ),
         ),
       ].sort(),
     [allLaptops, allAccessories],
   )
   const brands = useMemo(
-    () => [...new Set([...allLaptops, ...allAccessories].map((item) => item.brand))].sort(),
+    () =>
+      [...new Set([...allLaptops, ...allAccessories].map((item) => item.brand))].sort(),
     [allLaptops, allAccessories],
   )
 
@@ -225,7 +351,6 @@ export function DashboardOverview({
       ),
     [allAccessories, departmentFilter, brandFilter, statusFilter],
   )
-  // Grade only exists for laptops, so it narrows laptops and leaves accessories alone.
   const laptops = useMemo(
     () =>
       allLaptops.filter(
@@ -264,33 +389,37 @@ export function DashboardOverview({
     ) as Record<AccessoryKind, StatusCounts>),
   }
 
-  const categories = (Object.keys(accessoryConfigs) as AccessoryKind[]).map((kind) => ({
-    kind,
-    title: accessoryConfigs[kind].plural,
-    href: accessoryRoutes[kind],
-    icon: accessoryIcons[kind],
-    counts: summary[kind],
-  }))
+  const categories = (Object.keys(accessoryConfigs) as AccessoryKind[]).map(
+    (kind) => ({
+      kind,
+      title: accessoryConfigs[kind].plural,
+      href: accessoryRoutes[kind],
+      icon: accessoryIcons[kind],
+      counts: summary[kind],
+    }),
+  )
 
   const vacantTotal =
-    summary.laptops.Vacant +
-    categories.reduce((sum, c) => sum + c.counts.Vacant, 0)
+    summary.laptops.Vacant + categories.reduce((sum, c) => sum + c.counts.Vacant, 0)
   const repairTotal =
     summary.laptops["In repair"] +
     categories.reduce((sum, c) => sum + c.counts["In repair"], 0)
   const deviceTotal =
     summary.laptops.total + categories.reduce((sum, c) => sum + c.counts.total, 0)
 
-  // Fleet health, reusing the exact grading logic from the analytics page.
   const graded = useMemo(() => {
     if (!today) return []
-    return laptops.filter((l) => l.status !== "Retired").map((l) => gradeLaptop(l, today))
+    return laptops
+      .filter((l) => l.status !== "Retired")
+      .map((l) => gradeLaptop(l, today))
   }, [today, laptops])
-  const fleetScore = graded.length ? Math.round(average(graded.map((g) => g.score))) : null
-  const dueForReplacement = graded.filter((g) => g.grade === "D" || g.grade === "F").length
+  const fleetScore = graded.length
+    ? Math.round(average(graded.map((g) => g.score)))
+    : null
+  const dueForReplacement = graded.filter(
+    (g) => g.grade === "D" || g.grade === "F",
+  ).length
 
-  // Warranty, across active (non-retired) laptops only — matches the fleet
-  // health and replacement stats above it, and the Analytics page's count.
   const warrantyCounts = useMemo(() => {
     const counts = { Active: 0, Expiring: 0, Expired: 0 }
     if (!today) return counts
@@ -301,7 +430,6 @@ export function DashboardOverview({
     return counts
   }, [today, laptops])
 
-  // Assets released (assigned to a handler) so far this calendar month.
   const releasedThisMonth = useMemo(() => {
     if (!today) return 0
     let count = 0
@@ -309,7 +437,10 @@ export function DashboardOverview({
       for (const entry of item.history) {
         if (!entry.handler) continue
         const from = parseDate(entry.from)
-        if (from.getFullYear() === today.getFullYear() && from.getMonth() === today.getMonth()) {
+        if (
+          from.getFullYear() === today.getFullYear() &&
+          from.getMonth() === today.getMonth()
+        ) {
           count++
         }
       }
@@ -317,8 +448,6 @@ export function DashboardOverview({
     return count
   }, [today, laptops, accessories])
 
-  // Remote access: laptops assigned to someone (matches the Remote Access page,
-  // which is built from employees, so Vacant/Retired laptops never appear there).
   const assignedLaptops = laptops.filter(
     (l) => l.status !== "Vacant" && l.status !== "Retired",
   )
@@ -327,60 +456,279 @@ export function DashboardOverview({
     ? remoteConfigured / assignedLaptops.length
     : 0
 
-  // Departments, across laptops and accessories combined.
+  const missingChargers = laptops.filter(
+    (laptop) =>
+      laptop.status !== "Retired" && laptop.charger.condition === "Missing",
+  )
+
   const departmentCounts = new Map<string, number>()
   for (const item of [...laptops, ...accessories]) {
     if (!item.department) continue
-    departmentCounts.set(item.department, (departmentCounts.get(item.department) ?? 0) + 1)
+    departmentCounts.set(
+      item.department,
+      (departmentCounts.get(item.department) ?? 0) + 1,
+    )
   }
   const topDepartments = [...departmentCounts.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-  const maxDeptCount = topDepartments[0]?.[1] ?? 1
+    .slice(0, 6)
+  const departmentChartData = topDepartments.map(([department, value]) => ({
+    department,
+    value,
+  }))
+
+  const brandCounts = new Map<string, number>()
+  for (const laptop of laptops) {
+    brandCounts.set(laptop.brand, (brandCounts.get(laptop.brand) ?? 0) + 1)
+  }
+  const brandChartData = [...brandCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([brand, value]) => ({ brand, value }))
 
   const activeUsers = users.filter((u) => u.isActive)
   const adminUsers = users.filter((u) => u.role === "ADMIN")
 
-  // Cumulative devices acquired, one point per month for the last 12 months.
   const growthData = useMemo(() => {
     if (!today) return []
     const items = [...laptops, ...accessories]
-    const points: { label: string; total: number }[] = []
+    const points: { label: string; total: number; assigned: number }[] = []
     for (let offset = -11; offset <= 0; offset++) {
       const monthEnd = new Date(today.getFullYear(), today.getMonth() + offset + 1, 0)
-      const total = items.filter((item) => parseDate(item.purchaseDate) <= monthEnd).length
-      points.push({ label: monthEnd.toLocaleDateString("en-GB", { month: "short" }), total })
+      const monthStart = new Date(today.getFullYear(), today.getMonth() + offset, 1)
+      const total = items.filter(
+        (item) => parseDate(item.purchaseDate) <= monthEnd,
+      ).length
+      let assigned = 0
+      for (const item of items) {
+        for (const entry of item.history) {
+          if (!entry.handler) continue
+          const from = parseDate(entry.from)
+          if (from >= monthStart && from <= monthEnd) assigned++
+        }
+      }
+      points.push({
+        label: monthEnd.toLocaleDateString("en-GB", { month: "short" }),
+        total,
+        assigned,
+      })
     }
     return points
   }, [today, laptops, accessories])
-  const growthChartConfig = { total: { label: "Devices" } } satisfies ChartConfig
 
-  // Devices by status, across laptops and every accessory category.
+  const assignSpark = growthData.slice(-6).map((row) => ({ value: row.assigned }))
+  const vacantSpark = useMemo(() => {
+    if (!today) return []
+    return growthData.slice(-6).map((row, i, rows) => ({
+      value: i === rows.length - 1 ? vacantTotal : Math.max(0, row.total - row.assigned),
+    }))
+  }, [today, growthData, vacantTotal])
+
+  const growthChartConfig = {
+    total: { label: "On hand", color: "var(--color-chart-1)" },
+    assigned: { label: "Assigned", color: "var(--color-chart-2)" },
+  } satisfies ChartConfig
+
   const statusTotals = statuses.reduce(
     (acc, status) => {
-      acc[status] = summary.laptops[status] + categories.reduce((s, c) => s + c.counts[status], 0)
+      acc[status] =
+        summary.laptops[status] + categories.reduce((s, c) => s + c.counts[status], 0)
       return acc
     },
     {} as Record<LaptopStatus, number>,
   )
   const statusPieData = statuses
-    .map((status) => ({ status, value: statusTotals[status], fill: statusChartColors[status] }))
+    .map((status) => ({
+      status,
+      value: statusTotals[status],
+      fill: statusChartColors[status],
+    }))
     .filter((row) => row.value > 0)
   const statusChartConfig = Object.fromEntries(
-    statuses.map((status) => [status, { label: status, color: statusChartColors[status] }]),
+    statuses.map((status) => [
+      status,
+      { label: status, color: statusChartColors[status] },
+    ]),
   ) satisfies ChartConfig
 
-  // Devices by category (laptops + each accessory kind).
-  const categoryBarData = [
-    { label: "Laptops", value: summary.laptops.total },
-    ...categories.map((c) => ({ label: c.title, value: c.counts.total })),
+  const stackedCategoryData = [
+    {
+      label: "Laptops",
+      ...Object.fromEntries(statuses.map((status) => [status, summary.laptops[status]])),
+    },
+    ...categories.map((c) => ({
+      label: shortCategory[c.title] ?? c.title,
+      ...Object.fromEntries(statuses.map((status) => [status, c.counts[status]])),
+    })),
   ]
-  const categoryChartConfig = { value: { label: "Devices" } } satisfies ChartConfig
+  const stackedChartConfig = Object.fromEntries(
+    statuses.map((status) => [
+      status,
+      { label: status, color: statusChartColors[status] },
+    ]),
+  ) satisfies ChartConfig
+
+  const gradeChartData = grades.map((grade) => ({
+    grade: gradeInfo[grade].label,
+    key: grade,
+    value: graded.filter((g) => g.grade === grade).length,
+    fill: gradeHex[grade].light,
+  }))
+  const gradeChartConfig = Object.fromEntries(
+    grades.map((grade) => [
+      grade,
+      { label: gradeInfo[grade].label, color: gradeHex[grade].light },
+    ]),
+  ) satisfies ChartConfig
+
+  const warrantyPieData = (
+    [
+      { state: "Active", value: warrantyCounts.Active, fill: "var(--color-emerald-500)" },
+      { state: "Expiring", value: warrantyCounts.Expiring, fill: "var(--color-amber-500)" },
+      { state: "Expired", value: warrantyCounts.Expired, fill: "var(--color-red-500)" },
+    ] as const
+  ).filter((row) => row.value > 0)
+
+  const attention = useMemo(() => {
+    if (!today) return []
+    const rows: Attention[] = []
+    for (const laptop of laptops) {
+      if (laptop.status === "In repair") {
+        rows.push({
+          href: "/dashboard/laptops",
+          tag: laptop.assetTag,
+          title: `${laptop.brand} ${laptop.model}`,
+          reason: laptop.repairIssue?.trim() || "In repair",
+          tone: "amber",
+        })
+      }
+      if (laptop.status !== "Retired" && laptop.charger.condition === "Missing") {
+        rows.push({
+          href: "/dashboard/laptops",
+          tag: laptop.assetTag,
+          title: `${laptop.brand} ${laptop.model}`,
+          reason: "Charger missing",
+          tone: "red",
+        })
+      }
+      if (laptop.status !== "Retired") {
+        const warranty = warrantyInfo(laptop, today)
+        if (warranty.state === "Expired") {
+          rows.push({
+            href: "/dashboard/laptops",
+            tag: laptop.assetTag,
+            title: `${laptop.brand} ${laptop.model}`,
+            reason: "Warranty expired",
+            tone: "red",
+          })
+        } else if (warranty.state === "Expiring") {
+          rows.push({
+            href: "/dashboard/analytics",
+            tag: laptop.assetTag,
+            title: `${laptop.brand} ${laptop.model}`,
+            reason: "Warranty ends within 90 days",
+            tone: "amber",
+          })
+        }
+        const gradedLaptop = gradeLaptop(laptop, today)
+        if (gradedLaptop.grade === "F" || gradedLaptop.grade === "D") {
+          rows.push({
+            href: "/dashboard/analytics",
+            tag: laptop.assetTag,
+            title: `${laptop.brand} ${laptop.model}`,
+            reason: `${gradeInfo[gradedLaptop.grade].label} · ${gradeInfo[gradedLaptop.grade].action}`,
+            tone: gradedLaptop.grade === "F" ? "red" : "amber",
+          })
+        }
+      }
+    }
+    const seen = new Set<string>()
+    return rows
+      .filter((row) => {
+        const key = `${row.tag}:${row.reason}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .slice(0, 8)
+  }, [today, laptops])
+
+  const activity = useMemo(() => {
+    const rows: Activity[] = []
+    for (const laptop of laptops) {
+      for (const entry of laptop.history) {
+        rows.push({
+          key: `${laptop.id}:${entry.from}:${entry.note ?? ""}`,
+          href: "/dashboard/laptops",
+          tag: laptop.assetTag,
+          title: `${laptop.brand} ${laptop.model}`,
+          detail: entry.note?.trim()
+            || (entry.handler ? `Assigned to ${entry.handler}` : "With IT"),
+          when: entry.from,
+        })
+      }
+    }
+    for (const item of accessories) {
+      const href = accessoryRoutes[item.kind]
+      for (const entry of item.history) {
+        rows.push({
+          key: `${item.id}:${entry.from}:${entry.note ?? ""}`,
+          href,
+          tag: item.assetTag,
+          title: `${item.brand} ${item.model}`,
+          detail: entry.note?.trim()
+            || (entry.handler ? `Assigned to ${entry.handler}` : "Back in stock"),
+          when: entry.from,
+        })
+      }
+    }
+    return rows
+      .sort((a, b) => (a.when < b.when ? 1 : a.when > b.when ? -1 : 0))
+      .slice(0, 8)
+  }, [laptops, accessories])
+
+  const firstName = user.name.split(" ")[0]
+  const inUseShare = deviceTotal ? statusTotals["In use"] / deviceTotal : 0
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="mb-2 flex flex-wrap items-end justify-between gap-3">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">Dashboard</h1>
+    <div className="flex min-w-0 flex-col gap-5">
+      <div className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">
+            {today ? formatDate(today) : "\u00a0"}
+          </p>
+          <h1 className="flex flex-wrap items-center gap-2.5 font-heading text-2xl font-semibold tracking-tight">
+            Dashboard
+            <span className="relative -translate-y-1 inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-card py-1.5 pr-3.5 pl-3.5 text-sm font-normal tracking-normal text-muted-foreground shadow-sm">
+              <span
+                aria-hidden
+                className="absolute top-1/2 -left-1 size-2 -translate-y-1/2 rotate-45 border-b border-l border-border bg-card"
+              />
+              <MessageCircleIcon className="size-3.5 shrink-0 text-primary" />
+              <span className="min-w-0 truncate">
+                Welcome back, {firstName}.{" "}
+                {hasFilters ? (
+                  <>
+                    <AnimatedNumber value={deviceTotal} /> of{" "}
+                    <AnimatedNumber
+                      value={allLaptops.length + allAccessories.length}
+                    />{" "}
+                    devices match these filters.
+                  </>
+                ) : (
+                  <>
+                    <AnimatedNumber value={deviceTotal} /> devices on hand ·{" "}
+                    <AnimatedNumber
+                      value={Math.round(inUseShare * 100)}
+                      suffix="%"
+                    />{" "}
+                    in use.
+                  </>
+                )}
+              </span>
+            </span>
+          </h1>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <FilterMenu
             label="Department"
@@ -421,271 +769,624 @@ export function DashboardOverview({
         </div>
       </div>
 
-      {/* Welcome + top-line counts */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile className="sm:col-span-2 lg:col-span-2">
-          <p className="text-sm text-muted-foreground">{today ? formatDate(today) : " "}</p>
-          <p className="font-heading text-xl font-semibold tracking-tight">
-            Welcome back, {user.name.split(" ")[0]}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Tile href="/dashboard/laptops">
+          <TileHeader icon={PackageIcon} label="Vacant stock" hint="Ready" />
+          <p className="text-3xl font-semibold tracking-tight tabular-nums">
+            <AnimatedNumber value={vacantTotal} delay={40} />
           </p>
-          <p className="text-sm text-muted-foreground">
-            {hasFilters
-              ? `${deviceTotal} of ${allLaptops.length + allAccessories.length} devices match these filters.`
-              : `${deviceTotal} devices tracked across the portal.`}
+          <MiniSpark data={vacantSpark} color="var(--color-sky-500)" />
+          <p className="text-xs text-muted-foreground">
+            <AnimatedNumber value={summary.laptops.Vacant} delay={40} /> laptops ·{" "}
+            <AnimatedNumber
+              value={vacantTotal - summary.laptops.Vacant}
+              delay={40}
+            />{" "}
+            accessories
           </p>
         </Tile>
         <Tile href="/dashboard/laptops">
-          <TileHeader icon={LaptopIcon} label="Vacant devices" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">{vacantTotal}</p>
-          <p className="text-sm text-muted-foreground">Ready to assign</p>
-        </Tile>
-        <Tile href="/dashboard/laptops">
-          <TileHeader icon={WrenchIcon} label="In repair" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">{repairTotal}</p>
-          <p className="text-sm text-muted-foreground">Out of circulation</p>
-        </Tile>
-      </div>
-
-      {/* Total assets and this month's activity */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Tile>
-          <TileHeader icon={PackageIcon} label="Total assets" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">{deviceTotal}</p>
-          <p className="text-sm text-muted-foreground">Laptops and accessories combined</p>
+          <TileHeader icon={WrenchIcon} label="In repair" hint="Out of use" />
+          <p className="text-3xl font-semibold tracking-tight tabular-nums">
+            <AnimatedNumber value={repairTotal} delay={120} />
+          </p>
+          <p className="text-xs text-muted-foreground">
+            <AnimatedNumber value={summary.laptops["In repair"]} delay={120} />{" "}
+            laptops waiting on a fix
+          </p>
         </Tile>
         <Tile>
           <TileHeader icon={UserCheckIcon} label="Released this month" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">{releasedThisMonth}</p>
-          <p className="text-sm text-muted-foreground">Assets assigned to staff since the 1st</p>
-        </Tile>
-      </div>
-
-      {/* Health, warranty, and remote access */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile href="/dashboard/analytics">
-          <TileHeader icon={ShieldCheckIcon} label="Fleet health score" />
           <p className="text-3xl font-semibold tracking-tight tabular-nums">
-            {fleetScore ?? "–"}
-            <span className="ml-1 text-sm font-normal text-muted-foreground">/ 100</span>
+            <AnimatedNumber value={releasedThisMonth} delay={200} />
           </p>
-          <p className="text-sm text-muted-foreground">
-            {fleetScore !== null ? gradeInfo[gradeForScore(fleetScore)].label : "No active laptops"}
-          </p>
+          <MiniSpark data={assignSpark} color="var(--color-chart-2)" />
+          <p className="text-xs text-muted-foreground">Assignments since the 1st</p>
         </Tile>
         <Tile href="/dashboard/analytics">
-          <TileHeader icon={WrenchIcon} label="Due for replacement" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">{dueForReplacement}</p>
-          <p className="text-sm text-muted-foreground">
-            Active Grade D or F laptops
-          </p>
-        </Tile>
-        <Tile href="/dashboard/laptops">
-          <TileHeader icon={ClockIcon} label="Warranty" />
-          <div className="flex flex-col gap-1 text-sm">
-            <span className={cn("flex items-center gap-1.5", warrantyStyles.Expiring.text)}>
-              <span className={cn("size-1.5 rounded-full", warrantyStyles.Expiring.dot)} />
-              {warrantyCounts.Expiring} expiring soon
-            </span>
-            <span className={cn("flex items-center gap-1.5", warrantyStyles.Expired.text)}>
-              <span className={cn("size-1.5 rounded-full", warrantyStyles.Expired.dot)} />
-              {warrantyCounts.Expired} expired
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Active laptops · soon means within 90 days
-          </p>
-        </Tile>
-        <Tile href="/dashboard/remote-access">
-          <TileHeader icon={WifiIcon} label="Remote access coverage" />
+          <TileHeader icon={ShieldCheckIcon} label="Fleet health" />
           <p className="text-3xl font-semibold tracking-tight tabular-nums">
-            {Math.round(remoteCoverage * 100)}%
+            {fleetScore === null ? (
+              "–"
+            ) : (
+              <AnimatedNumber value={fleetScore} delay={280} />
+            )}
+            <span className="ml-1 text-sm font-normal text-muted-foreground">
+              / 100
+            </span>
           </p>
-          <Meter value={remoteCoverage} />
           <p className="text-xs text-muted-foreground">
-            {remoteConfigured} of {assignedLaptops.length} assigned laptops configured
+            {fleetScore !== null ? (
+              <>
+                {gradeInfo[gradeForScore(fleetScore)].label} ·{" "}
+                <AnimatedNumber value={dueForReplacement} delay={280} /> due to
+                replace
+              </>
+            ) : (
+              "No active laptops"
+            )}
           </p>
         </Tile>
       </div>
 
-      {/* Inventory by category */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile href="/dashboard/laptops" className="sm:col-span-2 lg:col-span-2 lg:row-span-2">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
+        <Tile href="/dashboard/laptops" className="gap-1.5 p-2.5">
           <TileHeader icon={LaptopIcon} label="Laptops" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">
-            {summary.laptops.total}
+          <p className="text-lg font-semibold tracking-tight tabular-nums">
+            <AnimatedNumber value={summary.laptops.total} delay={360} />
           </p>
-          <Meter
-            value={summary.laptops.total ? summary.laptops["In use"] / summary.laptops.total : 0}
-          />
-          <div className="mt-1 flex flex-col gap-1.5 text-xs text-muted-foreground">
+          <div className="flex flex-wrap gap-x-1.5 text-[10px] text-muted-foreground">
             {statuses.map((status) => (
-              <span key={status} className="grid grid-cols-[auto_1.5rem_1fr] items-center gap-1.5">
-                <span className={cn("size-1.5 rounded-full", statusStyles[status].dot)} />
-                <span className="text-right font-medium text-foreground tabular-nums">
-                  {summary.laptops[status]}
-                </span>
-                {status.toLowerCase()}
+              <span key={status} className="flex items-center gap-1">
+                <span className={cn("size-1 rounded-full", statusStyles[status].dot)} />
+                <AnimatedNumber value={summary.laptops[status]} delay={360} />
               </span>
             ))}
           </div>
         </Tile>
-        {categories.map((category) => (
-          <Tile key={category.kind} href={category.href}>
+        {categories.map((category, i) => (
+          <Tile key={category.kind} href={category.href} className="gap-1.5 p-2.5">
             <TileHeader icon={category.icon} label={category.title} />
-            <p className="text-3xl font-semibold tracking-tight tabular-nums">
-              {category.counts.total}
+            <p className="text-lg font-semibold tracking-tight tabular-nums">
+              <AnimatedNumber
+                value={category.counts.total}
+                delay={400 + i * 50}
+              />
             </p>
-            <p className="text-sm text-muted-foreground">{category.counts.Vacant} vacant</p>
+            <p className="text-[10px] text-muted-foreground">
+              <AnimatedNumber
+                value={category.counts.Vacant}
+                delay={400 + i * 50}
+              />{" "}
+              vacant ·{" "}
+              <AnimatedNumber
+                value={category.counts["In use"]}
+                delay={400 + i * 50}
+              />{" "}
+              in use
+            </p>
           </Tile>
         ))}
       </div>
 
-      {/* Departments and portal users */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Tile>
-          <TileHeader icon={Building2Icon} label="Top departments by equipment" />
-          <div className="flex flex-col gap-2.5">
-            {topDepartments.length === 0 && (
-              <p className="text-sm text-muted-foreground">No department data yet.</p>
-            )}
-            {topDepartments.map(([department, count]) => (
-              <div key={department} className="flex items-center gap-3 text-sm">
-                <span className="w-28 shrink-0 truncate text-muted-foreground">{department}</span>
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-foreground"
-                    style={{ width: `${(count / maxDeptCount) * 100}%` }}
-                  />
-                </div>
-                <span className="w-6 shrink-0 text-right font-medium tabular-nums">{count}</span>
-              </div>
-            ))}
-          </div>
-        </Tile>
-        <Tile href="/dashboard/users">
-          <TileHeader icon={UsersIcon} label="Portal users" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">{users.length}</p>
-          <p className="text-sm text-muted-foreground">
-            {activeUsers.length} active · {adminUsers.length} admin
-            {adminUsers.length === 1 ? "" : "s"}
-          </p>
-        </Tile>
-      </div>
-
-      {/* Trends */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Tile className="lg:col-span-2">
-          <TileHeader icon={TrendingUpIcon} label="Inventory growth (12 months)" />
-          <ChartContainer config={growthChartConfig} className="aspect-auto h-56 w-full">
-            <LineChart data={growthData} margin={{ left: -16, right: 12, top: 8 }}>
+          <TileHeader
+            icon={TrendingUpIcon}
+            label="Inventory and assignments"
+            hint="Last 12 months"
+          />
+          <ChartContainer
+            config={growthChartConfig}
+            className="aspect-auto h-64 w-full"
+          >
+            <AreaChart data={growthData} margin={{ left: -12, right: 8, top: 8 }}>
+              <defs>
+                <linearGradient id={growthFillId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--color-chart-1)" stopOpacity={0.28} />
+                  <stop offset="95%" stopColor="var(--color-chart-1)" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id={assignFillId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--color-chart-2)" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="var(--color-chart-2)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid className="stroke-border" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />
-              <YAxis allowDecimals={false} tickLine={false} axisLine={false} tickMargin={4} width={28} />
-              <ChartTooltip
-                cursor={{ className: "stroke-foreground/30" }}
-                content={({ active, payload }) => {
-                  const row = payload?.[0]?.payload as { label: string; total: number } | undefined
-                  if (!active || !row) return null
-                  return (
-                    <TooltipBox>
-                      <div className="font-medium">{row.label}</div>
-                      <TooltipRow label="Devices" value={row.total} />
-                    </TooltipBox>
-                  )
-                }}
+              <XAxis
+                dataKey="label"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                fontSize={11}
               />
-              <Line
-                dataKey="total"
-                type="monotone"
-                stroke="var(--foreground)"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, strokeWidth: 2, className: "stroke-background" }}
-                isAnimationActive={false}
+              <YAxis
+                allowDecimals={false}
+                tickLine={false}
+                axisLine={false}
+                tickMargin={4}
+                width={32}
               />
-            </LineChart>
-          </ChartContainer>
-        </Tile>
-
-        <Tile>
-          <TileHeader icon={PieChartIcon} label="Devices by status" />
-          <ChartContainer config={statusChartConfig} className="aspect-auto h-40 w-full">
-            <PieChart>
               <ChartTooltip
+                cursor={{ className: "stroke-foreground/20" }}
                 content={({ active, payload }) => {
                   const row = payload?.[0]?.payload as
-                    | { status: LaptopStatus; value: number; fill: string }
+                    | { label: string; total: number; assigned: number }
                     | undefined
                   if (!active || !row) return null
                   return (
                     <TooltipBox>
-                      <TooltipRow color={row.fill} label={row.status} value={row.value} />
+                      <div className="font-medium">{row.label}</div>
+                      <TooltipRow
+                        color="var(--color-chart-1)"
+                        label="On hand"
+                        value={row.total}
+                      />
+                      <TooltipRow
+                        color="var(--color-chart-2)"
+                        label="Assigned that month"
+                        value={row.assigned}
+                      />
                     </TooltipBox>
                   )
                 }}
               />
-              <Pie
-                data={statusPieData}
-                dataKey="value"
-                nameKey="status"
-                innerRadius={38}
-                outerRadius={62}
-                paddingAngle={2}
-                isAnimationActive={false}
-              >
-                {statusPieData.map((row) => (
-                  <Cell key={row.status} fill={row.fill} />
-                ))}
-              </Pie>
-            </PieChart>
+              <Area
+                dataKey="total"
+                type="monotone"
+                stroke="var(--color-chart-1)"
+                strokeWidth={2}
+                fill={`url(#${growthFillId})`}
+                animationDuration={900}
+                animationBegin={200}
+              />
+              <Area
+                dataKey="assigned"
+                type="monotone"
+                stroke="var(--color-chart-2)"
+                strokeWidth={2}
+                fill={`url(#${assignFillId})`}
+                animationDuration={900}
+                animationBegin={280}
+              />
+            </AreaChart>
           </ChartContainer>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            {statusPieData.map((row) => (
-              <span key={row.status} className="flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full" style={{ background: row.fill }} />
-                {row.status} ({row.value})
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-[var(--color-chart-1)]" />
+              Devices on hand
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-[var(--color-chart-2)]" />
+              Assigned that month
+            </span>
+          </div>
+        </Tile>
+
+        <Tile>
+          <TileHeader icon={PieChartIcon} label="Fleet by status" />
+          <div className="relative">
+            <ChartContainer
+              config={statusChartConfig}
+              className="aspect-auto mx-auto h-44 w-full"
+            >
+              <PieChart>
+                <ChartTooltip
+                  content={({ active, payload }) => {
+                    const row = payload?.[0]?.payload as
+                      | { status: LaptopStatus; value: number; fill: string }
+                      | undefined
+                    if (!active || !row) return null
+                    return (
+                      <TooltipBox>
+                        <TooltipRow
+                          color={row.fill}
+                          label={row.status}
+                          value={`${row.value} · ${deviceTotal ? Math.round((row.value / deviceTotal) * 100) : 0}%`}
+                        />
+                      </TooltipBox>
+                    )
+                  }}
+                />
+                <Pie
+                  data={statusPieData}
+                  dataKey="value"
+                  nameKey="status"
+                  innerRadius={48}
+                  outerRadius={70}
+                  paddingAngle={2}
+                  strokeWidth={0}
+                  animationDuration={900}
+                  animationBegin={240}
+                >
+                  {statusPieData.map((row) => (
+                    <Cell key={row.status} fill={row.fill} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ChartContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-2xl font-semibold tabular-nums">
+                <AnimatedNumber value={deviceTotal} delay={240} />
               </span>
+              <span className="text-[11px] text-muted-foreground">devices</span>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5 text-xs">
+            {statusPieData.map((row) => (
+              <div key={row.status} className="flex items-center gap-2">
+                <span
+                  className="size-1.5 rounded-full"
+                  style={{ background: row.fill }}
+                />
+                <span className="text-muted-foreground">{row.status}</span>
+                <span className="ml-auto font-medium tabular-nums">
+                  <AnimatedNumber value={row.value} delay={280} />
+                </span>
+              </div>
             ))}
           </div>
         </Tile>
       </div>
 
-      <Tile>
-        <TileHeader icon={BarChart3Icon} label="Devices by category" />
-        <ChartContainer config={categoryChartConfig} className="aspect-auto h-56 w-full">
-          <BarChart data={categoryBarData} margin={{ left: 0, right: 0, top: 20 }}>
-            <CartesianGrid className="stroke-border" strokeDasharray="3 3" vertical={false} />
-            <XAxis
-              dataKey="label"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              interval={0}
-              fontSize={11}
-            />
-            <ChartTooltip
-              cursor={{ className: "fill-muted" }}
-              content={({ active, payload }) => {
-                const row = payload?.[0]?.payload as { label: string; value: number } | undefined
-                if (!active || !row) return null
-                return (
-                  <TooltipBox>
-                    <TooltipRow label={row.label} value={row.value} />
-                  </TooltipBox>
-                )
-              }}
-            />
-            <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} fill="var(--foreground)">
-              <LabelList
-                dataKey="value"
-                position="top"
-                offset={6}
-                className="fill-foreground text-xs font-medium"
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+        <Tile className="xl:col-span-3">
+          <TileHeader
+            icon={BarChart3Icon}
+            label="Status by category"
+            hint="Stacked counts"
+          />
+          <ChartContainer
+            config={stackedChartConfig}
+            className="aspect-auto h-72 w-full"
+          >
+            <BarChart
+              data={stackedCategoryData}
+              margin={{ left: 0, right: 0, top: 8 }}
+            >
+              <CartesianGrid className="stroke-border" strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="label"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                interval={0}
+                fontSize={11}
               />
-            </Bar>
-          </BarChart>
-        </ChartContainer>
-      </Tile>
+              <YAxis
+                allowDecimals={false}
+                tickLine={false}
+                axisLine={false}
+                tickMargin={4}
+                width={28}
+              />
+              <ChartTooltip
+                cursor={{ className: "fill-muted" }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
+                  return (
+                    <TooltipBox>
+                      <div className="font-medium">{String(label)}</div>
+                      {payload.map((item) => (
+                        <TooltipRow
+                          key={String(item.dataKey)}
+                          color={String(item.color)}
+                          label={String(item.dataKey)}
+                          value={Number(item.value ?? 0)}
+                        />
+                      ))}
+                    </TooltipBox>
+                  )
+                }}
+              />
+              {statuses.map((status) => (
+                <Bar
+                  key={status}
+                  dataKey={status}
+                  stackId="status"
+                  fill={statusChartColors[status]}
+                  maxBarSize={36}
+                  animationDuration={900}
+                  animationBegin={200}
+                />
+              ))}
+            </BarChart>
+          </ChartContainer>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {statuses.map((status) => (
+              <span key={status} className="flex items-center gap-1.5">
+                <span
+                  className="size-1.5 rounded-full"
+                  style={{ background: statusChartColors[status] }}
+                />
+                {status}
+              </span>
+            ))}
+          </div>
+        </Tile>
+
+        <div className="flex flex-col gap-4 xl:col-span-2">
+          <Tile href="/dashboard/analytics" className="flex-1">
+            <TileHeader icon={AwardIcon} label="Laptop grades" />
+            <ChartContainer
+              config={gradeChartConfig}
+              className="aspect-auto h-40 w-full"
+            >
+              <BarChart
+                data={gradeChartData}
+                layout="vertical"
+                margin={{ left: 8, right: 12, top: 0, bottom: 0 }}
+              >
+                <XAxis type="number" hide allowDecimals={false} />
+                <YAxis
+                  type="category"
+                  dataKey="grade"
+                  tickLine={false}
+                  axisLine={false}
+                  width={78}
+                  fontSize={11}
+                />
+                <ChartTooltip
+                  cursor={{ className: "fill-muted" }}
+                  content={({ active, payload }) => {
+                    const row = payload?.[0]?.payload as
+                      | { grade: string; value: number; fill: string }
+                      | undefined
+                    if (!active || !row) return null
+                    return (
+                      <TooltipBox>
+                        <TooltipRow
+                          color={row.fill}
+                          label={row.grade}
+                          value={row.value}
+                        />
+                      </TooltipBox>
+                    )
+                  }}
+                />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={16} animationDuration={900} animationBegin={280}>
+                  {gradeChartData.map((row) => (
+                    <Cell key={row.key} fill={row.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ChartContainer>
+          </Tile>
+          <Tile href="/dashboard/laptops">
+            <TileHeader icon={ClockIcon} label="Laptop warranty" />
+            <div className="flex items-center gap-4">
+              <ChartContainer
+                config={{
+                  Active: { label: "Active", color: "var(--color-emerald-500)" },
+                  Expiring: { label: "Expiring", color: "var(--color-amber-500)" },
+                  Expired: { label: "Expired", color: "var(--color-red-500)" },
+                }}
+                className="aspect-auto h-24 w-24 shrink-0"
+              >
+                <PieChart>
+                  <Pie
+                    data={warrantyPieData}
+                    dataKey="value"
+                    nameKey="state"
+                    innerRadius={28}
+                    outerRadius={40}
+                    paddingAngle={2}
+                    strokeWidth={0}
+                    animationDuration={900}
+                    animationBegin={320}
+                  >
+                    {warrantyPieData.map((row) => (
+                      <Cell key={row.state} fill={row.fill} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ChartContainer>
+              <div className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+                <span className={cn("flex items-center gap-1.5", warrantyStyles.Expiring.text)}>
+                  <span className={cn("size-1.5 rounded-full", warrantyStyles.Expiring.dot)} />
+                  <AnimatedNumber value={warrantyCounts.Expiring} delay={320} />{" "}
+                  expiring soon
+                </span>
+                <span className={cn("flex items-center gap-1.5", warrantyStyles.Expired.text)}>
+                  <span className={cn("size-1.5 rounded-full", warrantyStyles.Expired.dot)} />
+                  <AnimatedNumber value={warrantyCounts.Expired} delay={320} />{" "}
+                  expired
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Active laptops · soon is within 90 days
+                </span>
+              </div>
+            </div>
+          </Tile>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Tile className="lg:col-span-1">
+          <TileHeader
+            icon={TriangleAlertIcon}
+            label="Needs attention"
+            hint={
+              <AnimatedNumber value={attention.length} delay={400} />
+            }
+          />
+          {attention.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nothing urgent in the current filters.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {attention.map((row) => (
+                <li key={`${row.tag}:${row.reason}`}>
+                  <Link
+                    href={row.href}
+                    className="flex items-start gap-2 rounded-lg px-1 py-1.5 text-sm hover:bg-muted/60"
+                  >
+                    <span
+                      className={cn(
+                        "mt-1.5 size-1.5 shrink-0 rounded-full",
+                        row.tone === "red" && "bg-red-500",
+                        row.tone === "amber" && "bg-amber-500",
+                        row.tone === "sky" && "bg-sky-500",
+                      )}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">
+                        <span className="font-mono text-xs">{row.tag}</span>{" "}
+                        <span className="font-normal text-muted-foreground">
+                          {row.title}
+                        </span>
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {row.reason}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          {missingChargers.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              <AnimatedNumber value={missingChargers.length} delay={400} /> laptop
+              {missingChargers.length === 1 ? "" : "s"} missing a charger
+            </p>
+          )}
+        </Tile>
+
+        <Tile>
+          <TileHeader icon={ClockIcon} label="Recent movement" />
+          {activity.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No history in this view.</p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {activity.map((row) => (
+                <li key={row.key}>
+                  <Link
+                    href={row.href}
+                    className="flex items-start justify-between gap-3 rounded-lg px-1 py-1.5 text-sm hover:bg-muted/60"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-mono text-xs font-medium">
+                        {row.tag}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {row.detail}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                      {row.when.slice(5)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Tile>
+
+        <Tile>
+          <TileHeader icon={Building2Icon} label="Top departments" />
+          {departmentChartData.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No department data yet.</p>
+          ) : (
+            <ChartContainer
+              config={{ value: { label: "Assets", color: "var(--color-chart-1)" } }}
+              className="aspect-auto h-56 w-full"
+            >
+              <BarChart
+                data={departmentChartData}
+                layout="vertical"
+                margin={{ left: 4, right: 12, top: 0, bottom: 0 }}
+              >
+                <XAxis type="number" hide allowDecimals={false} />
+                <YAxis
+                  type="category"
+                  dataKey="department"
+                  tickLine={false}
+                  axisLine={false}
+                  width={88}
+                  fontSize={11}
+                />
+                <ChartTooltip
+                  cursor={{ className: "fill-muted" }}
+                  content={({ active, payload }) => {
+                    const row = payload?.[0]?.payload as
+                      | { department: string; value: number }
+                      | undefined
+                    if (!active || !row) return null
+                    return (
+                      <TooltipBox>
+                        <TooltipRow label={row.department} value={row.value} />
+                      </TooltipBox>
+                    )
+                  }}
+                />
+                <Bar
+                  dataKey="value"
+                  fill="var(--color-chart-1)"
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={14}
+                  animationDuration={900}
+                  animationBegin={360}
+                />
+              </BarChart>
+            </ChartContainer>
+          )}
+        </Tile>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Tile href="/dashboard/laptops" className="lg:col-span-1">
+          <TileHeader icon={LaptopIcon} label="Laptop brands" />
+          {brandChartData.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No laptops in this view.</p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {brandChartData.map((row) => (
+                <div key={row.brand} className="flex items-center gap-3 text-sm">
+                  <span className="w-24 shrink-0 truncate text-muted-foreground">
+                    {row.brand}
+                  </span>
+                  <Meter
+                    value={
+                      summary.laptops.total ? row.value / summary.laptops.total : 0
+                    }
+                  />
+                  <span className="w-6 shrink-0 text-right font-medium tabular-nums">
+                    <AnimatedNumber value={row.value} delay={420} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Tile>
+        <Tile href="/dashboard/remote-access">
+          <TileHeader icon={WifiIcon} label="Remote access" />
+          <p className="text-3xl font-semibold tracking-tight tabular-nums">
+            <AnimatedNumber
+              value={Math.round(remoteCoverage * 100)}
+              delay={440}
+              suffix="%"
+            />
+          </p>
+          <Meter value={remoteCoverage} />
+          <p className="text-xs text-muted-foreground">
+            <AnimatedNumber value={remoteConfigured} delay={440} /> of{" "}
+            <AnimatedNumber value={assignedLaptops.length} delay={440} /> assigned
+            laptops have AnyDesk
+          </p>
+        </Tile>
+        <Tile href="/dashboard/users">
+          <TileHeader icon={UsersIcon} label="Portal users" />
+          <p className="text-3xl font-semibold tracking-tight tabular-nums">
+            <AnimatedNumber value={users.length} delay={480} />
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <AnimatedNumber value={activeUsers.length} delay={480} /> active ·{" "}
+            <AnimatedNumber value={adminUsers.length} delay={480} /> admin
+            {adminUsers.length === 1 ? "" : "s"}
+          </p>
+        </Tile>
+      </div>
     </div>
   )
 }

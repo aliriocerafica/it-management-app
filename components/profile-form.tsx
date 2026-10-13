@@ -129,7 +129,7 @@ export function ProfileForm({ user }: { user: SessionUser }) {
   }
 
   return (
-    <div className="flex max-w-xl flex-col gap-4">
+    <div className="flex w-full min-w-0 max-w-3xl flex-col gap-4">
       <div className="flex items-center gap-4 rounded-2xl border border-border p-4">
         <div className="relative shrink-0">
           <Avatar size="lg" className="avatar-shine size-16">

@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react"
 
+import { themeAppearance, type ThemeChoice } from "@/lib/themes"
+
 const DURATION_MS = 2000
 
 const storageKey = "theme-transition"
@@ -36,6 +38,38 @@ export function useThemeTransitionEnabled() {
   return useSyncExternalStore(subscribe, themeTransitionEnabled, () => true)
 }
 
+export type { ThemeChoice }
+
+function systemResolved(): "light" | "dark" {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light"
+}
+
+export function resolvedThemeChoice(
+  choice: ThemeChoice,
+): Exclude<ThemeChoice, "system"> {
+  return choice === "system" ? systemResolved() : choice
+}
+
+export function applyThemeChoice(
+  choice: ThemeChoice,
+  currentResolved: string | undefined,
+  setTheme: (theme: string) => void,
+) {
+  const nextResolved = resolvedThemeChoice(choice)
+  if (nextResolved === currentResolved) {
+    setTheme(choice)
+    return
+  }
+  const to = themeAppearance(nextResolved)
+  if (to === themeAppearance(currentResolved)) {
+    setTheme(choice)
+    return
+  }
+  playThemeTransition(to, () => setTheme(choice))
+}
+
 // Plays the sky animation (styled in globals.css as `.theme-shift`) over the
 // whole page: the sun sets and the moon rises going dark, the reverse going
 // light. `apply` switches the theme halfway through, while the sky covers the
@@ -54,11 +88,25 @@ export function playThemeTransition(to: "light" | "dark", apply: () => void) {
   overlay.className = "theme-shift"
   overlay.dataset.to = to
   overlay.setAttribute("aria-hidden", "true")
+  const rising = Array.from({ length: 28 }, () => {
+    const left = (Math.random() * 100).toFixed(1)
+    const bottom = (Math.random() * 70).toFixed(1)
+    const delay = (0.4 + Math.random() * 0.9).toFixed(2)
+    const size = Math.random() < 0.2 ? 3 : 2
+    return (
+      `<div class="theme-shift-star-up" style="left:${left}%;bottom:${bottom}%;` +
+      `width:${size}px;height:${size}px;animation-delay:${delay}s"></div>`
+    )
+  }).join("")
+
   overlay.innerHTML =
     '<div class="theme-shift-night"></div>' +
     '<div class="theme-shift-day"></div>' +
     '<div class="theme-shift-star"></div>'.repeat(3) +
-    '<div class="theme-shift-cloud"></div>'.repeat(3) +
+    rising +
+    '<div class="theme-shift-cloud" style="top:20%;left:10%"></div>' +
+    '<div class="theme-shift-cloud" style="top:32%;left:70%;scale:0.8;--drift:-7vw"></div>' +
+    '<div class="theme-shift-cloud" style="top:10%;left:52%;scale:0.55"></div>' +
     '<div class="theme-shift-satellite"></div>' +
     '<div class="theme-shift-body theme-shift-sun"></div>' +
     '<div class="theme-shift-body theme-shift-moon"></div>'

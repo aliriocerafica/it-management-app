@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -68,6 +68,7 @@ import {
   type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops";
+import { useAnimatedNumber } from "@/lib/use-animated-number";
 import { useToday } from "@/lib/use-today";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +99,37 @@ const barChartConfig = {
 function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
+
+// Counts up to `value` when it first appears and whenever it changes.
+function AnimatedNumber({
+  value,
+  delay = 0,
+  format = (n) => Math.round(n).toLocaleString(),
+}: {
+  value: number;
+  delay?: number;
+  format?: (value: number) => string;
+}) {
+  const n = useAnimatedNumber(value, { delay });
+  return <>{format(n)}</>;
+}
+
+// False until the zero-width bar has been painted, so it can grow to its
+// real width. Pair with `growClass` on the bar. Two frames, because the
+// first can land before that first paint.
+function useGrowIn() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let id = requestAnimationFrame(() => {
+      id = requestAnimationFrame(() => setReady(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return ready;
+}
+
+const growClass =
+  "transition-[width] duration-900 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
 
 function recommendation(r: GradedLaptop, today: Date) {
   if (r.laptop.status === "Retired") return "Dispose or recycle";
@@ -483,7 +515,7 @@ function GradeTrendCard({
                   strokeWidth: 2,
                   className: "stroke-background",
                 }}
-                isAnimationActive={false}
+                animationDuration={900}
               />
             ))}
             {visible.map((g) => (
@@ -497,7 +529,7 @@ function GradeTrendCard({
                 strokeOpacity={0.7}
                 dot={false}
                 activeDot={false}
-                isAnimationActive={false}
+                animationDuration={900}
               />
             ))}
           </LineChart>
@@ -518,6 +550,7 @@ function GradeDistributionCard({
 }) {
   const counts = grades.map((g) => rows.filter((r) => r.grade === g).length);
   const max = Math.max(1, ...counts);
+  const ready = useGrowIn();
   return (
     <BentoCard>
       <CardHeader>
@@ -542,7 +575,9 @@ function GradeDistributionCard({
               <span className="flex items-center justify-between gap-2">
                 <GradeBadge grade={grade} />
                 <span className="tabular-nums">
-                  <span className="font-semibold">{counts[i]}</span>{" "}
+                  <span className="font-semibold">
+                    <AnimatedNumber value={counts[i]} delay={200} />
+                  </span>{" "}
                   <span className="text-muted-foreground">
                     {rows.length ? percent(counts[i] / rows.length) : "0%"}
                   </span>
@@ -552,9 +587,12 @@ function GradeDistributionCard({
                 <span
                   className={cn(
                     "block h-full rounded-full",
+                    growClass,
                     gradeColorClass[grade],
                   )}
-                  style={{ width: `${(counts[i] / max) * 100}%` }}
+                  style={{
+                    width: ready ? `${(counts[i] / max) * 100}%` : 0,
+                  }}
                 />
               </span>
             </button>
@@ -575,6 +613,7 @@ function AgeUsageCard({ rows }: { rows: GradedLaptop[] }) {
   const ticks = Array.from({ length: maxYears + 1 }, (_, i) => i);
   const pos = (years: number) => `${(years / maxYears) * 100}%`;
   const sorted = [...rows].sort((a, b) => b.ageYears - a.ageYears);
+  const ready = useGrowIn();
 
   return (
     <BentoCard className="gap-0 pb-0 lg:col-span-2">
@@ -617,15 +656,19 @@ function AgeUsageCard({ rows }: { rows: GradedLaptop[] }) {
                 style={{ left: pos(REFRESH_YEARS) }}
               />
               <span
-                className="absolute inset-y-0 left-0 rounded-r-[4px] bg-muted"
-                style={{ width: pos(r.ageYears) }}
+                className={cn(
+                  "absolute inset-y-0 left-0 rounded-r-[4px] bg-muted",
+                  growClass,
+                )}
+                style={{ width: ready ? pos(r.ageYears) : 0 }}
               />
               <span
                 className={cn(
                   "absolute inset-y-0 left-0 rounded-r-[4px]",
+                  growClass,
                   gradeColorClass[r.grade],
                 )}
-                style={{ width: pos(r.usageYears) }}
+                style={{ width: ready ? pos(r.usageYears) : 0 }}
               />
             </span>
             <span className="text-right tabular-nums">
@@ -661,7 +704,22 @@ type BarRow = {
   detail: string;
 };
 
-function ColumnCard({
+function sameBars(a: BarRow[], b: BarRow[]) {
+  return (
+    a.length === b.length &&
+    a.every(
+      (row, i) =>
+        row.label === b[i].label &&
+        row.value === b[i].value &&
+        row.alert === b[i].alert &&
+        row.detail === b[i].detail,
+    )
+  );
+}
+
+// Memoised on the bars' values: the rows are rebuilt on every render of the
+// page, and a re-render restarts the bar animation and blanks the labels.
+const ColumnCard = memo(function ColumnCard({
   title,
   description,
   data,
@@ -717,7 +775,7 @@ function ColumnCard({
               dataKey="value"
               radius={[4, 4, 0, 0]}
               maxBarSize={24}
-              isAnimationActive={false}
+              animationDuration={900}
             >
               {data.map((d) => (
                 <Cell
@@ -737,15 +795,23 @@ function ColumnCard({
       </CardContent>
     </BentoCard>
   );
-}
+},
+(prev, next) =>
+  prev.title === next.title &&
+  prev.description === next.description &&
+  sameBars(prev.data, next.data));
 
 function Meter({ value }: { value: number }) {
+  const ready = useGrowIn();
   return (
     <span className="flex items-center gap-2">
       <span className="h-1.5 w-16 overflow-hidden rounded-full bg-[#cde2fb] dark:bg-[#184f95]/60">
         <span
-          className="block h-full rounded-full bg-[#2a78d6] dark:bg-[#6da7ec]"
-          style={{ width: `${Math.round(value * 100)}%` }}
+          className={cn(
+            "block h-full rounded-full bg-[#2a78d6] dark:bg-[#6da7ec]",
+            growClass,
+          )}
+          style={{ width: ready ? `${Math.round(value * 100)}%` : 0 }}
         />
       </span>
       <span className="w-9 tabular-nums">{percent(value)}</span>
@@ -1040,7 +1106,7 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
             <StatCard
               className="sm:col-span-2 xl:col-span-1"
               label="Total laptops"
-              value={rows.length}
+              value={<AnimatedNumber value={rows.length} />}
               footer={
                 <span className="flex flex-wrap gap-x-3 gap-y-1">
                   {statuses.map((status) => (
@@ -1055,7 +1121,12 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
                         )}
                       />
                       <span className="font-medium text-foreground tabular-nums">
-                        {rows.filter((r) => r.laptop.status === status).length}
+                        <AnimatedNumber
+                          value={
+                            rows.filter((r) => r.laptop.status === status)
+                              .length
+                          }
+                        />
                       </span>
                       {status.toLowerCase()}
                     </span>
@@ -1064,14 +1135,18 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
               }
             >
               <span className="text-xs text-muted-foreground">
-                {active.length} active
+                <AnimatedNumber value={active.length} /> active
               </span>
             </StatCard>
             <StatCard
               label="Fleet health score"
               value={
                 <>
-                  {active.length ? avgScore : "–"}
+                  {active.length ? (
+                    <AnimatedNumber value={avgScore} delay={80} />
+                  ) : (
+                    "–"
+                  )}
                   <span className="ml-1 text-sm font-normal text-muted-foreground">
                     / 100
                   </span>
@@ -1096,7 +1171,13 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
             </StatCard>
             <StatCard
               label="Average age"
-              value={formatYears(average(active.map((r) => r.ageYears)))}
+              value={
+                <AnimatedNumber
+                  value={average(active.map((r) => r.ageYears))}
+                  delay={160}
+                  format={formatYears}
+                />
+              }
               footer={
                 <>
                   <Delta
@@ -1110,7 +1191,13 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
             />
             <StatCard
               label="Average utilization"
-              value={percent(average(active.map((r) => r.utilization)))}
+              value={
+                <AnimatedNumber
+                  value={average(active.map((r) => r.utilization))}
+                  delay={240}
+                  format={percent}
+                />
+              }
               footer={
                 <span className="text-muted-foreground">
                   {formatYears(average(active.map((r) => r.usageYears)))} with
@@ -1120,7 +1207,9 @@ export function LaptopAnalyticsDashboard({ laptops }: { laptops: Laptop[] }) {
             />
             <StatCard
               label="Due for replacement"
-              value={dueForReplacement.length}
+              value={
+                <AnimatedNumber value={dueForReplacement.length} delay={320} />
+              }
               footer={
                 <>
                   <Delta

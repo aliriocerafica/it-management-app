@@ -28,6 +28,7 @@ import {
   LogOutIcon,
   MemoryStickIcon,
   MouseIcon,
+  PaletteIcon,
   PlugIcon,
   PlusIcon,
   SearchIcon,
@@ -42,7 +43,6 @@ import {
 
 import { AnyDeskIcon } from "@/components/anydesk-icon"
 import { MascotStill, SidebarMascot } from "@/components/sidebar-mascot"
-import { ThemeSwitch } from "@/components/theme-switch"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -306,7 +306,9 @@ function SidebarLink({
   collapsed?: boolean
   nested?: boolean
 }) {
-  const isActive = pathname === item.href
+  const isActive =
+    pathname === item.href ||
+    (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`))
   return (
     <div className="relative">
       {isActive && (
@@ -421,7 +423,10 @@ function NavGroupMenu({
           </div>
           <div className="flex flex-col gap-0.5 p-1.5">
             {group.items.map((item) => {
-              const isActive = pathname === item.href
+              const isActive =
+                pathname === item.href ||
+                (item.href !== "/dashboard" &&
+                  pathname.startsWith(`${item.href}/`))
               return (
                 <DropdownMenuItem
                   key={item.href}
@@ -715,7 +720,7 @@ export function AppSidebar({
             <DropdownMenuGroup className="mt-2 flex flex-col gap-0.5">
               <DropdownMenuItem
                 className="h-10 rounded-lg px-2.5"
-                onClick={() => router.push("/dashboard/profile")}
+                onClick={() => router.push("/dashboard/settings/profile")}
               >
                 <UserIcon />
                 Profile
@@ -798,7 +803,19 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="gap-3 p-4">
-        <ThemeSwitch className="px-2 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:[&>span]:hidden" />
+        <Link
+          href="/dashboard/settings#appearance"
+          title={collapsed ? "Themes" : undefined}
+          className={cn(
+            "flex h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            collapsed && "justify-center px-0",
+            pathname.startsWith("/dashboard/settings") &&
+              "bg-neutral-900/5 text-neutral-900 dark:bg-white/10 dark:text-white",
+          )}
+        >
+          <PaletteIcon className="size-4 shrink-0" />
+          <span className={cn(collapsed && "sr-only")}>Themes</span>
+        </Link>
       </SidebarFooter>
     </Sidebar>
   )

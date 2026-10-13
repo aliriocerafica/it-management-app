@@ -5,16 +5,15 @@ import {
   FileTextIcon,
   LockIcon,
   MailIcon,
-  MoonIcon,
   SparklesIcon,
   Volume2Icon,
   type LucideIcon,
 } from "lucide-react"
-import { useTheme } from "next-themes"
 
 import { AccountabilityTemplateForm } from "@/components/accountability-template-form"
 import { ChangePasswordForm } from "@/components/change-password-form"
 import { RequestEmailSettingsForm } from "@/components/request-email-settings-form"
+import { ThemeSelect } from "@/components/theme-select"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
@@ -27,27 +26,29 @@ import {
 } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import {
-  playThemeTransition,
   setThemeTransitionEnabled,
   useThemeTransitionEnabled,
 } from "@/lib/theme-transition"
 import { setUiSoundsEnabled, useUiSoundsEnabled } from "@/lib/ui-sounds"
 
-const subscribeNever = () => () => {}
-
 const switchClass = "data-checked:bg-blue-500 data-unchecked:bg-input"
 
 function SettingsSection({
+  id,
   title,
   description,
   children,
 }: {
+  id?: string
   title: string
   description: string
   children: React.ReactNode
 }) {
   return (
-    <section className="grid gap-3 md:grid-cols-[14rem_1fr] md:gap-8">
+    <section
+      id={id}
+      className="grid scroll-mt-6 gap-3 lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8"
+    >
       <div className="flex flex-col gap-1">
         <h2 className="font-heading text-sm font-semibold">{title}</h2>
         <p className="text-sm text-muted-foreground">{description}</p>
@@ -88,38 +89,25 @@ export function SettingsActions() {
   const [requestEmailOpen, setRequestEmailOpen] = React.useState(false)
   const [requestEmailDirty, setRequestEmailDirty] = React.useState(false)
   const [securityOpen, setSecurityOpen] = React.useState(false)
-  const { resolvedTheme, setTheme } = useTheme()
   const animationsEnabled = useThemeTransitionEnabled()
   const soundsEnabled = useUiSoundsEnabled()
-  // True after hydration; the theme is only known on the client.
-  const mounted = React.useSyncExternalStore(
-    subscribeNever,
-    () => true,
-    () => false,
-  )
 
   return (
-    <div className="flex max-w-4xl flex-col gap-8">
+    <div className="flex w-full min-w-0 flex-col gap-8">
       <SettingsSection
+        id="appearance"
         title="Appearance"
         description="How the portal looks in this browser."
       >
-        <SettingsRow
-          icon={MoonIcon}
-          title="Dark mode"
-          description="Use the dark colour theme."
-        >
-          <Switch
-            checked={mounted && resolvedTheme === "dark"}
-            onCheckedChange={(checked) => {
-              const next = checked ? "dark" : "light"
-              playThemeTransition(next, () => setTheme(next))
-            }}
-            disabled={!mounted}
-            aria-label="Dark mode"
-            className={switchClass}
-          />
-        </SettingsRow>
+        <div className="flex flex-col gap-3 p-4">
+          <div className="grid gap-0.5">
+            <span className="text-sm font-medium">Theme</span>
+            <span className="text-sm text-muted-foreground">
+              Light, dark, Neutral, AuthKit, or match this device.
+            </span>
+          </div>
+          <ThemeSelect />
+        </div>
         <SettingsRow
           icon={SparklesIcon}
           title="Theme switch animation"
