@@ -26,6 +26,7 @@ import {
   ColumnHeader,
   FilterMenu,
   cellClass,
+  rowClass,
   rowsPerPageOptions,
 } from "@/components/laptop-inventory-table"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -400,7 +401,7 @@ export function RemoteAccessTable({
                   <tr
                     key={laptop?.id ?? employee.id}
                     data-state={selected.has(employee.id) ? "selected" : undefined}
-                    className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                    className={rowClass}
                   >
                     {index === 0 && (
                       <td

@@ -18,6 +18,7 @@ const accessoryPaths: Record<AccessoryKind, string> = {
   battery: "/dashboard/batteries",
   keyboard: "/dashboard/keyboards",
   ram: "/dashboard/ram",
+  charger: "/dashboard/chargers",
 }
 
 function refreshInventory(kind?: AccessoryKind) {
@@ -25,7 +26,9 @@ function refreshInventory(kind?: AccessoryKind) {
   revalidatePath("/dashboard")
   if (kind) revalidatePath(accessoryPaths[kind])
   // Installing or removing RAM changes a laptop's memory.
-  if (kind === "ram" || !kind) revalidatePath("/dashboard/laptops")
+  if (kind === "ram" || kind === "charger" || !kind) {
+    revalidatePath("/dashboard/laptops")
+  }
 }
 
 export async function GET(request: Request) {

@@ -6,6 +6,7 @@ import {
   CheckIcon,
   LaptopIcon,
   MemoryStickIcon,
+  PlugIcon,
   SearchIcon,
 } from "lucide-react";
 
@@ -25,8 +26,9 @@ import { type Accessory } from "@/lib/accessories";
 import { adjustRam, parseGb, type RamHost } from "@/lib/ram";
 import { cn } from "@/lib/utils";
 
-// Installs a RAM module in a laptop: the RAM equivalent of assigning an
-// item to a person. The laptop's memory goes up by the module's capacity.
+// Installs RAM or a charger in a laptop: the equivalent of assigning an
+// item to a person. RAM adds to memory; a charger becomes that laptop's
+// current adapter (and returns any charger already on it).
 export function InstallRamDialog({
   item,
   laptops,
@@ -74,6 +76,7 @@ function InstallForm({
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const isCharger = item.kind === "charger";
   const capacity = parseGb(item.specs.capacity);
 
   // Asset tags of the modules already in each laptop.
@@ -118,10 +121,18 @@ function InstallForm({
           Install in laptop
         </DialogTitle>
         <DialogDescription className="flex items-center gap-1.5">
-          <MemoryStickIcon className="size-3.5" />
+          {isCharger ? (
+            <PlugIcon className="size-3.5" />
+          ) : (
+            <MemoryStickIcon className="size-3.5" />
+          )}
           {item.brand} {item.model}
           <span aria-hidden>·</span>
-          {item.specs.capacity} {item.specs.type}
+          {isCharger
+            ? [item.specs.wattage ? `${item.specs.wattage} W` : "", item.specs.connector]
+                .filter(Boolean)
+                .join(" ")
+            : `${item.specs.capacity} ${item.specs.type}`}
           <span aria-hidden>·</span>
           <span className="font-mono text-xs">{item.assetTag}</span>
         </DialogDescription>
@@ -179,11 +190,11 @@ function InstallForm({
                 </div>
                 <div className="shrink-0 text-right leading-tight">
                   <div className="text-xs font-medium tabular-nums">
-                    {laptop.ram}
+                    {isCharger ? (modulesIn ? "Has charger" : "No charger") : laptop.ram}
                   </div>
                   {modulesIn && (
                     <div className="font-mono text-[10px] text-muted-foreground">
-                      +{modulesIn.join(", ")}
+                      {isCharger ? "Will replace" : `+${modulesIn.join(", ")}`}
                     </div>
                   )}
                 </div>
@@ -209,7 +220,14 @@ function InstallForm({
           )}
         </div>
 
-        {selected && (
+        {selected && isCharger && (
+          <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+            {installed.get(selected.id)
+              ? `${selected.assetTag} already has a charger. Installing this one returns the current unit to vacant stock.`
+              : `${selected.assetTag} has no charger assigned. This unit becomes its current adapter.`}
+          </p>
+        )}
+        {selected && !isCharger && (
           <p
             className={cn(
               "rounded-lg px-3 py-2 text-xs",
@@ -269,8 +287,8 @@ function InstallForm({
           disabled={!selected}
           onClick={() => selected && onInstall(selected, note.trim())}
         >
-          <MemoryStickIcon />
-          Install
+          {isCharger ? <PlugIcon /> : <MemoryStickIcon />}
+          {isCharger && installed.get(selected?.id ?? "") ? "Replace" : "Install"}
         </Button>
       </DialogFooter>
     </>

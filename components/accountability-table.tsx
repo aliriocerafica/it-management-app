@@ -54,6 +54,7 @@ import {
   ColumnHeader,
   FilterMenu,
   cellClass,
+  rowClass,
   rowsPerPageOptions,
 } from "@/components/laptop-inventory-table";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -705,7 +706,7 @@ export function AccountabilityTable({
                   <tr
                     key={row.holderName}
                     data-state={isSelected ? "selected" : undefined}
-                    className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                    className={rowClass}
                   >
                     <td className="w-10 border-r border-border px-3">
                       <Checkbox

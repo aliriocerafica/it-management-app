@@ -8,7 +8,8 @@ export type AccessoryKind =
   | "bag"
   | "battery"
   | "keyboard"
-  | "ram";
+  | "ram"
+  | "charger";
 
 export type Accessory = {
   id: string;
@@ -30,7 +31,7 @@ export type Accessory = {
   specs: Record<string, string>;
   // Fault still waiting to be fixed, as for laptops.
   repairIssue?: string | null;
-  // RAM only: the laptop it's installed in (instead of a handler).
+  // RAM and chargers: the laptop it's installed in (instead of a handler).
   laptopId?: string | null;
   history: OwnershipEntry[];
   // ISO timestamps of when the record was added and last changed.
@@ -66,8 +67,8 @@ export type AccessoryConfig = {
   singular: string;
   plural: string;
   tagPrefix: string;
-  // Installed in a laptop (adding to its memory) rather than assigned to a
-  // person. Only RAM so far.
+  // Installed in a laptop rather than assigned to a person. RAM adds to
+  // that laptop's memory; a charger becomes its current power adapter.
   installsInLaptop?: boolean;
   modelPlaceholder: string;
   brandPlaceholder: string;
@@ -300,6 +301,45 @@ export const accessoryConfigs: Record<AccessoryKind, AccessoryConfig> = {
       secondary: `${s.formFactor} · ${s.speed}`,
     }),
   },
+  charger: {
+    kind: "charger",
+    singular: "Charger",
+    plural: "Chargers",
+    tagPrefix: "CHG",
+    installsInLaptop: true,
+    brandPlaceholder: "e.g. Lenovo",
+    modelPlaceholder: "e.g. 65W USB-C",
+    specFields: [
+      {
+        key: "connector",
+        label: "Connector",
+        options: [
+          "USB-C",
+          "MagSafe 3 (USB-C)",
+          "Surface Connect",
+          "Barrel 4.5 mm",
+          "Barrel 7.4 mm",
+        ],
+      },
+      {
+        key: "wattage",
+        label: "Power (W)",
+        options: ["45", "65", "90", "100", "130", "140", "170", "230"],
+      },
+      {
+        key: "condition",
+        label: "Condition",
+        options: ["Good", "Worn cable", "Replaced"],
+      },
+      { key: "partNumber", label: "Part number", placeholder: "e.g. ADL65WCC" },
+    ],
+    summary: (s) => ({
+      primary: [s.wattage ? `${s.wattage} W` : "", s.connector]
+        .filter(Boolean)
+        .join(" · "),
+      secondary: [s.condition, s.partNumber].filter(Boolean).join(" · "),
+    }),
+  },
 };
 
 // -- Seed data ---------------------------------------------------------------
@@ -379,6 +419,7 @@ const bags = build("bag", []);
 const batteries = build("battery", []);
 const keyboards = build("keyboard", []);
 const ram = build("ram", []);
+const chargers = build("charger", []);
 
 export const initialAccessories: Record<AccessoryKind, Accessory[]> = {
   headset: headsets,
@@ -388,4 +429,5 @@ export const initialAccessories: Record<AccessoryKind, Accessory[]> = {
   battery: batteries,
   keyboard: keyboards,
   ram,
+  charger: chargers,
 };

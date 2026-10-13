@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   FileTextIcon,
   LockIcon,
+  MailIcon,
   MoonIcon,
   SparklesIcon,
   Volume2Icon,
@@ -13,6 +14,7 @@ import { useTheme } from "next-themes"
 
 import { AccountabilityTemplateForm } from "@/components/accountability-template-form"
 import { ChangePasswordForm } from "@/components/change-password-form"
+import { RequestEmailSettingsForm } from "@/components/request-email-settings-form"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
@@ -64,7 +66,7 @@ function SettingsRow({
   icon: LucideIcon
   title: string
   description: string
-  children: React.ReactNode
+  children?: React.ReactNode
 }) {
   return (
     <div className="flex items-center gap-3 p-4">
@@ -75,7 +77,7 @@ function SettingsRow({
         <span className="text-sm font-medium">{title}</span>
         <span className="text-sm text-muted-foreground">{description}</span>
       </div>
-      <div className="shrink-0">{children}</div>
+      {children ? <div className="shrink-0">{children}</div> : null}
     </div>
   )
 }
@@ -83,6 +85,8 @@ function SettingsRow({
 export function SettingsActions() {
   const [accountabilityOpen, setAccountabilityOpen] = React.useState(false)
   const [accountabilityDirty, setAccountabilityDirty] = React.useState(false)
+  const [requestEmailOpen, setRequestEmailOpen] = React.useState(false)
+  const [requestEmailDirty, setRequestEmailDirty] = React.useState(false)
   const [securityOpen, setSecurityOpen] = React.useState(false)
   const { resolvedTheme, setTheme } = useTheme()
   const animationsEnabled = useThemeTransitionEnabled()
@@ -185,6 +189,44 @@ export function SettingsActions() {
               {accountabilityOpen ? (
                 <AccountabilityTemplateForm
                   onDirtyChange={setAccountabilityDirty}
+                />
+              ) : null}
+            </DialogContent>
+          </Dialog>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Notifications"
+        description="Who the portal emails."
+      >
+        <SettingsRow
+          icon={MailIcon}
+          title="Asset request emails"
+          description="Who is copied on the emails sent to an employee about their request."
+        >
+          <Dialog
+            open={requestEmailOpen}
+            onOpenChange={(open) => {
+              // Closing with edits still unsaved asks first.
+              if (
+                !open &&
+                requestEmailDirty &&
+                !window.confirm("Close without saving your changes?")
+              ) {
+                return
+              }
+              setRequestEmailDirty(false)
+              setRequestEmailOpen(open)
+            }}
+          >
+            <DialogTrigger render={<Button variant="outline" size="sm" />}>
+              Edit
+            </DialogTrigger>
+            <DialogContent className="flex h-[min(32rem,calc(100svh-2rem))] max-h-[calc(100svh-2rem)] w-[calc(100%-2rem)] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+              {requestEmailOpen ? (
+                <RequestEmailSettingsForm
+                  onDirtyChange={setRequestEmailDirty}
                 />
               ) : null}
             </DialogContent>

@@ -6,10 +6,11 @@ import { listAccessories, listLaptops } from "@/lib/inventory-repository"
 export const dynamic = "force-dynamic"
 
 export default async function LaptopInventoryPage() {
-  const [laptops, ramModules, openRequests, formStateByHolder] =
+  const [laptops, ramModules, chargers, openRequests, formStateByHolder] =
     await Promise.all([
       listLaptops(),
       listAccessories("ram"),
+      listAccessories("charger"),
       listOpenLocalAssetRequests(),
       listFormStateByHolder(),
     ])
@@ -22,6 +23,7 @@ export default async function LaptopInventoryPage() {
       <LaptopInventoryTable
         initialData={laptops}
         ramModules={ramModules}
+        chargers={chargers}
         openRequests={openRequests}
         formStateByHolder={formStateByHolder}
       />

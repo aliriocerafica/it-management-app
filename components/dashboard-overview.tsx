@@ -29,6 +29,7 @@ import {
   LaptopIcon,
   MemoryStickIcon,
   MouseIcon,
+  PlugIcon,
   PackageIcon,
   PieChartIcon,
   ShieldCheckIcon,
@@ -91,6 +92,7 @@ const accessoryRoutes: Record<AccessoryKind, string> = {
   battery: "/dashboard/batteries",
   keyboard: "/dashboard/keyboards",
   ram: "/dashboard/ram",
+  charger: "/dashboard/chargers",
 }
 
 const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
@@ -101,6 +103,7 @@ const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
   battery: BatteryIcon,
   keyboard: KeyboardIcon,
   ram: MemoryStickIcon,
+  charger: PlugIcon,
 }
 
 const warrantyStyles = {

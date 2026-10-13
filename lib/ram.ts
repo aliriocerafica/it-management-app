@@ -34,10 +34,13 @@ export function adjustRam(ram: string, deltaGb: number): string {
 
 type Installable = Pick<Accessory, "kind" | "status" | "laptopId" | "specs">
 
-// A module counts toward its laptop's memory only while it's in use there.
+// RAM and chargers stay linked to a laptop only while they're in use there.
 // Anything else (back in stock, in repair, retired) has been taken out.
 export function withInstallState<T extends Installable>(item: T): T {
-  if (item.kind !== "ram" || item.status !== "In use") {
+  if (
+    (item.kind !== "ram" && item.kind !== "charger") ||
+    item.status !== "In use"
+  ) {
     return item.laptopId ? { ...item, laptopId: null } : item
   }
   return item

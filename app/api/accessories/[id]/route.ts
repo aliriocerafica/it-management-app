@@ -16,6 +16,7 @@ const accessoryPaths = {
   battery: "/dashboard/batteries",
   keyboard: "/dashboard/keyboards",
   ram: "/dashboard/ram",
+  charger: "/dashboard/chargers",
 } as const
 
 export async function PUT(
@@ -33,7 +34,9 @@ export async function PUT(
     revalidatePath("/dashboard")
     revalidatePath(accessoryPaths[saved.kind])
     // Installing or removing RAM changes a laptop's memory.
-    if (saved.kind === "ram") revalidatePath("/dashboard/laptops")
+    if (saved.kind === "ram" || saved.kind === "charger") {
+      revalidatePath("/dashboard/laptops")
+    }
     return NextResponse.json(saved)
   } catch (error) {
     return saveErrorResponse(error)

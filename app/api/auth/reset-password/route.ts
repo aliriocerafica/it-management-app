@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { forgetTrustedDevices } from "@/lib/auth/login-otp"
 import { verifyResetOtp } from "@/lib/auth/reset-otp"
 import { hashPassword } from "@/lib/crypto"
 import { destroyAllSessionsForUser } from "@/lib/auth/session"
@@ -54,6 +55,8 @@ export async function POST(request: Request) {
   ])
 
   await destroyAllSessionsForUser(result.user.id)
+  // A forgotten or stolen password: every browser proves itself again.
+  await forgetTrustedDevices(result.user.id)
 
   return NextResponse.json({ ok: true })
 }

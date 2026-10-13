@@ -26,6 +26,7 @@ enum AccessoryKind {
   BATTERY
   KEYBOARD
   RAM
+  CHARGER
 }
 
 enum ChargerCondition {
@@ -61,8 +62,47 @@ model User {
   sessions            Session[]
   resetOtps           PasswordResetOtp[]
   setupTokens         AccountSetupToken[]
+  trustedDevices      TrustedDevice[]
+  loginOtps           LoginOtp[]
 
   @@map("users")
+}
+
+// A browser that has entered the emailed sign-in code for this user. Later
+// sign-ins from it skip the code. The browser holds the token in a cookie.
+model TrustedDevice {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+
+  @@unique([userId, tokenHash])
+  @@map("trusted_devices")
+}
+
+// The code emailed when someone signs in, with the right password, from a
+// browser that isn't trusted yet. The browser holds the token in a cookie
+// until the code is entered.
+model LoginOtp {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  codeHash   String
+  rememberMe Boolean   @default(false)
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  // When the current code was emailed, for the resend cooldown.
+  sentAt     DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("login_otps")
 }
 
 model AccountSetupToken {
@@ -135,7 +175,7 @@ model Laptop {
   updatedAt     DateTime    @updatedAt
   charger       LaptopCharger?
   assignments   LaptopAssignment[]
-  // RAM modules installed in this laptop.
+  // RAM modules and chargers installed in this laptop.
   installedParts Accessory[]
 
   @@index([employeeId])
@@ -195,8 +235,9 @@ model Accessory {
   specs         Json
   // Fault still waiting to be fixed; may be set while the item is in use.
   repairIssue   String?
-  // For RAM: the laptop it's installed in, instead of a person. Installing
-  // or removing a module adjusts that laptop's `ram` total.
+  // For RAM and chargers: the laptop it's installed in, instead of a
+  // person. Installing or removing RAM adjusts that laptop's `ram` total;
+  // a charger updates the laptop's charger snapshot.
   laptopId      String?
   laptop        Laptop?       @relation(fields: [laptopId], references: [id], onDelete: SetNull)
   createdAt     DateTime      @default(now())
@@ -312,6 +353,21 @@ model AssetRequestOverride {
   updatedAt DateTime           @updatedAt @default(now())
 
   @@map("asset_request_overrides")
+}
+
+// Who is copied on the emails sent to an employee about their asset
+// request. A single row.
+model RequestEmailSettings {
+  id               String   @id
+  // Active users of this app are copied at their sign-in address unless
+  // listed here, by user id: { copied: false } leaves someone out, and
+  // { email } copies them at a different address.
+  appUserOverrides Json     @default("{}")
+  // Other addresses to copy, e.g. a supervisor or a shared inbox.
+  extraRecipients  String[]
+  updatedAt        DateTime @updatedAt
+
+  @@map("request_email_settings")
 }
 
 // One generated accountability form. Each holder gets a new version when

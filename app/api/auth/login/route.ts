@@ -2,7 +2,9 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { verifyPassword } from "@/lib/crypto"
+import { isTrustedDevice, startLoginChallenge } from "@/lib/auth/login-otp"
 import { createSession } from "@/lib/auth/session"
+import { EmailSendError } from "@/lib/email/brevo"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -49,6 +51,30 @@ export async function POST(request: Request) {
       data: { failedLoginAttempts, lockedUntil },
     })
     return NextResponse.json(GENERIC_ERROR, { status: 401 })
+  }
+
+  // A browser that hasn't signed in to this account before also has to
+  // enter a code sent to the account's email.
+  if (!(await isTrustedDevice(user.id))) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    })
+    try {
+      await startLoginChallenge(user, {
+        rememberMe,
+        origin:
+          process.env.APP_URL?.replace(/\/$/, "") ||
+          new URL(request.url).origin,
+      })
+    } catch (error) {
+      const message =
+        error instanceof EmailSendError
+          ? error.message
+          : "We couldn't send your sign-in code. Please try again."
+      return NextResponse.json({ error: message }, { status: 502 })
+    }
+    return NextResponse.json({ otpRequired: true })
   }
 
   await prisma.user.update({

@@ -1,5 +1,5 @@
 import type { AssetRequest, RequestStatus } from "@/lib/asset-requests"
-import type { Accessory } from "@/lib/accessories"
+import type { Accessory, AccessoryKind } from "@/lib/accessories"
 import type { Laptop } from "@/lib/laptops"
 import { queued } from "@/lib/save-queue"
 
@@ -119,6 +119,12 @@ export async function removeAccessories(ids: string[]) {
 
 export async function fetchLaptops() {
   return parse<Laptop[]>(await fetch("/api/laptops"))
+}
+
+export async function fetchAccessories(kind: AccessoryKind) {
+  return parse<Accessory[]>(
+    await fetch(`/api/accessories?kind=${encodeURIComponent(kind)}`),
+  )
 }
 
 export async function listAssignedAssets(handler: string) {

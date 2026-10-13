@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -109,6 +110,16 @@ export function HistoryEditor({
   // Names already used elsewhere, offered as suggestions.
   handlerOptions: string[];
 }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const rowCount = useRef(value.length);
+  // A newly added row lands at the bottom: bring it into view.
+  useEffect(() => {
+    if (value.length > rowCount.current) {
+      listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+    }
+    rowCount.current = value.length;
+  }, [value.length]);
+
   function update(key: string, patch: Partial<HistoryDraft>) {
     onChange(
       value.map((row) => (row.key === key ? { ...row, ...patch } : row)),
@@ -155,8 +166,13 @@ export function HistoryEditor({
         ))}
       </datalist>
 
-      <div className="flex flex-col gap-3 lg:gap-2">
-        <div className="hidden gap-2 lg:grid lg:grid-cols-[1.3fr_1fr_9rem_9rem_1.5fr_2rem]">
+      {/* Shows three rows; a longer history scrolls inside the card, under a
+          pinned header. 39.5 (158px) = header + three 32px rows + gaps and padding. */}
+      <div
+        ref={listRef}
+        className="flex max-h-80 flex-col gap-3 overflow-y-auto scrollbar-none rounded-lg border border-border p-2 lg:max-h-39.5 lg:gap-2 [&::-webkit-scrollbar]:hidden"
+      >
+        <div className="sticky -top-2 z-10 -mt-2 hidden h-7 shrink-0 items-end gap-2 bg-popover pb-1 lg:grid lg:grid-cols-[1.3fr_1fr_9rem_9rem_1.5fr_2rem]">
           <span className={headClass}>Handler</span>
           <span className={headClass}>Department</span>
           <span className={headClass}>From</span>

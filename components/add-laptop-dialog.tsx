@@ -1,7 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { CheckIcon, PlusIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  CheckIcon,
+  PlusIcon,
+  PlugIcon,
+  RepeatIcon,
+  SearchIcon,
+  Undo2Icon,
+  WrenchIcon,
+} from "lucide-react";
 
 import { AssignmentFields } from "@/components/assignment-fields";
 import { FormSelect } from "@/components/form-select";
@@ -26,28 +34,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   statuses,
-  type ChargerCondition,
+  type Charger,
   type Laptop,
   type LaptopStatus,
 } from "@/lib/laptops";
 import { parseAnydeskAddress } from "@/lib/anydesk";
 import { errorMessage } from "@/lib/inventory-api";
+import { type Accessory } from "@/lib/accessories";
+import {
+  chargerConditions,
+  chargerConnectors,
+  chargerFromAccessory,
+  chargerInLaptop,
+  chargerLabel,
+  installChargerInLaptop,
+  missingCharger,
+  removeChargerFromLaptop,
+  vacantChargers,
+} from "@/lib/chargers";
 import { cn } from "@/lib/utils";
-
-const chargerConditions: ChargerCondition[] = [
-  "Good",
-  "Worn cable",
-  "Replaced",
-  "Missing",
-];
-
-const connectors = [
-  "USB-C",
-  "MagSafe 3 (USB-C)",
-  "Surface Connect",
-  "Barrel 4.5 mm",
-  "Barrel 7.4 mm",
-];
 
 export const selectClass =
   "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
@@ -57,6 +62,16 @@ export function toIsoDate(date: Date) {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function defaultCharger(): Charger {
+  return {
+    connector: "USB-C",
+    wattage: 65,
+    partNumber: "",
+    serialNumber: "",
+    condition: "Good",
+  };
 }
 
 function nextAssetTag(laptops: Laptop[]) {
@@ -117,6 +132,80 @@ export function FormSection({
   );
 }
 
+// The fault still to fix, edited in its own small dialog so a long
+// description has room. The hidden input carries it into the form.
+function PendingRepairField({ defaultValue }: { defaultValue: string }) {
+  const [issue, setIssue] = useState(defaultValue);
+  const [draft, setDraft] = useState(defaultValue);
+  const [open, setOpen] = useState(false);
+
+  return (
+    <FormField
+      label="Pending repair"
+      htmlFor="repairIssueButton"
+      optional
+      className="min-w-0"
+    >
+      <input type="hidden" name="repairIssue" value={issue} />
+      <Button
+        id="repairIssueButton"
+        type="button"
+        variant="outline"
+        title={issue || undefined}
+        className="w-full min-w-0 justify-start font-normal"
+        onClick={() => {
+          setDraft(issue);
+          setOpen(true);
+        }}
+      >
+        <WrenchIcon className="text-muted-foreground" />
+        <span className={cn("truncate", !issue && "text-muted-foreground")}>
+          {issue || "None"}
+        </span>
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+          <DialogHeader className="border-b border-border px-6 py-5 pr-12">
+            <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+              <WrenchIcon className="size-4" />
+              Pending repair
+            </DialogTitle>
+            <DialogDescription>
+              The fault still to fix. Leave empty if there is none.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 py-5">
+            <textarea
+              aria-label="Pending repair"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="e.g. Keyboard keys not responding, battery drains in 1 hour"
+              rows={5}
+              autoFocus
+              className="w-full min-w-0 resize-none rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+            />
+          </div>
+          <DialogFooter className="mx-0 mb-0 px-6 py-4">
+            <DialogClose render={<Button variant="outline" type="button" />}>
+              Cancel
+            </DialogClose>
+            <Button
+              type="button"
+              onClick={() => {
+                setIssue(draft.trim());
+                setOpen(false);
+              }}
+            >
+              <CheckIcon />
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </FormField>
+  );
+}
+
 // Without `laptop` this is the "Add" dialog with its own trigger button. With
 // `laptop` it edits that laptop's details and is opened by the parent.
 // Status, handler and history are left alone: those change through the
@@ -128,6 +217,8 @@ export function AddLaptopDialog({
   open: openProp,
   onOpenChange,
   onSave,
+  chargers = [],
+  onSaveCharger,
 }: {
   laptops: Laptop[];
   // Both resolve once the database has the change; a rejection keeps the
@@ -137,6 +228,8 @@ export function AddLaptopDialog({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onSave?: (laptop: Laptop) => Promise<void>;
+  chargers?: Accessory[];
+  onSaveCharger?: (item: Accessory) => Promise<Accessory>;
 }) {
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
@@ -147,6 +240,11 @@ export function AddLaptopDialog({
   const [historyDrafts, setHistoryDrafts] = useState(() =>
     toDrafts(laptop?.history ?? []),
   );
+  const [chargerDraft, setChargerDraft] = useState<Charger>(
+    () => laptop?.charger ?? defaultCharger(),
+  );
+  const [pickMode, setPickMode] = useState<"assign" | "replace" | null>(null);
+  const [chargerBusy, setChargerBusy] = useState(false);
 
   const editing = laptop != null;
   const formId = editing ? "edit-laptop-form" : "add-laptop-form";
@@ -156,6 +254,57 @@ export function AddLaptopDialog({
       laptops.flatMap((l) => l.history.flatMap((entry) => entry.handler ?? [])),
     ),
   ].sort();
+  const installedCharger = laptop
+    ? chargerInLaptop(chargers, laptop.id)
+    : undefined;
+  const stockChargers = vacantChargers(chargers);
+
+  async function persistCharger(next: Accessory, snapshot: Charger) {
+    if (!onSaveCharger) {
+      throw new Error("Charger stock isn't available on this form.");
+    }
+    setChargerBusy(true);
+    try {
+      await onSaveCharger(next);
+      setChargerDraft(snapshot);
+      setError(null);
+    } catch (err) {
+      setError(errorMessage(err));
+      throw err;
+    } finally {
+      setChargerBusy(false);
+    }
+  }
+
+  async function returnCharger() {
+    if (!laptop) return;
+    const today = toIsoDate(new Date());
+    const current = installedCharger;
+    if (!current) {
+      setChargerDraft(missingCharger(chargerDraft));
+      return;
+    }
+    try {
+      await persistCharger(
+        removeChargerFromLaptop(current, laptop, today),
+        missingCharger(chargerDraft),
+      );
+    } catch {
+      // persistCharger already surfaced the error
+    }
+  }
+
+  async function assignPicked(item: Accessory) {
+    if (!laptop) return;
+    const today = toIsoDate(new Date());
+    const installed = installChargerInLaptop(item, laptop, "", today);
+    try {
+      await persistCharger(installed, chargerFromAccessory(installed));
+      setPickMode(null);
+    } catch {
+      // persistCharger already surfaced the error
+    }
+  }
 
   async function submit(
     next: Laptop,
@@ -212,13 +361,18 @@ export function AddLaptopDialog({
       return;
     }
 
-    const charger = {
-      connector: get("chargerConnector"),
-      wattage: Number(get("chargerWattage")),
-      partNumber: get("chargerPartNumber"),
-      serialNumber: get("chargerSerialNumber").toUpperCase(),
-      condition: get("chargerCondition") as ChargerCondition,
-    };
+    const charger = editing
+      ? {
+          ...chargerDraft,
+          serialNumber: chargerDraft.serialNumber.toUpperCase(),
+        }
+      : {
+          connector: get("chargerConnector"),
+          wattage: Number(get("chargerWattage")),
+          partNumber: get("chargerPartNumber"),
+          serialNumber: get("chargerSerialNumber").toUpperCase(),
+          condition: get("chargerCondition") as Charger["condition"],
+        };
 
     if (laptop) {
       const edited = fromDrafts(historyDrafts);
@@ -302,6 +456,7 @@ export function AddLaptopDialog({
   }
 
   return (
+    <>
     <Dialog
       open={open}
       onOpenChange={(next) => {
@@ -331,7 +486,7 @@ export function AddLaptopDialog({
         <form
           id={formId}
           onSubmit={handleSubmit}
-          className="flex min-h-0 flex-col gap-6 overflow-y-auto px-6 py-5"
+          className="flex min-h-0 flex-col gap-6 overflow-y-auto scrollbar-none px-6 py-5 [&::-webkit-scrollbar]:hidden"
         >
           <FormSection title="Laptop">
             <FormField label="Brand" htmlFor="brand">
@@ -491,19 +646,7 @@ export function AddLaptopDialog({
               />
             </FormField>
             {editing && (
-              <FormField
-                label="Pending repair"
-                htmlFor="repairIssue"
-                optional
-                className="sm:col-span-2 lg:col-span-3"
-              >
-                <Input
-                  id="repairIssue"
-                  name="repairIssue"
-                  defaultValue={laptop?.repairIssue ?? ""}
-                  placeholder="Fault still to fix. Leave empty if none"
-                />
-              </FormField>
+              <PendingRepairField defaultValue={laptop?.repairIssue ?? ""} />
             )}
           </FormSection>
 
@@ -512,10 +655,21 @@ export function AddLaptopDialog({
               <FormSelect
                 id="chargerConnector"
                 name="chargerConnector"
-                defaultValue={laptop?.charger.connector ?? "USB-C"}
-                options={(laptop && !connectors.includes(laptop.charger.connector)
-                  ? [laptop.charger.connector, ...connectors]
-                  : connectors
+                value={editing ? chargerDraft.connector : undefined}
+                defaultValue={editing ? undefined : "USB-C"}
+                onChange={
+                  editing
+                    ? (value) =>
+                        setChargerDraft((current) => ({
+                          ...current,
+                          connector: value,
+                        }))
+                    : undefined
+                }
+                options={(laptop &&
+                !chargerConnectors.includes(laptop.charger.connector)
+                  ? [laptop.charger.connector, ...chargerConnectors]
+                  : chargerConnectors
                 ).map((connector) => ({ value: connector, label: connector }))}
               />
             </FormField>
@@ -526,7 +680,17 @@ export function AddLaptopDialog({
                 type="number"
                 min={5}
                 max={400}
-                defaultValue={laptop?.charger.wattage ?? 65}
+                value={editing ? chargerDraft.wattage : undefined}
+                defaultValue={editing ? undefined : 65}
+                onChange={
+                  editing
+                    ? (event) =>
+                        setChargerDraft((current) => ({
+                          ...current,
+                          wattage: Number(event.target.value) || 0,
+                        }))
+                    : undefined
+                }
                 required
               />
             </FormField>
@@ -534,7 +698,17 @@ export function AddLaptopDialog({
               <FormSelect
                 id="chargerCondition"
                 name="chargerCondition"
-                defaultValue={laptop?.charger.condition ?? "Good"}
+                value={editing ? chargerDraft.condition : undefined}
+                defaultValue={editing ? undefined : "Good"}
+                onChange={
+                  editing
+                    ? (value) =>
+                        setChargerDraft((current) => ({
+                          ...current,
+                          condition: value as Charger["condition"],
+                        }))
+                    : undefined
+                }
                 options={chargerConditions.map((condition) => ({
                   value: condition,
                   label: condition,
@@ -545,7 +719,17 @@ export function AddLaptopDialog({
               <Input
                 id="chargerPartNumber"
                 name="chargerPartNumber"
-                defaultValue={laptop?.charger.partNumber}
+                value={editing ? chargerDraft.partNumber : undefined}
+                defaultValue={editing ? undefined : ""}
+                onChange={
+                  editing
+                    ? (event) =>
+                        setChargerDraft((current) => ({
+                          ...current,
+                          partNumber: event.target.value,
+                        }))
+                    : undefined
+                }
                 className="font-mono"
               />
             </FormField>
@@ -557,10 +741,31 @@ export function AddLaptopDialog({
               <Input
                 id="chargerSerialNumber"
                 name="chargerSerialNumber"
-                defaultValue={laptop?.charger.serialNumber}
+                value={editing ? chargerDraft.serialNumber : undefined}
+                defaultValue={editing ? undefined : ""}
+                onChange={
+                  editing
+                    ? (event) =>
+                        setChargerDraft((current) => ({
+                          ...current,
+                          serialNumber: event.target.value,
+                        }))
+                    : undefined
+                }
                 className="font-mono"
               />
             </FormField>
+            {editing && laptop && (
+              <ChargerStockActions
+                laptop={laptop}
+                charger={chargerDraft}
+                chargers={chargers}
+                busy={chargerBusy || saving}
+                onReturn={() => void returnCharger()}
+                onReplace={() => setPickMode("replace")}
+                onAssign={() => setPickMode("assign")}
+              />
+            )}
           </FormSection>
           {editing && (
             <HistoryEditor
@@ -583,6 +788,214 @@ export function AddLaptopDialog({
           <Button type="submit" form={formId} disabled={saving}>
             {editing ? <CheckIcon /> : <PlusIcon />}
             {saving ? "Saving…" : editing ? "Save changes" : "Add laptop"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+      <PickChargerDialog
+        open={pickMode !== null}
+        mode={pickMode ?? "assign"}
+        chargers={stockChargers}
+        busy={chargerBusy}
+        onOpenChange={(next) => {
+          if (!next) setPickMode(null);
+        }}
+        onPick={(item) => void assignPicked(item)}
+      />
+    </>
+  );
+}
+
+function ChargerStockActions({
+  laptop,
+  charger,
+  chargers,
+  busy,
+  onReturn,
+  onReplace,
+  onAssign,
+}: {
+  laptop: Laptop;
+  charger: Charger;
+  chargers: Accessory[];
+  busy: boolean;
+  onReturn: () => void;
+  onReplace: () => void;
+  onAssign: () => void;
+}) {
+  const missing = charger.condition === "Missing";
+  const vacant = vacantChargers(chargers);
+  const assigned = chargerInLaptop(chargers, laptop.id);
+
+  return (
+    <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-5">
+      <p className="text-xs text-muted-foreground">
+        {missing
+          ? "No charger is assigned. Assign one from vacant stock, or fill in the fields if this laptop still has its original adapter."
+          : assigned
+            ? `Assigned ${assigned.assetTag}. Return it to vacant stock, or replace it with another vacant charger.`
+            : "Return sends this adapter back to charger stock. Replace swaps it for a vacant unit."}{" "}
+        Stock changes here are saved right away, even if you cancel the rest
+        of this form.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {missing ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy || vacant.length === 0}
+            onClick={onAssign}
+          >
+            <PlugIcon />
+            Assign from stock
+          </Button>
+        ) : (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={onReturn}
+            >
+              <Undo2Icon />
+              Return
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy || vacant.length === 0}
+              onClick={onReplace}
+            >
+              <RepeatIcon />
+              Replace
+            </Button>
+          </>
+        )}
+        {vacant.length === 0 && (
+          <span className="self-center text-xs text-muted-foreground">
+            No vacant chargers in stock
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PickChargerDialog({
+  open,
+  mode,
+  chargers,
+  busy,
+  onOpenChange,
+  onPick,
+}: {
+  open: boolean;
+  mode: "assign" | "replace";
+  chargers: Accessory[];
+  busy: boolean;
+  onOpenChange: (open: boolean) => void;
+  onPick: (item: Accessory) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const list = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return chargers.filter(
+      (item) =>
+        !q ||
+        [
+          item.assetTag,
+          item.brand,
+          item.model,
+          item.serialNumber,
+          item.specs.connector,
+          item.specs.wattage,
+        ].some((value) => value?.toLowerCase().includes(q)),
+    );
+  }, [chargers, query]);
+  const selected = chargers.find((item) => item.id === selectedId) ?? null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        <DialogHeader className="border-b border-border px-6 py-5 pr-12">
+          <DialogTitle className="text-lg font-semibold">
+            {mode === "replace" ? "Replace charger" : "Assign charger"}
+          </DialogTitle>
+          <DialogDescription>
+            {mode === "replace"
+              ? "The current charger goes back to vacant stock. Pick the unit that takes its place."
+              : "Pick a vacant charger to assign to this laptop."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex min-h-0 flex-col gap-3 px-6 pt-4">
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by tag, connector or wattage"
+              className="pl-8"
+              autoFocus
+            />
+          </div>
+          <div className="-mx-2 flex max-h-72 flex-col gap-1 overflow-y-auto px-2 pb-1">
+            {list.map((item) => {
+              const isSelected = item.id === selectedId;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedId(item.id)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                    isSelected
+                      ? "border-foreground/30 bg-muted"
+                      : "border-transparent hover:bg-muted/60",
+                  )}
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+                    <PlugIcon className="size-4 text-muted-foreground" />
+                  </span>
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <div className="truncate text-sm font-medium">
+                      <span className="font-mono">{item.assetTag}</span>{" "}
+                      <span className="font-normal text-muted-foreground">
+                        {item.brand} {item.model}
+                      </span>
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {chargerLabel(item)}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+            {list.length === 0 && (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No vacant chargers match.
+              </p>
+            )}
+          </div>
+        </div>
+        <DialogFooter className="mx-0 mb-0 px-6 py-4">
+          <DialogClose render={<Button variant="outline" type="button" />}>
+            Cancel
+          </DialogClose>
+          <Button
+            type="button"
+            disabled={!selected || busy}
+            onClick={() => selected && onPick(selected)}
+          >
+            <PlugIcon />
+            {busy
+              ? "Saving…"
+              : mode === "replace"
+                ? "Replace"
+                : "Assign"}
           </Button>
         </DialogFooter>
       </DialogContent>

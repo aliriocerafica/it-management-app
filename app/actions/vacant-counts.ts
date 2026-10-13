@@ -16,6 +16,7 @@ export async function fetchVacantCounts(): Promise<VacantCounts> {
       battery: 0,
       keyboard: 0,
       ram: 0,
+      charger: 0,
     }
   }
   return getVacantCounts()

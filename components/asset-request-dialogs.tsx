@@ -62,6 +62,7 @@ import {
 } from "@/lib/dtr";
 import {
   detectStockItem,
+  installsInLaptopKind,
   inventoryKindForAssetType,
   requestHoldings,
   samePerson,
@@ -567,7 +568,9 @@ function IssueForm({
   const [stock, setStock] = useState<Array<Accessory | Laptop> | null>(
     kind ? null : [],
   );
-  const [hosts, setHosts] = useState<RamHost[] | null>(kind === "ram" ? null : []);
+  const [hosts, setHosts] = useState<RamHost[] | null>(
+    installsInLaptopKind(kind) ? null : [],
+  );
   const [selectedId, setSelectedId] = useState("");
   const [hostId, setHostId] = useState("");
   const [query, setQuery] = useState("");
@@ -606,7 +609,7 @@ function IssueForm({
       );
       if (detected) setSelectedId(detected.id);
 
-      if (requestedKind !== "ram") {
+      if (!installsInLaptopKind(requestedKind)) {
         setHosts([]);
         return;
       }
@@ -663,17 +666,21 @@ function IssueForm({
     ) ?? null;
   const chosen = picking ? selected : typedMatch;
   const host =
-    kind === "ram"
+    installsInLaptopKind(kind)
       ? hosts?.length === 1
         ? hosts[0]
         : (hosts?.find((item) => item.id === hostId) ?? null)
       : null;
   const needsHost = Boolean(
-    chosen && kind === "ram" && hosts && hosts.length > 1 && !host,
+    chosen &&
+      installsInLaptopKind(kind) &&
+      hosts &&
+      hosts.length > 1 &&
+      !host,
   );
   const waiting =
     !pickedHolding &&
-    (Boolean(kind === "ram" && hosts === null && !loadError) ||
+    (Boolean(installsInLaptopKind(kind) && hosts === null && !loadError) ||
       Boolean(kind && !manual && stock === null && !loadError));
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -791,7 +798,7 @@ function IssueForm({
             )}
           </div>
         )}
-        {kind === "ram" && manual && !pickedHolding && (
+        {installsInLaptopKind(kind) && manual && !pickedHolding && (
           <RamHostField
             requesterName={request.requesterName}
             hosts={hosts}
@@ -1078,7 +1085,9 @@ function toIssuedInventory(
   host: RamHost | null,
 ): IssuedInventory {
   if (kind === "laptop") return { kind: "laptop", item: item as Laptop };
-  if (kind === "ram") return { kind: "ram", item: item as Accessory, host };
+  if (installsInLaptopKind(kind)) {
+    return { kind, item: item as Accessory, host };
+  }
   return { kind, item: item as Accessory };
 }
 
@@ -1179,7 +1188,7 @@ function InventoryPick({
           {selected && <DetectedStock kind={kind} item={selected} compact />}
         </div>
       )}
-      {kind === "ram" && (
+      {installsInLaptopKind(kind) && (
         <RamHostField
           requesterName={requesterName}
           hosts={hosts}

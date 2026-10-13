@@ -18,8 +18,9 @@ function refreshInventory() {
   revalidatePath("/dashboard/laptops")
   revalidatePath("/dashboard/analytics")
   revalidatePath("/dashboard/remote-access")
-  // Deleting a laptop returns the RAM installed in it to stock.
+  // Deleting a laptop returns RAM and chargers installed in it to stock.
   revalidatePath("/dashboard/ram")
+  revalidatePath("/dashboard/chargers")
 }
 
 export async function GET() {

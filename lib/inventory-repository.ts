@@ -3,6 +3,7 @@ import type { IssuedHolding } from "@/lib/issue-stock"
 import {
   accessoryFromDb,
   assignmentData,
+  chargerFromDb,
   chargerToDb,
   fromIsoDate,
   type EmployeeIdLookup,
@@ -12,11 +13,16 @@ import {
   statusFromDb,
   statusToDb,
 } from "@/lib/inventory-map"
+import {
+  chargerFromAccessory,
+  chargerToSpecs,
+  missingCharger,
+} from "@/lib/chargers"
 import { digitsOnly } from "@/lib/anydesk"
 import { encryptSecret } from "@/lib/crypto"
 import { employees } from "@/lib/employees"
 import { fetchHrisEmployees } from "@/lib/hris"
-import type { Laptop } from "@/lib/laptops"
+import type { Charger, Laptop } from "@/lib/laptops"
 import type { InventorySummary, StatusCounts, VacantCounts } from "@/lib/inventory-map"
 import type { Prisma } from "@/lib/generated/prisma"
 import { prisma } from "@/lib/prisma"
@@ -92,6 +98,7 @@ export async function getInventorySummary(): Promise<InventorySummary> {
     battery: emptyCounts(),
     keyboard: emptyCounts(),
     ram: emptyCounts(),
+    charger: emptyCounts(),
   }
 
   for (const row of accessoryRows) {
@@ -104,6 +111,7 @@ export async function getInventorySummary(): Promise<InventorySummary> {
         BATTERY: "battery",
         KEYBOARD: "keyboard",
         RAM: "ram",
+        CHARGER: "charger",
       } as const
     )[row.kind]
     const status = statusFromDb[row.status]
@@ -136,6 +144,7 @@ export async function getVacantCounts(): Promise<VacantCounts> {
     battery: 0,
     keyboard: 0,
     ram: 0,
+    charger: 0,
   }
   for (const row of accessoryRows) {
     counts[kindFromDb[row.kind]] = row._count._all
@@ -183,64 +192,71 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
   // still pending.
   const repairIssue = laptop.repairIssue?.trim() || null
 
-  const saved = await prisma.laptop.upsert({
-    where: { id: laptop.id },
-    create: {
-      id: laptop.id,
-      assetTag: laptop.assetTag,
-      brand: laptop.brand,
-      model: laptop.model,
-      serialNumber: laptop.serialNumber,
-      cpu: laptop.cpu,
-      ram: laptop.ram,
-      storage: laptop.storage,
-      os: laptop.os,
-      color: laptop.color,
-      colorHex: laptop.colorHex,
-      employeeId,
-      handlerName: laptop.handler,
-      department: laptop.department,
-      purchaseDate: fromIsoDate(laptop.purchaseDate),
-      warrantyYears: laptop.warrantyYears,
-      price: laptop.price ?? null,
-      status: statusToDb[laptop.status],
-      repairIssue,
-      anydeskAddress,
-      charger: { create: charger },
-      assignments: { create: assignmentData(laptop.history, employeeIdFor) },
-    },
-    update: {
-      assetTag: laptop.assetTag,
-      brand: laptop.brand,
-      model: laptop.model,
-      serialNumber: laptop.serialNumber,
-      cpu: laptop.cpu,
-      ram: laptop.ram,
-      storage: laptop.storage,
-      os: laptop.os,
-      color: laptop.color,
-      colorHex: laptop.colorHex,
-      employeeId,
-      handlerName: laptop.handler,
-      department: laptop.department,
-      purchaseDate: fromIsoDate(laptop.purchaseDate),
-      warrantyYears: laptop.warrantyYears,
-      price: laptop.price ?? null,
-      status: statusToDb[laptop.status],
-      repairIssue,
-      anydeskAddress,
-      charger: {
-        upsert: {
-          create: charger,
-          update: charger,
+  const saved = await prisma.$transaction(async (tx) => {
+    const row = await tx.laptop.upsert({
+      where: { id: laptop.id },
+      create: {
+        id: laptop.id,
+        assetTag: laptop.assetTag,
+        brand: laptop.brand,
+        model: laptop.model,
+        serialNumber: laptop.serialNumber,
+        cpu: laptop.cpu,
+        ram: laptop.ram,
+        storage: laptop.storage,
+        os: laptop.os,
+        color: laptop.color,
+        colorHex: laptop.colorHex,
+        employeeId,
+        handlerName: laptop.handler,
+        department: laptop.department,
+        purchaseDate: fromIsoDate(laptop.purchaseDate),
+        warrantyYears: laptop.warrantyYears,
+        price: laptop.price ?? null,
+        status: statusToDb[laptop.status],
+        repairIssue,
+        anydeskAddress,
+        charger: { create: charger },
+        assignments: { create: assignmentData(laptop.history, employeeIdFor) },
+      },
+      update: {
+        assetTag: laptop.assetTag,
+        brand: laptop.brand,
+        model: laptop.model,
+        serialNumber: laptop.serialNumber,
+        cpu: laptop.cpu,
+        ram: laptop.ram,
+        storage: laptop.storage,
+        os: laptop.os,
+        color: laptop.color,
+        colorHex: laptop.colorHex,
+        employeeId,
+        handlerName: laptop.handler,
+        department: laptop.department,
+        purchaseDate: fromIsoDate(laptop.purchaseDate),
+        warrantyYears: laptop.warrantyYears,
+        price: laptop.price ?? null,
+        status: statusToDb[laptop.status],
+        repairIssue,
+        anydeskAddress,
+        charger: {
+          upsert: {
+            create: charger,
+            update: charger,
+          },
+        },
+        assignments: {
+          deleteMany: {},
+          create: assignmentData(laptop.history, employeeIdFor),
         },
       },
-      assignments: {
-        deleteMany: {},
-        create: assignmentData(laptop.history, employeeIdFor),
-      },
-    },
-    include: laptopInclude,
+      include: laptopInclude,
+    })
+    await syncLaptopChargerAccessory(tx, laptop)
+    return tx.laptop.findUniqueOrThrow({
+      where: { id: row.id },
+      include: laptopInclude,
+    })
   })
 
   return laptopFromDb(saved)
@@ -310,6 +326,11 @@ export async function upsertAccessory(input: Accessory): Promise<Accessory> {
       tx,
       ramChanges(before && installableFromDb(before), item),
     )
+    await applyChargerChanges(
+      tx,
+      before && installableFromDb(before),
+      item,
+    )
     return row
   })
 
@@ -361,6 +382,10 @@ export async function deleteAccessories(ids: string[]) {
       }
     }
     await applyRamChanges(tx, changes)
+    for (const row of installed) {
+      if (kindFromDb[row.kind] !== "charger" || !row.laptopId) continue
+      await markLaptopChargerMissing(tx, row.laptopId)
+    }
     await tx.accessory.deleteMany({ where: { id: { in: ids } } })
   })
 }
@@ -377,6 +402,227 @@ function installableFromDb(row: {
     laptopId: row.laptopId,
     specs: (row.specs ?? {}) as Record<string, string>,
   }
+}
+
+function chargerInstall(
+  item: { kind: string; status: string; laptopId?: string | null } | null | undefined,
+) {
+  if (
+    !item ||
+    item.kind !== "charger" ||
+    item.status !== "In use" ||
+    !item.laptopId
+  ) {
+    return null
+  }
+  return item
+}
+
+function chargerTagNumber(assetTag: string) {
+  const n = Number(assetTag.replace(/\D/g, ""))
+  return Number.isFinite(n) ? n : 0
+}
+
+function chargerAssetTag(n: number) {
+  return `CHG-${String(n).padStart(4, "0")}`
+}
+
+async function nextChargerAssetTag(tx: Prisma.TransactionClient) {
+  const rows = await tx.accessory.findMany({
+    where: { kind: "CHARGER" },
+    select: { assetTag: true },
+  })
+  const max = rows.reduce(
+    (highest, row) => Math.max(highest, chargerTagNumber(row.assetTag)),
+    0,
+  )
+  return chargerAssetTag(max + 1)
+}
+
+async function vacateChargerAccessory(
+  tx: Prisma.TransactionClient,
+  accessoryId: string,
+  laptopAssetTag: string,
+) {
+  const today = fromIsoDate(todayIsoDate())
+  await tx.accessoryAssignment.updateMany({
+    where: { accessoryId, to: null },
+    data: { to: today },
+  })
+  await tx.accessoryAssignment.create({
+    data: {
+      accessoryId,
+      from: today,
+      note: `Removed from ${laptopAssetTag}, back in stock`,
+    },
+  })
+  await tx.accessory.update({
+    where: { id: accessoryId },
+    data: {
+      laptopId: null,
+      status: "VACANT",
+      handlerName: null,
+      department: null,
+      employeeId: null,
+    },
+  })
+}
+
+async function writeLaptopChargerSnapshot(
+  tx: Prisma.TransactionClient,
+  laptopId: string,
+  charger: Charger,
+) {
+  const data = {
+    connector: charger.connector,
+    wattage: charger.wattage,
+    partNumber: charger.partNumber,
+    serialNumber: charger.serialNumber,
+    condition: chargerToDb[charger.condition],
+  }
+  await tx.laptopCharger.upsert({
+    where: { laptopId },
+    create: { laptopId, ...data },
+    update: data,
+  })
+}
+
+async function markLaptopChargerMissing(
+  tx: Prisma.TransactionClient,
+  laptopId: string,
+) {
+  const laptop = await tx.laptop.findUnique({
+    where: { id: laptopId },
+    include: { charger: true },
+  })
+  if (!laptop?.charger) return
+  await writeLaptopChargerSnapshot(
+    tx,
+    laptopId,
+    missingCharger({
+      connector: laptop.charger.connector,
+      wattage: laptop.charger.wattage,
+      partNumber: laptop.charger.partNumber,
+      serialNumber: laptop.charger.serialNumber,
+      condition: chargerFromDb[laptop.charger.condition],
+    }),
+  )
+}
+
+async function returnOtherChargersOnLaptop(
+  tx: Prisma.TransactionClient,
+  laptopId: string,
+  keepId: string,
+  laptopAssetTag: string,
+) {
+  const others = await tx.accessory.findMany({
+    where: {
+      kind: "CHARGER",
+      laptopId,
+      status: "IN_USE",
+      id: { not: keepId },
+    },
+    select: { id: true },
+  })
+  for (const other of others) {
+    await vacateChargerAccessory(tx, other.id, laptopAssetTag)
+  }
+}
+
+async function applyChargerChanges(
+  tx: Prisma.TransactionClient,
+  before: ReturnType<typeof installableFromDb> | null,
+  after: Accessory,
+) {
+  if (before?.kind !== "charger" && after.kind !== "charger") return
+
+  const from = chargerInstall(before)
+  const to = chargerInstall(after)
+
+  if (to?.laptopId) {
+    const laptop = await tx.laptop.findUnique({
+      where: { id: to.laptopId },
+      select: { assetTag: true },
+    })
+    if (laptop) {
+      await returnOtherChargersOnLaptop(
+        tx,
+        to.laptopId,
+        after.id,
+        laptop.assetTag,
+      )
+      await writeLaptopChargerSnapshot(
+        tx,
+        to.laptopId,
+        chargerFromAccessory(after),
+      )
+    }
+  }
+
+  if (from?.laptopId && from.laptopId !== to?.laptopId) {
+    const still = await tx.accessory.findFirst({
+      where: {
+        kind: "CHARGER",
+        laptopId: from.laptopId,
+        status: "IN_USE",
+      },
+    })
+    if (!still) await markLaptopChargerMissing(tx, from.laptopId)
+  }
+}
+
+async function syncLaptopChargerAccessory(
+  tx: Prisma.TransactionClient,
+  laptop: Laptop,
+) {
+  const installed = await tx.accessory.findFirst({
+    where: { kind: "CHARGER", laptopId: laptop.id, status: "IN_USE" },
+  })
+  if (laptop.charger.condition === "Missing") {
+    if (installed) await vacateChargerAccessory(tx, installed.id, laptop.assetTag)
+    return
+  }
+  const specs = chargerToSpecs(laptop.charger)
+  const model = `${laptop.charger.wattage}W ${laptop.charger.connector}`
+  if (installed) {
+    // A charger from stock keeps its own brand and model. Only a model that
+    // was generated from the specs (as below) follows them when they change.
+    const previous = (installed.specs ?? {}) as Record<string, string>
+    const generatedModel =
+      installed.model === `${previous.wattage}W ${previous.connector}`
+    await tx.accessory.update({
+      where: { id: installed.id },
+      data: {
+        serialNumber: laptop.charger.serialNumber,
+        specs,
+        ...(generatedModel ? { model } : {}),
+      },
+    })
+    return
+  }
+  await tx.accessory.create({
+    data: {
+      id: crypto.randomUUID(),
+      kind: "CHARGER",
+      assetTag: await nextChargerAssetTag(tx),
+      brand: laptop.brand,
+      model,
+      serialNumber: laptop.charger.serialNumber,
+      color: laptop.color,
+      colorHex: laptop.colorHex,
+      purchaseDate: fromIsoDate(laptop.purchaseDate),
+      warrantyYears: laptop.warrantyYears,
+      status: "IN_USE",
+      specs,
+      laptopId: laptop.id,
+      assignments: {
+        create: {
+          from: fromIsoDate(laptop.purchaseDate),
+          note: `Issued with ${laptop.assetTag}`,
+        },
+      },
+    },
+  })
 }
 
 // Adds (or takes away) installed RAM from each laptop's memory total.
@@ -489,7 +735,7 @@ export async function listIssuedHoldings(): Promise<IssuedHolding[]> {
   }
   for (const item of accessories) {
     const holder =
-      item.kind === "RAM"
+      item.kind === "RAM" || item.kind === "CHARGER"
         ? item.laptop?.handlerName || item.handlerName
         : item.handlerName
     if (!holder) continue
@@ -501,7 +747,10 @@ export async function listIssuedHoldings(): Promise<IssuedHolding[]> {
       model: item.model,
       serialNumber: item.serialNumber,
       holder,
-      installedIn: item.kind === "RAM" ? item.laptop?.assetTag ?? null : null,
+      installedIn:
+        item.kind === "RAM" || item.kind === "CHARGER"
+          ? item.laptop?.assetTag ?? null
+          : null,
     })
   }
   return holdings

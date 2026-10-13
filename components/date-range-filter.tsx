@@ -72,15 +72,26 @@ function formatDay(day: string) {
 
 // A filter button that opens a calendar for picking a span of days, with
 // shortcuts for common spans. `label` names the date being filtered and is
-// shown until a range is picked.
+// shown until a range is picked. In a form, `showPresets={false}` leaves
+// just the calendar, without the shortcuts and Reset.
 export function DateRangeFilter({
+  id,
   label,
   value,
   onChange,
+  showPresets = true,
+  applyFirstClick = false,
+  className,
 }: {
+  id?: string;
   label: string;
   value: DateRange | null;
   onChange: (value: DateRange | null) => void;
+  showPresets?: boolean;
+  // Apply the first day clicked right away, as a one-day span, instead of
+  // waiting for the second click.
+  applyFirstClick?: boolean;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   // First day of the month on show.
@@ -101,6 +112,7 @@ export function DateRangeFilter({
   function pickDay(day: string) {
     if (!anchor) {
       setAnchor(day);
+      if (applyFirstClick) onChange({ from: day, to: day });
       return;
     }
     onChange(
@@ -130,10 +142,16 @@ export function DateRangeFilter({
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <Popover.Trigger
+        id={id}
         render={
           <Button
             variant="outline"
-            className={cn("rounded-full", value && "border-foreground/40")}
+            type="button"
+            className={cn(
+              "rounded-full",
+              value && "border-foreground/40",
+              className,
+            )}
           />
         }
       >
@@ -156,32 +174,34 @@ export function DateRangeFilter({
             data-slot="date-range-content"
             className="flex max-w-[calc(100vw-2rem)] origin-(--transform-origin) flex-col gap-4 rounded-2xl bg-popover p-4 text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 sm:flex-row sm:gap-6"
           >
-            <div className="flex flex-row flex-wrap gap-1 sm:w-32 sm:flex-col">
-              {presets.map((preset) => (
+            {showPresets && (
+              <div className="flex flex-row flex-wrap gap-1 sm:w-32 sm:flex-col">
+                {presets.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      onChange(preset.range(new Date()));
+                      setOpen(false);
+                    }}
+                    className="rounded-lg px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
                 <button
-                  key={preset.label}
                   type="button"
+                  disabled={!value && !anchor}
                   onClick={() => {
-                    onChange(preset.range(new Date()));
+                    onChange(null);
                     setOpen(false);
                   }}
-                  className="rounded-lg px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                  className="rounded-lg px-2 py-1.5 text-left text-sm font-medium text-blue-500 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 sm:mt-auto"
                 >
-                  {preset.label}
+                  Reset
                 </button>
-              ))}
-              <button
-                type="button"
-                disabled={!value && !anchor}
-                onClick={() => {
-                  onChange(null);
-                  setOpen(false);
-                }}
-                className="rounded-lg px-2 py-1.5 text-left text-sm font-medium text-blue-500 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 sm:mt-auto"
-              >
-                Reset
-              </button>
-            </div>
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-1">
@@ -249,7 +269,9 @@ export function DateRangeFilter({
                       onMouseEnter={() => anchor && setHovered(day)}
                       className={cn(
                         "flex size-9 items-center justify-center tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        inRange ? "bg-blue-500/15" : "rounded-full hover:bg-accent",
+                        inRange
+                          ? "bg-blue-500/15"
+                          : "rounded-full hover:bg-accent",
                         isStart && "rounded-l-full",
                         isEnd && "rounded-r-full",
                         date.getMonth() !== month.getMonth() &&

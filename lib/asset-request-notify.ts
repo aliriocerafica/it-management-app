@@ -7,7 +7,7 @@ import {
 } from "@/lib/email/templates"
 import { lookupDtrEmployeeEmail } from "@/lib/dtr"
 import { fetchHrisEmployees } from "@/lib/hris"
-import { listActiveItEmails } from "@/lib/user-repository"
+import { requestEmailCc } from "@/lib/request-email-settings"
 
 const itInbox = "it@ardentparalegal.com"
 
@@ -77,10 +77,9 @@ export async function notifyAssetRequest(
     details,
   })
 
-  const itEmails = await listActiveItEmails()
   await sendEmail({
     to,
-    cc: itEmails,
+    cc: await requestEmailCc(),
     replyTo: itInbox,
     subject: email.subject,
     htmlContent: email.html,

@@ -297,7 +297,7 @@ export function AddAccessoryDialog({
         <form
           id={formId}
           onSubmit={handleSubmit}
-          className="flex min-h-0 flex-col gap-6 overflow-y-auto px-6 py-5"
+          className="flex min-h-0 flex-col gap-6 overflow-y-auto scrollbar-none px-6 py-5 [&::-webkit-scrollbar]:hidden"
         >
           <FormSection title={config.singular}>
             <FormField label="Brand" htmlFor="brand">

@@ -28,6 +28,7 @@ import {
   UserIcon,
   Undo2Icon,
   UserPlusIcon,
+  UserXIcon,
   CircleCheckIcon,
   WrenchIcon,
   XIcon,
@@ -43,6 +44,7 @@ import {
   DisposeLaptopDialog,
   type DisposalOutcome,
 } from "@/components/dispose-laptop-dialog";
+import { EmployeesWithoutLaptop } from "@/components/employees-without-laptop";
 import { ErrorToast } from "@/components/error-toast";
 import {
   PendingRepairIcon,
@@ -54,13 +56,14 @@ import { type FormState } from "@/lib/accountability-forms";
 import {
   createLaptop,
   errorMessage,
+  fetchAccessories,
   removeLaptops,
   saveAccessory,
   saveAssetRequest,
   saveLaptop,
 } from "@/lib/inventory-api";
 import { returnedToVacant } from "@/lib/inventory-lifecycle";
-import { inventoryKindForAssetType } from "@/lib/issue-stock";
+import { inventoryKindForAssetType, samePerson } from "@/lib/issue-stock";
 import {
   ReturnFromRepairDialog,
   type RepairOutcome,
@@ -106,6 +109,11 @@ import { useToday } from "@/lib/use-today";
 import { type Accessory } from "@/lib/accessories";
 import { type Employee } from "@/lib/employees";
 import {
+  chargerFromAccessory,
+  chargerInLaptop,
+  missingCharger,
+} from "@/lib/chargers";
+import {
   adjustRam,
   installRamInLaptop,
   parseGb,
@@ -114,14 +122,22 @@ import {
   toRamHost,
 } from "@/lib/ram";
 import { anyInDateRange, type DateRange } from "@/lib/date-range";
+import { useEmployeeDirectory } from "@/lib/use-employee-directory";
 import { useServerState } from "@/lib/use-server-state";
 import { cn } from "@/lib/utils";
 
-type Tab = "All" | LaptopStatus;
-const tabs: Tab[] = ["All", ...statuses];
+// Lists employees rather than laptops: those with no laptop tagged to them.
+const NO_LAPTOP = "No laptop";
+type Tab = "All" | LaptopStatus | typeof NO_LAPTOP;
+const tabs: Tab[] = ["All", ...statuses, NO_LAPTOP];
 
 export const cellClass =
   "border-r border-border px-2.5 py-2 align-middle whitespace-nowrap";
+
+// A table row. Tinted green while its actions menu is open, or while
+// `data-active` marks it as the row a dialog is about.
+export const rowClass =
+  "border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted data-active:bg-emerald-500/10! has-[[data-popup-open]]:bg-emerald-500/10!";
 
 export function isoToday() {
   const now = new Date();
@@ -282,16 +298,19 @@ export function FilterMenu<T extends string>({
 
 // Stable defaults: the tables re-sync whenever these props change identity.
 const noRamModules: Accessory[] = [];
+const noChargers: Accessory[] = [];
 const noRequests: AssetRequest[] = [];
 
 export function LaptopInventoryTable({
   initialData,
   ramModules: initialRamModules = noRamModules,
+  chargers: initialChargers = noChargers,
   openRequests: initialOpenRequests = noRequests,
   formStateByHolder = {},
 }: {
   initialData: Laptop[];
   ramModules?: Accessory[];
+  chargers?: Accessory[];
   // Open (Pending/Approved) local requests, for linking an assignment to
   // the request it fulfills.
   openRequests?: AssetRequest[];
@@ -302,6 +321,7 @@ export function LaptopInventoryTable({
   const today = useToday();
   const [laptops, setLaptops] = useServerState(initialData);
   const [ramModules, setRamModules] = useServerState(initialRamModules);
+  const [chargers, setChargers] = useServerState(initialChargers);
   const [openRequests, setOpenRequests] =
     useServerState(initialOpenRequests);
   const assignableRequests = useMemo(
@@ -392,6 +412,17 @@ export function LaptopInventoryTable({
   const hasFilters =
     query !== "" || brandFilter.length > 0 || dateRange !== null;
 
+  // Active employees nobody has tagged a laptop to yet. A laptop in repair
+  // still belongs to its handler.
+  const directory = useEmployeeDirectory();
+  const withoutLaptop = useMemo(
+    () =>
+      directory.employees.filter(
+        (employee) => !laptops.some((l) => samePerson(l.handler, employee.name)),
+      ),
+    [directory.employees, laptops],
+  );
+
   const tabCounts = useMemo(() => {
     const counts: Record<Tab, number> = {
       All: laptops.length,
@@ -399,10 +430,11 @@ export function LaptopInventoryTable({
       Vacant: 0,
       "In repair": 0,
       Retired: 0,
+      [NO_LAPTOP]: withoutLaptop.length,
     };
     for (const l of laptops) counts[l.status] += 1;
     return counts;
-  }, [laptops]);
+  }, [laptops, withoutLaptop]);
 
   function toggleRow(id: string, checked: boolean) {
     setSelected((prev) => {
@@ -452,6 +484,74 @@ export function LaptopInventoryTable({
   function restoreRamModules(originals: Accessory[]) {
     const byId = new Map(originals.map((item) => [item.id, item]));
     setRamModules((prev) => prev.map((item) => byId.get(item.id) ?? item));
+  }
+
+  function applyChargerToLaptops(item: Accessory, previousLaptopId?: string | null) {
+    setLaptops((prev) =>
+      prev.map((laptop) => {
+        if (item.status === "In use" && item.laptopId === laptop.id) {
+          return { ...laptop, charger: chargerFromAccessory(item) };
+        }
+        if (
+          previousLaptopId === laptop.id &&
+          item.laptopId !== laptop.id &&
+          chargerInLaptop([item], laptop.id) == null
+        ) {
+          return { ...laptop, charger: missingCharger(laptop.charger) };
+        }
+        return laptop;
+      }),
+    );
+    setEditing((current) => {
+      if (!current) return current;
+      if (item.status === "In use" && item.laptopId === current.id) {
+        return { ...current, charger: chargerFromAccessory(item) };
+      }
+      if (previousLaptopId === current.id && item.laptopId !== current.id) {
+        return { ...current, charger: missingCharger(current.charger) };
+      }
+      return current;
+    });
+  }
+
+  async function persistLaptopCharger(next: Accessory) {
+    const original = chargers.find((item) => item.id === next.id);
+    const previousLaptopId = original?.laptopId ?? next.laptopId;
+    const before = { chargers, laptops, editing };
+    setChargers((prev) => {
+      const exists = prev.some((item) => item.id === next.id);
+      const mapped = prev.map((item) => {
+        if (item.id === next.id) return next;
+        if (
+          next.status === "In use" &&
+          next.laptopId &&
+          item.kind === "charger" &&
+          item.laptopId === next.laptopId &&
+          item.status === "In use"
+        ) {
+          return { ...item, laptopId: null, status: "Vacant" as const };
+        }
+        return item;
+      });
+      return exists ? mapped : [next, ...mapped];
+    });
+    applyChargerToLaptops(next, previousLaptopId);
+    let saved: Accessory;
+    try {
+      saved = await saveAccessory(next);
+    } catch (error) {
+      // Nothing was saved: show the charger where it still is.
+      setChargers(before.chargers);
+      setLaptops(before.laptops);
+      setEditing(before.editing);
+      throw error;
+    }
+    setChargers((prev) =>
+      prev.map((item) => (item.id === saved.id ? saved : item)),
+    );
+    applyChargerToLaptops(saved, previousLaptopId);
+    void revalidateInventory();
+    return saved;
   }
 
   function applyRamToLaptop(laptop: Laptop, module: Accessory, deltaGb: number) {
@@ -892,6 +992,8 @@ export function LaptopInventoryTable({
             >
               {t === "All" ? (
                 <LaptopIcon className="size-4" />
+              ) : t === NO_LAPTOP ? (
+                <UserXIcon className="size-4" />
               ) : (
                 <span
                   className={cn("size-2 rounded-full", statusStyles[t].dot)}
@@ -906,7 +1008,9 @@ export function LaptopInventoryTable({
                     : "bg-background/70 text-muted-foreground",
                 )}
               >
-                {tabCounts[t]}
+                {t === NO_LAPTOP && directory.status !== "ready"
+                  ? "–"
+                  : tabCounts[t]}
               </span>
             </button>
           );
@@ -914,6 +1018,13 @@ export function LaptopInventoryTable({
       </div>
 
       <div className="flex min-w-0 flex-col rounded-2xl rounded-tl-none border border-border bg-card text-card-foreground shadow-sm">
+        {tab === NO_LAPTOP ? (
+          <EmployeesWithoutLaptop
+            employees={withoutLaptop}
+            status={directory.status}
+          />
+        ) : (
+        <>
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
           {selected.size > 0 && (
@@ -977,9 +1088,15 @@ export function LaptopInventoryTable({
             </Button>
             <AddLaptopDialog
               laptops={laptops}
+              chargers={chargers}
               onAdd={async (laptop) => {
                 const saved = await createLaptop(laptop);
                 setLaptops((prev) => [saved, ...prev]);
+                try {
+                  setChargers(await fetchAccessories("charger"));
+                } catch {
+                  // Charger stock will catch up on the next refresh.
+                }
                 setTab("All");
                 setPage(1);
               }}
@@ -1051,7 +1168,7 @@ export function LaptopInventoryTable({
                   <tr
                     key={laptop.id}
                     data-state={isSelected ? "selected" : undefined}
-                    className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                    className={rowClass}
                   >
                     <td className="w-10 border-r border-border px-3">
                       <Checkbox
@@ -1064,7 +1181,10 @@ export function LaptopInventoryTable({
                     </td>
                     <td className={cellClass}>
                       <div className="font-medium">{laptop.brand}</div>
-                      <div className="text-[11px] text-muted-foreground">
+                      <div
+                        className="max-w-40 truncate text-[11px] text-muted-foreground"
+                        title={laptop.model}
+                      >
                         {laptop.model}
                         <span className="font-mono @3xl:hidden">
                           {" "}
@@ -1074,7 +1194,10 @@ export function LaptopInventoryTable({
                     </td>
                     <td className={cn(cellClass, "hidden @3xl:table-cell")}>
                       <div className="font-mono">{laptop.assetTag}</div>
-                      <div className="font-mono text-[11px] text-muted-foreground">
+                      <div
+                        className="max-w-32 truncate font-mono text-[11px] text-muted-foreground"
+                        title={laptop.serialNumber}
+                      >
                         {laptop.serialNumber}
                       </div>
                     </td>
@@ -1086,9 +1209,12 @@ export function LaptopInventoryTable({
                               {initials(laptop.handler)}
                             </AvatarFallback>
                           </Avatar>
-                          <div className="leading-tight">
-                            <div className="flex items-center gap-1">
-                              {laptop.handler}
+                          <div className="max-w-40 min-w-0 leading-tight">
+                            <div
+                              className="flex items-center gap-1"
+                              title={laptop.handler}
+                            >
+                              <span className="truncate">{laptop.handler}</span>
                               {formStateByHolder[laptop.handler] &&
                                 formStateByHolder[laptop.handler] !==
                                   "Up to date" && (
@@ -1102,7 +1228,7 @@ export function LaptopInventoryTable({
                                   </span>
                                 )}
                             </div>
-                            <div className="text-[11px] text-muted-foreground">
+                            <div className="truncate text-[11px] text-muted-foreground">
                               {laptop.department}
                             </div>
                           </div>
@@ -1127,9 +1253,14 @@ export function LaptopInventoryTable({
                       </div>
                     </td>
                     <td className={cn(cellClass, "hidden @5xl:table-cell")}>
-                      <div>{laptop.cpu}</div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {laptop.ram} · {laptop.storage} · {laptop.os}
+                      <div
+                        className="max-w-44 @7xl:max-w-60"
+                        title={`${laptop.cpu}\n${laptop.ram} · ${laptop.storage} · ${laptop.os}`}
+                      >
+                        <div className="truncate">{laptop.cpu}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {laptop.ram} · {laptop.storage} · {laptop.os}
+                        </div>
                       </div>
                     </td>
                     <td className={cn(cellClass, "hidden @7xl:table-cell")}>
@@ -1435,6 +1566,8 @@ export function LaptopInventoryTable({
             </Button>
           </div>
         </div>
+        </>
+        )}
       </div>
 
       <UndoToast
@@ -1542,12 +1675,19 @@ export function LaptopInventoryTable({
         laptop={editing}
         open={editOpen}
         onOpenChange={setEditOpen}
+        chargers={chargers}
+        onSaveCharger={persistLaptopCharger}
         onSave={async (next) => {
           const original = laptops.find((laptop) => laptop.id === next.id);
           const saved = await saveLaptop(next);
           setLaptops((prev) =>
             prev.map((laptop) => (laptop.id === saved.id ? saved : laptop)),
           );
+          try {
+            setChargers(await fetchAccessories("charger"));
+          } catch {
+            // Charger stock will catch up on the next refresh.
+          }
           if (original) {
             setUndo({
               message: `Updated ${saved.assetTag}`,

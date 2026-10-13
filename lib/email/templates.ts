@@ -23,7 +23,25 @@ function layout(title: string, body: string) {
   `.trim()
 }
 
-export function otpEmailHtml(code: string, copyUrl: string): string {
+type OtpEmailWording = { intro: string; footer: string }
+
+const resetOtpWording: OtpEmailWording = {
+  intro: "Your password reset code:",
+  footer: "If you did not request this, you can ignore this email.",
+}
+
+// For the code asked for when signing in from a new device.
+export const loginOtpWording: OtpEmailWording = {
+  intro: "Your sign-in code for a new device:",
+  footer:
+    "If you did not just sign in, someone else has your password. Change it right away.",
+}
+
+export function otpEmailHtml(
+  code: string,
+  copyUrl: string,
+  wording: OtpEmailWording = resetOtpWording,
+): string {
   const safe = escapeHtml(code)
   const safeUrl = escapeHtml(copyUrl)
   return `
@@ -31,7 +49,7 @@ export function otpEmailHtml(code: string, copyUrl: string): string {
   <tr>
     <td style="padding:24px 8px;">
       <p style="margin:0 0 16px;font-size:16px;line-height:1.4;color:#111111;">
-        Your password reset code:
+        ${escapeHtml(wording.intro)}
       </p>
       <p style="margin:0 0 16px;font-size:28px;line-height:1.2;font-weight:700;letter-spacing:6px;font-family:Consolas,'Courier New',monospace;color:#111111;-webkit-user-select:all;user-select:all;">
         ${safe}
@@ -42,7 +60,7 @@ export function otpEmailHtml(code: string, copyUrl: string): string {
         </a>
       </p>
       <p style="margin:0;font-size:13px;line-height:1.5;color:#555555;">
-        Expires in 10 minutes. If you did not request this, you can ignore this email.
+        Expires in 10 minutes. ${escapeHtml(wording.footer)}
       </p>
     </td>
   </tr>
@@ -50,11 +68,14 @@ export function otpEmailHtml(code: string, copyUrl: string): string {
   `.trim()
 }
 
-export function otpEmailText(code: string): string {
+export function otpEmailText(
+  code: string,
+  wording: OtpEmailWording = resetOtpWording,
+): string {
   return [
-    `Your password reset code: ${code}`,
+    `${wording.intro} ${code}`,
     "",
-    "Expires in 10 minutes. If you did not request this, you can ignore this email.",
+    `Expires in 10 minutes. ${wording.footer}`,
   ].join("\n")
 }
 

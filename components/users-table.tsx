@@ -23,7 +23,11 @@ import { AddUserDialog } from "@/components/add-user-dialog"
 import { Scrollable } from "@/components/scrollable"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { UndoToast } from "@/components/undo-toast"
-import { FilterMenu, rowsPerPageOptions } from "@/components/laptop-inventory-table"
+import {
+  FilterMenu,
+  rowClass,
+  rowsPerPageOptions,
+} from "@/components/laptop-inventory-table"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -435,7 +439,7 @@ export function UsersTable({ initialData }: { initialData: UserDto[] }) {
                 <tr
                   key={user.id}
                   data-state={isSelected ? "selected" : undefined}
-                  className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                  className={rowClass}
                 >
                   <td className="w-10 border-r border-border px-3">
                     <Checkbox

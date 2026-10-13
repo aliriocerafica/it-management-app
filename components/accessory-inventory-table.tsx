@@ -24,6 +24,7 @@ import {
   TvMinimalIcon,
   MouseIcon,
   PaletteIcon,
+  PlugIcon,
   PencilIcon,
   SearchIcon,
   ShieldCheckIcon,
@@ -69,6 +70,7 @@ import {
   ColumnHeader,
   FilterMenu,
   cellClass,
+  rowClass,
   isoToday,
   rowsPerPageOptions,
 } from "@/components/laptop-inventory-table";
@@ -136,6 +138,7 @@ export const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
   battery: BatteryIcon,
   keyboard: KeyboardIcon,
   ram: MemoryStickIcon,
+  charger: PlugIcon,
 };
 
 type Tab = "All" | LaptopStatus;
@@ -643,13 +646,40 @@ export function AccessoryInventoryTable({
   }
 
   // RAM's version of assigning: it goes into a laptop, not to a person.
+  // A laptop only has one charger; the server returns the previous unit
+  // when this one is saved as installed.
   function installItem(id: string, host: RamHost, note: string) {
     const todayIso = isoToday();
-    updateItem(
-      id,
-      (item) => installRamInLaptop(item, host, note, todayIso),
-      (item) => `Installed ${item.assetTag} in ${host.assetTag}`,
+    const original = items.find((item) => item.id === id);
+    if (!original) return;
+    // The charger this one takes the place of, so Undo and a failed save
+    // put it back in the laptop too.
+    const displaced =
+      kind === "charger"
+        ? items.filter(
+            (other) =>
+              other.id !== id &&
+              other.status === "In use" &&
+              other.laptopId === host.id,
+          )
+        : [];
+    const next = installRamInLaptop(original, host, note, todayIso);
+    const changed = new Map(
+      [
+        next,
+        ...displaced.map((item) => removeRamFromLaptop(item, host, todayIso)),
+      ].map((item) => [item.id, item]),
     );
+    setItems((prev) => prev.map((item) => changed.get(item.id) ?? item));
+    persist(saveAccessory(next), () =>
+      restoreItems([original, ...displaced]),
+    );
+    setUndo({
+      message: displaced.length
+        ? `Replaced the charger on ${host.assetTag} with ${original.assetTag}`
+        : `Installed ${original.assetTag} in ${host.assetTag}`,
+      run: () => revertItems([original, ...displaced]),
+    });
     setInstallOpen(false);
   }
 
@@ -711,8 +741,13 @@ export function AccessoryInventoryTable({
 
   function removeDescription(item: Accessory) {
     const host = item.laptopId ? hostById.get(item.laptopId) : undefined;
-    const gb = parseGb(item.specs.capacity);
     const where = host?.assetTag ?? "its laptop";
+    if (item.kind === "charger") {
+      const watts = item.specs.wattage ? `${item.specs.wattage} W` : "";
+      const spec = [item.specs.connector, watts].filter(Boolean).join(" ");
+      return `${item.assetTag}${spec ? ` (${spec})` : ""} comes off ${where} and goes back to vacant stock. That laptop's charger is marked missing until you assign another. You can undo this afterward.`;
+    }
+    const gb = parseGb(item.specs.capacity);
     const change =
       host && gb && parseGb(host.ram) !== null
         ? ` ${host.assetTag}'s memory goes from ${host.ram} to ${adjustRam(host.ram, -gb)}.`
@@ -923,7 +958,7 @@ export function AccessoryInventoryTable({
                   <tr
                     key={item.id}
                     data-state={isSelected ? "selected" : undefined}
-                    className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                    className={rowClass}
                   >
                     <td className="w-10 border-r border-border px-3">
                       <Checkbox
@@ -1083,7 +1118,7 @@ export function AccessoryInventoryTable({
                             className="min-w-27"
                             onClick={() => openInstall(item)}
                           >
-                            <MemoryStickIcon />
+                            <Icon />
                             Install
                           </Button>
                         ) : item.status === "In use" && installs ? (

@@ -28,6 +28,7 @@ import {
   LogOutIcon,
   MemoryStickIcon,
   MouseIcon,
+  PlugIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
@@ -35,6 +36,7 @@ import {
   TvMinimalIcon,
   UserIcon,
   UsersIcon,
+  WrenchIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -150,6 +152,12 @@ const navGroups: NavGroup[] = [
         icon: MemoryStickIcon,
         vacantKey: "ram",
       },
+      {
+        title: "Chargers",
+        href: "/dashboard/chargers",
+        icon: PlugIcon,
+        vacantKey: "charger",
+      },
     ],
   },
   {
@@ -172,6 +180,11 @@ const navGroups: NavGroup[] = [
         href: "/dashboard/requests",
         icon: ClipboardListIcon,
         pendingBadge: true,
+      },
+      {
+        title: "IT Troubleshooting Tickets",
+        href: "/dashboard/tickets",
+        icon: WrenchIcon,
       },
     ],
   },

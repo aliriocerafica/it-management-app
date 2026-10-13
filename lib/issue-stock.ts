@@ -12,8 +12,14 @@ export type IssueStockKind = AccessoryKind | "laptop"
 
 export type IssuedInventory =
   | { kind: "laptop"; item: Laptop }
-  | { kind: "ram"; item: Accessory; host: RamHost | null }
-  | { kind: Exclude<AccessoryKind, "ram">; item: Accessory }
+  | { kind: "ram" | "charger"; item: Accessory; host: RamHost | null }
+  | { kind: Exclude<AccessoryKind, "ram" | "charger">; item: Accessory }
+
+export function installsInLaptopKind(
+  kind: IssueStockKind | null | undefined,
+): kind is "ram" | "charger" {
+  return kind === "ram" || kind === "charger"
+}
 
 const exactKinds: Record<string, IssueStockKind> = {
   laptop: "laptop",
@@ -31,6 +37,9 @@ const exactKinds: Record<string, IssueStockKind> = {
   "ram module": "ram",
   "ram modules": "ram",
   memory: "ram",
+  charger: "charger",
+  chargers: "charger",
+  "power adapter": "charger",
 }
 
 // Request labels from this app and from DTR ("Headset", "RAM", "Laptop bag"…).
@@ -39,6 +48,10 @@ export function inventoryKindForAssetType(assetType: string): IssueStockKind | n
   if (!key) return null
   if (exactKinds[key]) return exactKinds[key]
   if (/\bram\b/.test(key) || /\bmemory\b/.test(key)) return "ram"
+  // Only power adapters: an HDMI or display adapter isn't a charger.
+  if (key.includes("charger") || /\b(power|ac|laptop) adapter\b/.test(key)) {
+    return "charger"
+  }
   if (key.includes("headset") || key.includes("headphone")) return "headset"
   if (key.includes("keyboard")) return "keyboard"
   if (/\bmouse\b/.test(key) || key.includes("mice")) return "mouse"
@@ -112,7 +125,10 @@ export function holdingFromIssued(
     model: item.model,
     serialNumber: item.serialNumber,
     holder,
-    installedIn: stock.kind === "ram" && stock.host ? stock.host.assetTag : null,
+    installedIn:
+      (stock.kind === "ram" || stock.kind === "charger") && stock.host
+        ? stock.host.assetTag
+        : null,
   }
 }
 
@@ -201,7 +217,7 @@ export function issuedItemUpdate(
   if (stock.kind === "laptop") {
     return { kind: "laptop", item: assignIssuedItem(stock.item, holder, note) }
   }
-  if (stock.kind === "ram" && stock.host) {
+  if ((stock.kind === "ram" || stock.kind === "charger") && stock.host) {
     return {
       kind: "accessory",
       item: installRamInLaptop(stock.item, stock.host, note, todayIsoDate()),

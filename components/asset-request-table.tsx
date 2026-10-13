@@ -45,6 +45,7 @@ import {
   ColumnHeader,
   FilterMenu,
   cellClass,
+  rowClass,
   rowsPerPageOptions,
 } from "@/components/laptop-inventory-table";
 import { Scrollable } from "@/components/scrollable";
@@ -172,7 +173,7 @@ function exportCsv(rows: AssetRequest[]) {
   URL.revokeObjectURL(url);
 }
 
-function daysAgo(iso: string, today: Date) {
+export function daysAgo(iso: string, today: Date) {
   const days = Math.floor(
     (today.getTime() - new Date(iso).setHours(0, 0, 0, 0)) / 86_400_000,
   );
@@ -1046,7 +1047,7 @@ export function AssetRequestTable({
                   <tr
                     key={request.id}
                     data-state={isSelected ? "selected" : undefined}
-                    className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                    className={rowClass}
                   >
                     <td className="w-10 border-r border-border px-3">
                       <Checkbox
