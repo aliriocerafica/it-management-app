@@ -212,6 +212,26 @@ export function applyRequestOverrides(
   })
 }
 
+// Which of these DTR request ids we've already emailed the CC list about.
+export async function listNotifiedDtrRequestIds(
+  ids: string[],
+): Promise<Set<string>> {
+  if (ids.length === 0) return new Set()
+  const rows = await prisma.dtrRequestNotice.findMany({
+    where: { requestId: { in: ids } },
+    select: { requestId: true },
+  })
+  return new Set(rows.map((row) => row.requestId))
+}
+
+export async function markDtrRequestNotified(requestId: string) {
+  await prisma.dtrRequestNotice.upsert({
+    where: { requestId },
+    create: { requestId },
+    update: {},
+  })
+}
+
 export async function countPendingAssetRequests(includeDtr = true) {
   const [local, overrides] = await Promise.all([
     listAssetRequests(),

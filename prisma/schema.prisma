@@ -355,6 +355,16 @@ model AssetRequestOverride {
   @@map("asset_request_overrides")
 }
 
+// A DTR-sourced request we've already emailed the CC list about, so the
+// scheduled check (app/api/cron/dtr-request-notices) doesn't re-notify on
+// every run.
+model DtrRequestNotice {
+  requestId  String   @id
+  notifiedAt DateTime @default(now())
+
+  @@map("dtr_request_notices")
+}
+
 // Who is copied on the emails sent to an employee about their asset
 // request. A single row.
 model RequestEmailSettings {

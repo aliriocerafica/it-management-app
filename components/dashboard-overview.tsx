@@ -169,6 +169,8 @@ function TooltipRow({
   )
 }
 
+// A flat cell in the bento grid; the grid's 1px gaps draw the dividers
+// between cards instead of each card carrying its own border/shadow.
 function Tile({
   href,
   className,
@@ -179,7 +181,7 @@ function Tile({
   children: ReactNode
 }) {
   const classes = cn(
-    "flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm",
+    "flex min-w-0 flex-col gap-3 bg-background p-4 text-card-foreground",
     href && "transition-colors hover:bg-muted/40",
     className,
   )
@@ -695,7 +697,7 @@ export function DashboardOverview({
       <div className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">
-            {today ? formatDate(today) : "\u00a0"}
+            {today ? formatDate(today) : " "}
           </p>
           <h1 className="flex flex-wrap items-center gap-2.5 font-heading text-2xl font-semibold tracking-tight">
             Dashboard
@@ -769,623 +771,619 @@ export function DashboardOverview({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile href="/dashboard/laptops">
-          <TileHeader icon={PackageIcon} label="Vacant stock" hint="Ready" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">
-            <AnimatedNumber value={vacantTotal} delay={40} />
-          </p>
-          <MiniSpark data={vacantSpark} color="var(--color-sky-500)" />
-          <p className="text-xs text-muted-foreground">
-            <AnimatedNumber value={summary.laptops.Vacant} delay={40} /> laptops ·{" "}
-            <AnimatedNumber
-              value={vacantTotal - summary.laptops.Vacant}
-              delay={40}
-            />{" "}
-            accessories
-          </p>
-        </Tile>
-        <Tile href="/dashboard/laptops">
-          <TileHeader icon={WrenchIcon} label="In repair" hint="Out of use" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">
-            <AnimatedNumber value={repairTotal} delay={120} />
-          </p>
-          <p className="text-xs text-muted-foreground">
-            <AnimatedNumber value={summary.laptops["In repair"]} delay={120} />{" "}
-            laptops waiting on a fix
-          </p>
-        </Tile>
-        <Tile>
-          <TileHeader icon={UserCheckIcon} label="Released this month" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">
-            <AnimatedNumber value={releasedThisMonth} delay={200} />
-          </p>
-          <MiniSpark data={assignSpark} color="var(--color-chart-2)" />
-          <p className="text-xs text-muted-foreground">Assignments since the 1st</p>
-        </Tile>
-        <Tile href="/dashboard/analytics">
-          <TileHeader icon={ShieldCheckIcon} label="Fleet health" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">
-            {fleetScore === null ? (
-              "–"
-            ) : (
-              <AnimatedNumber value={fleetScore} delay={280} />
-            )}
-            <span className="ml-1 text-sm font-normal text-muted-foreground">
-              / 100
-            </span>
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {fleetScore !== null ? (
-              <>
-                {gradeInfo[gradeForScore(fleetScore)].label} ·{" "}
-                <AnimatedNumber value={dueForReplacement} delay={280} /> due to
-                replace
-              </>
-            ) : (
-              "No active laptops"
-            )}
-          </p>
-        </Tile>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
-        <Tile href="/dashboard/laptops" className="gap-1.5 p-2.5">
-          <TileHeader icon={LaptopIcon} label="Laptops" />
-          <p className="text-lg font-semibold tracking-tight tabular-nums">
-            <AnimatedNumber value={summary.laptops.total} delay={360} />
-          </p>
-          <div className="flex flex-wrap gap-x-1.5 text-[10px] text-muted-foreground">
-            {statuses.map((status) => (
-              <span key={status} className="flex items-center gap-1">
-                <span className={cn("size-1 rounded-full", statusStyles[status].dot)} />
-                <AnimatedNumber value={summary.laptops[status]} delay={360} />
-              </span>
-            ))}
-          </div>
-        </Tile>
-        {categories.map((category, i) => (
-          <Tile key={category.kind} href={category.href} className="gap-1.5 p-2.5">
-            <TileHeader icon={category.icon} label={category.title} />
-            <p className="text-lg font-semibold tracking-tight tabular-nums">
-              <AnimatedNumber
-                value={category.counts.total}
-                delay={400 + i * 50}
-              />
+      {/* Bento grid: flat cells on a border-coloured background, so the 1px
+          gaps between them read as dividers and every card feels connected. */}
+      <div className="overflow-hidden rounded-xl border border-border">
+        <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-2 lg:grid-cols-4">
+          <Tile href="/dashboard/laptops">
+            <TileHeader icon={PackageIcon} label="Vacant stock" hint="Ready" />
+            <p className="text-3xl font-semibold tracking-tight tabular-nums">
+              <AnimatedNumber value={vacantTotal} delay={40} />
             </p>
-            <p className="text-[10px] text-muted-foreground">
+            <MiniSpark data={vacantSpark} color="var(--color-sky-500)" />
+            <p className="text-xs text-muted-foreground">
+              <AnimatedNumber value={summary.laptops.Vacant} delay={40} /> laptops ·{" "}
               <AnimatedNumber
-                value={category.counts.Vacant}
-                delay={400 + i * 50}
+                value={vacantTotal - summary.laptops.Vacant}
+                delay={40}
               />{" "}
-              vacant ·{" "}
-              <AnimatedNumber
-                value={category.counts["In use"]}
-                delay={400 + i * 50}
-              />{" "}
-              in use
+              accessories
             </p>
           </Tile>
-        ))}
-      </div>
+          <Tile href="/dashboard/laptops">
+            <TileHeader icon={WrenchIcon} label="In repair" hint="Out of use" />
+            <p className="text-3xl font-semibold tracking-tight tabular-nums">
+              <AnimatedNumber value={repairTotal} delay={120} />
+            </p>
+            <p className="text-xs text-muted-foreground">
+              <AnimatedNumber value={summary.laptops["In repair"]} delay={120} />{" "}
+              laptops waiting on a fix
+            </p>
+          </Tile>
+          <Tile>
+            <TileHeader icon={UserCheckIcon} label="Released this month" />
+            <p className="text-3xl font-semibold tracking-tight tabular-nums">
+              <AnimatedNumber value={releasedThisMonth} delay={200} />
+            </p>
+            <MiniSpark data={assignSpark} color="var(--color-chart-2)" />
+            <p className="text-xs text-muted-foreground">Assignments since the 1st</p>
+          </Tile>
+          <Tile href="/dashboard/analytics">
+            <TileHeader icon={ShieldCheckIcon} label="Fleet health" />
+            <p className="text-3xl font-semibold tracking-tight tabular-nums">
+              {fleetScore === null ? (
+                "–"
+              ) : (
+                <AnimatedNumber value={fleetScore} delay={280} />
+              )}
+              <span className="ml-1 text-sm font-normal text-muted-foreground">
+                / 100
+              </span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {fleetScore !== null ? (
+                <>
+                  {gradeInfo[gradeForScore(fleetScore)].label} ·{" "}
+                  <AnimatedNumber value={dueForReplacement} delay={280} /> due to
+                  replace
+                </>
+              ) : (
+                "No active laptops"
+              )}
+            </p>
+          </Tile>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Tile className="lg:col-span-2">
-          <TileHeader
-            icon={TrendingUpIcon}
-            label="Inventory and assignments"
-            hint="Last 12 months"
-          />
-          <ChartContainer
-            config={growthChartConfig}
-            className="aspect-auto h-64 w-full"
-          >
-            <AreaChart data={growthData} margin={{ left: -12, right: 8, top: 8 }}>
-              <defs>
-                <linearGradient id={growthFillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--color-chart-1)" stopOpacity={0.28} />
-                  <stop offset="95%" stopColor="var(--color-chart-1)" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id={assignFillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--color-chart-2)" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="var(--color-chart-2)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid className="stroke-border" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="label"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                fontSize={11}
-              />
-              <YAxis
-                allowDecimals={false}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={4}
-                width={32}
-              />
-              <ChartTooltip
-                cursor={{ className: "stroke-foreground/20" }}
-                content={({ active, payload }) => {
-                  const row = payload?.[0]?.payload as
-                    | { label: string; total: number; assigned: number }
-                    | undefined
-                  if (!active || !row) return null
-                  return (
-                    <TooltipBox>
-                      <div className="font-medium">{row.label}</div>
-                      <TooltipRow
-                        color="var(--color-chart-1)"
-                        label="On hand"
-                        value={row.total}
-                      />
-                      <TooltipRow
-                        color="var(--color-chart-2)"
-                        label="Assigned that month"
-                        value={row.assigned}
-                      />
-                    </TooltipBox>
-                  )
-                }}
-              />
-              <Area
-                dataKey="total"
-                type="monotone"
-                stroke="var(--color-chart-1)"
-                strokeWidth={2}
-                fill={`url(#${growthFillId})`}
-                animationDuration={900}
-                animationBegin={200}
-              />
-              <Area
-                dataKey="assigned"
-                type="monotone"
-                stroke="var(--color-chart-2)"
-                strokeWidth={2}
-                fill={`url(#${assignFillId})`}
-                animationDuration={900}
-                animationBegin={280}
-              />
-            </AreaChart>
-          </ChartContainer>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="size-1.5 rounded-full bg-[var(--color-chart-1)]" />
-              Devices on hand
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="size-1.5 rounded-full bg-[var(--color-chart-2)]" />
-              Assigned that month
-            </span>
+          <div className="grid grid-cols-3 gap-px sm:grid-cols-5 md:col-span-2 lg:col-span-4 lg:grid-cols-9">
+            <Tile href="/dashboard/laptops" className="gap-1.5 p-2.5">
+              <TileHeader icon={LaptopIcon} label="Laptops" />
+              <p className="text-lg font-semibold tracking-tight tabular-nums">
+                <AnimatedNumber value={summary.laptops.total} delay={360} />
+              </p>
+              <div className="flex flex-wrap gap-x-1.5 text-[10px] text-muted-foreground">
+                {statuses.map((status) => (
+                  <span key={status} className="flex items-center gap-1">
+                    <span className={cn("size-1 rounded-full", statusStyles[status].dot)} />
+                    <AnimatedNumber value={summary.laptops[status]} delay={360} />
+                  </span>
+                ))}
+              </div>
+            </Tile>
+            {categories.map((category, i) => (
+              <Tile key={category.kind} href={category.href} className="gap-1.5 p-2.5">
+                <TileHeader icon={category.icon} label={category.title} />
+                <p className="text-lg font-semibold tracking-tight tabular-nums">
+                  <AnimatedNumber
+                    value={category.counts.total}
+                    delay={400 + i * 50}
+                  />
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  <AnimatedNumber
+                    value={category.counts.Vacant}
+                    delay={400 + i * 50}
+                  />{" "}
+                  vacant ·{" "}
+                  <AnimatedNumber
+                    value={category.counts["In use"]}
+                    delay={400 + i * 50}
+                  />{" "}
+                  in use
+                </p>
+              </Tile>
+            ))}
           </div>
-        </Tile>
 
-        <Tile>
-          <TileHeader icon={PieChartIcon} label="Fleet by status" />
-          <div className="relative">
+          <Tile className="md:col-span-2 lg:col-span-3">
+            <TileHeader
+              icon={TrendingUpIcon}
+              label="Inventory and assignments"
+              hint="Last 12 months"
+            />
             <ChartContainer
-              config={statusChartConfig}
-              className="aspect-auto mx-auto h-44 w-full"
+              config={growthChartConfig}
+              className="aspect-auto h-64 w-full"
             >
-              <PieChart>
+              <AreaChart data={growthData} margin={{ left: -12, right: 8, top: 8 }}>
+                <defs>
+                  <linearGradient id={growthFillId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-chart-1)" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="var(--color-chart-1)" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id={assignFillId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-chart-2)" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="var(--color-chart-2)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid className="stroke-border" strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  fontSize={11}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={4}
+                  width={32}
+                />
                 <ChartTooltip
+                  cursor={{ className: "stroke-foreground/20" }}
                   content={({ active, payload }) => {
                     const row = payload?.[0]?.payload as
-                      | { status: LaptopStatus; value: number; fill: string }
+                      | { label: string; total: number; assigned: number }
                       | undefined
                     if (!active || !row) return null
                     return (
                       <TooltipBox>
+                        <div className="font-medium">{row.label}</div>
                         <TooltipRow
-                          color={row.fill}
-                          label={row.status}
-                          value={`${row.value} · ${deviceTotal ? Math.round((row.value / deviceTotal) * 100) : 0}%`}
+                          color="var(--color-chart-1)"
+                          label="On hand"
+                          value={row.total}
+                        />
+                        <TooltipRow
+                          color="var(--color-chart-2)"
+                          label="Assigned that month"
+                          value={row.assigned}
                         />
                       </TooltipBox>
                     )
                   }}
                 />
-                <Pie
-                  data={statusPieData}
-                  dataKey="value"
-                  nameKey="status"
-                  innerRadius={48}
-                  outerRadius={70}
-                  paddingAngle={2}
-                  strokeWidth={0}
-                  animationDuration={900}
-                  animationBegin={240}
-                >
-                  {statusPieData.map((row) => (
-                    <Cell key={row.status} fill={row.fill} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ChartContainer>
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-2xl font-semibold tabular-nums">
-                <AnimatedNumber value={deviceTotal} delay={240} />
-              </span>
-              <span className="text-[11px] text-muted-foreground">devices</span>
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5 text-xs">
-            {statusPieData.map((row) => (
-              <div key={row.status} className="flex items-center gap-2">
-                <span
-                  className="size-1.5 rounded-full"
-                  style={{ background: row.fill }}
-                />
-                <span className="text-muted-foreground">{row.status}</span>
-                <span className="ml-auto font-medium tabular-nums">
-                  <AnimatedNumber value={row.value} delay={280} />
-                </span>
-              </div>
-            ))}
-          </div>
-        </Tile>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <Tile className="xl:col-span-3">
-          <TileHeader
-            icon={BarChart3Icon}
-            label="Status by category"
-            hint="Stacked counts"
-          />
-          <ChartContainer
-            config={stackedChartConfig}
-            className="aspect-auto h-72 w-full"
-          >
-            <BarChart
-              data={stackedCategoryData}
-              margin={{ left: 0, right: 0, top: 8 }}
-            >
-              <CartesianGrid className="stroke-border" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="label"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                interval={0}
-                fontSize={11}
-              />
-              <YAxis
-                allowDecimals={false}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={4}
-                width={28}
-              />
-              <ChartTooltip
-                cursor={{ className: "fill-muted" }}
-                content={({ active, payload, label }) => {
-                  if (!active || !payload?.length) return null
-                  return (
-                    <TooltipBox>
-                      <div className="font-medium">{String(label)}</div>
-                      {payload.map((item) => (
-                        <TooltipRow
-                          key={String(item.dataKey)}
-                          color={String(item.color)}
-                          label={String(item.dataKey)}
-                          value={Number(item.value ?? 0)}
-                        />
-                      ))}
-                    </TooltipBox>
-                  )
-                }}
-              />
-              {statuses.map((status) => (
-                <Bar
-                  key={status}
-                  dataKey={status}
-                  stackId="status"
-                  fill={statusChartColors[status]}
-                  maxBarSize={36}
+                <Area
+                  dataKey="total"
+                  type="monotone"
+                  stroke="var(--color-chart-1)"
+                  strokeWidth={2}
+                  fill={`url(#${growthFillId})`}
                   animationDuration={900}
                   animationBegin={200}
                 />
-              ))}
-            </BarChart>
-          </ChartContainer>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            {statuses.map((status) => (
-              <span key={status} className="flex items-center gap-1.5">
-                <span
-                  className="size-1.5 rounded-full"
-                  style={{ background: statusChartColors[status] }}
+                <Area
+                  dataKey="assigned"
+                  type="monotone"
+                  stroke="var(--color-chart-2)"
+                  strokeWidth={2}
+                  fill={`url(#${assignFillId})`}
+                  animationDuration={900}
+                  animationBegin={280}
                 />
-                {status}
-              </span>
-            ))}
-          </div>
-        </Tile>
-
-        <div className="flex flex-col gap-4 xl:col-span-2">
-          <Tile href="/dashboard/analytics" className="flex-1">
-            <TileHeader icon={AwardIcon} label="Laptop grades" />
-            <ChartContainer
-              config={gradeChartConfig}
-              className="aspect-auto h-40 w-full"
-            >
-              <BarChart
-                data={gradeChartData}
-                layout="vertical"
-                margin={{ left: 8, right: 12, top: 0, bottom: 0 }}
-              >
-                <XAxis type="number" hide allowDecimals={false} />
-                <YAxis
-                  type="category"
-                  dataKey="grade"
-                  tickLine={false}
-                  axisLine={false}
-                  width={78}
-                  fontSize={11}
-                />
-                <ChartTooltip
-                  cursor={{ className: "fill-muted" }}
-                  content={({ active, payload }) => {
-                    const row = payload?.[0]?.payload as
-                      | { grade: string; value: number; fill: string }
-                      | undefined
-                    if (!active || !row) return null
-                    return (
-                      <TooltipBox>
-                        <TooltipRow
-                          color={row.fill}
-                          label={row.grade}
-                          value={row.value}
-                        />
-                      </TooltipBox>
-                    )
-                  }}
-                />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={16} animationDuration={900} animationBegin={280}>
-                  {gradeChartData.map((row) => (
-                    <Cell key={row.key} fill={row.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
+              </AreaChart>
             </ChartContainer>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-[var(--color-chart-1)]" />
+                Devices on hand
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-[var(--color-chart-2)]" />
+                Assigned that month
+              </span>
+            </div>
           </Tile>
-          <Tile href="/dashboard/laptops">
-            <TileHeader icon={ClockIcon} label="Laptop warranty" />
-            <div className="flex items-center gap-4">
+
+          <Tile>
+            <TileHeader icon={PieChartIcon} label="Fleet by status" />
+            <div className="relative">
               <ChartContainer
-                config={{
-                  Active: { label: "Active", color: "var(--color-emerald-500)" },
-                  Expiring: { label: "Expiring", color: "var(--color-amber-500)" },
-                  Expired: { label: "Expired", color: "var(--color-red-500)" },
-                }}
-                className="aspect-auto h-24 w-24 shrink-0"
+                config={statusChartConfig}
+                className="aspect-auto mx-auto h-44 w-full"
               >
                 <PieChart>
+                  <ChartTooltip
+                    content={({ active, payload }) => {
+                      const row = payload?.[0]?.payload as
+                        | { status: LaptopStatus; value: number; fill: string }
+                        | undefined
+                      if (!active || !row) return null
+                      return (
+                        <TooltipBox>
+                          <TooltipRow
+                            color={row.fill}
+                            label={row.status}
+                            value={`${row.value} · ${deviceTotal ? Math.round((row.value / deviceTotal) * 100) : 0}%`}
+                          />
+                        </TooltipBox>
+                      )
+                    }}
+                  />
                   <Pie
-                    data={warrantyPieData}
+                    data={statusPieData}
                     dataKey="value"
-                    nameKey="state"
-                    innerRadius={28}
-                    outerRadius={40}
+                    nameKey="status"
+                    innerRadius={48}
+                    outerRadius={70}
                     paddingAngle={2}
                     strokeWidth={0}
                     animationDuration={900}
-                    animationBegin={320}
+                    animationBegin={240}
                   >
-                    {warrantyPieData.map((row) => (
-                      <Cell key={row.state} fill={row.fill} />
+                    {statusPieData.map((row) => (
+                      <Cell key={row.status} fill={row.fill} />
                     ))}
                   </Pie>
                 </PieChart>
               </ChartContainer>
-              <div className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
-                <span className={cn("flex items-center gap-1.5", warrantyStyles.Expiring.text)}>
-                  <span className={cn("size-1.5 rounded-full", warrantyStyles.Expiring.dot)} />
-                  <AnimatedNumber value={warrantyCounts.Expiring} delay={320} />{" "}
-                  expiring soon
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-semibold tabular-nums">
+                  <AnimatedNumber value={deviceTotal} delay={240} />
                 </span>
-                <span className={cn("flex items-center gap-1.5", warrantyStyles.Expired.text)}>
-                  <span className={cn("size-1.5 rounded-full", warrantyStyles.Expired.dot)} />
-                  <AnimatedNumber value={warrantyCounts.Expired} delay={320} />{" "}
-                  expired
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Active laptops · soon is within 90 days
-                </span>
+                <span className="text-[11px] text-muted-foreground">devices</span>
               </div>
             </div>
-          </Tile>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Tile className="lg:col-span-1">
-          <TileHeader
-            icon={TriangleAlertIcon}
-            label="Needs attention"
-            hint={
-              <AnimatedNumber value={attention.length} delay={400} />
-            }
-          />
-          {attention.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Nothing urgent in the current filters.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {attention.map((row) => (
-                <li key={`${row.tag}:${row.reason}`}>
-                  <Link
-                    href={row.href}
-                    className="flex items-start gap-2 rounded-lg px-1 py-1.5 text-sm hover:bg-muted/60"
-                  >
-                    <span
-                      className={cn(
-                        "mt-1.5 size-1.5 shrink-0 rounded-full",
-                        row.tone === "red" && "bg-red-500",
-                        row.tone === "amber" && "bg-amber-500",
-                        row.tone === "sky" && "bg-sky-500",
-                      )}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">
-                        <span className="font-mono text-xs">{row.tag}</span>{" "}
-                        <span className="font-normal text-muted-foreground">
-                          {row.title}
-                        </span>
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {row.reason}
-                      </span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-          {missingChargers.length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              <AnimatedNumber value={missingChargers.length} delay={400} /> laptop
-              {missingChargers.length === 1 ? "" : "s"} missing a charger
-            </p>
-          )}
-        </Tile>
-
-        <Tile>
-          <TileHeader icon={ClockIcon} label="Recent movement" />
-          {activity.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No history in this view.</p>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {activity.map((row) => (
-                <li key={row.key}>
-                  <Link
-                    href={row.href}
-                    className="flex items-start justify-between gap-3 rounded-lg px-1 py-1.5 text-sm hover:bg-muted/60"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-mono text-xs font-medium">
-                        {row.tag}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {row.detail}
-                      </span>
-                    </span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
-                      {row.when.slice(5)}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Tile>
-
-        <Tile>
-          <TileHeader icon={Building2Icon} label="Top departments" />
-          {departmentChartData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No department data yet.</p>
-          ) : (
-            <ChartContainer
-              config={{ value: { label: "Assets", color: "var(--color-chart-1)" } }}
-              className="aspect-auto h-56 w-full"
-            >
-              <BarChart
-                data={departmentChartData}
-                layout="vertical"
-                margin={{ left: 4, right: 12, top: 0, bottom: 0 }}
-              >
-                <XAxis type="number" hide allowDecimals={false} />
-                <YAxis
-                  type="category"
-                  dataKey="department"
-                  tickLine={false}
-                  axisLine={false}
-                  width={88}
-                  fontSize={11}
-                />
-                <ChartTooltip
-                  cursor={{ className: "fill-muted" }}
-                  content={({ active, payload }) => {
-                    const row = payload?.[0]?.payload as
-                      | { department: string; value: number }
-                      | undefined
-                    if (!active || !row) return null
-                    return (
-                      <TooltipBox>
-                        <TooltipRow label={row.department} value={row.value} />
-                      </TooltipBox>
-                    )
-                  }}
-                />
-                <Bar
-                  dataKey="value"
-                  fill="var(--color-chart-1)"
-                  radius={[0, 4, 4, 0]}
-                  maxBarSize={14}
-                  animationDuration={900}
-                  animationBegin={360}
-                />
-              </BarChart>
-            </ChartContainer>
-          )}
-        </Tile>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Tile href="/dashboard/laptops" className="lg:col-span-1">
-          <TileHeader icon={LaptopIcon} label="Laptop brands" />
-          {brandChartData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No laptops in this view.</p>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              {brandChartData.map((row) => (
-                <div key={row.brand} className="flex items-center gap-3 text-sm">
-                  <span className="w-24 shrink-0 truncate text-muted-foreground">
-                    {row.brand}
-                  </span>
-                  <Meter
-                    value={
-                      summary.laptops.total ? row.value / summary.laptops.total : 0
-                    }
+            <div className="flex flex-col gap-1.5 text-xs">
+              {statusPieData.map((row) => (
+                <div key={row.status} className="flex items-center gap-2">
+                  <span
+                    className="size-1.5 rounded-full"
+                    style={{ background: row.fill }}
                   />
-                  <span className="w-6 shrink-0 text-right font-medium tabular-nums">
-                    <AnimatedNumber value={row.value} delay={420} />
+                  <span className="text-muted-foreground">{row.status}</span>
+                  <span className="ml-auto font-medium tabular-nums">
+                    <AnimatedNumber value={row.value} delay={280} />
                   </span>
                 </div>
               ))}
             </div>
-          )}
-        </Tile>
-        <Tile href="/dashboard/remote-access">
-          <TileHeader icon={WifiIcon} label="Remote access" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">
-            <AnimatedNumber
-              value={Math.round(remoteCoverage * 100)}
-              delay={440}
-              suffix="%"
+          </Tile>
+
+          <Tile className="md:col-span-2 lg:col-span-2">
+            <TileHeader
+              icon={BarChart3Icon}
+              label="Status by category"
+              hint="Stacked counts"
             />
-          </p>
-          <Meter value={remoteCoverage} />
-          <p className="text-xs text-muted-foreground">
-            <AnimatedNumber value={remoteConfigured} delay={440} /> of{" "}
-            <AnimatedNumber value={assignedLaptops.length} delay={440} /> assigned
-            laptops have AnyDesk
-          </p>
-        </Tile>
-        <Tile href="/dashboard/users">
-          <TileHeader icon={UsersIcon} label="Portal users" />
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">
-            <AnimatedNumber value={users.length} delay={480} />
-          </p>
-          <p className="text-sm text-muted-foreground">
-            <AnimatedNumber value={activeUsers.length} delay={480} /> active ·{" "}
-            <AnimatedNumber value={adminUsers.length} delay={480} /> admin
-            {adminUsers.length === 1 ? "" : "s"}
-          </p>
-        </Tile>
+            <ChartContainer
+              config={stackedChartConfig}
+              className="aspect-auto h-72 w-full"
+            >
+              <BarChart
+                data={stackedCategoryData}
+                margin={{ left: 0, right: 0, top: 8 }}
+              >
+                <CartesianGrid className="stroke-border" strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  interval={0}
+                  fontSize={11}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={4}
+                  width={28}
+                />
+                <ChartTooltip
+                  cursor={{ className: "fill-muted" }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null
+                    return (
+                      <TooltipBox>
+                        <div className="font-medium">{String(label)}</div>
+                        {payload.map((item) => (
+                          <TooltipRow
+                            key={String(item.dataKey)}
+                            color={String(item.color)}
+                            label={String(item.dataKey)}
+                            value={Number(item.value ?? 0)}
+                          />
+                        ))}
+                      </TooltipBox>
+                    )
+                  }}
+                />
+                {statuses.map((status) => (
+                  <Bar
+                    key={status}
+                    dataKey={status}
+                    stackId="status"
+                    fill={statusChartColors[status]}
+                    maxBarSize={36}
+                    animationDuration={900}
+                    animationBegin={200}
+                  />
+                ))}
+              </BarChart>
+            </ChartContainer>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {statuses.map((status) => (
+                <span key={status} className="flex items-center gap-1.5">
+                  <span
+                    className="size-1.5 rounded-full"
+                    style={{ background: statusChartColors[status] }}
+                  />
+                  {status}
+                </span>
+              ))}
+            </div>
+          </Tile>
+
+          <div className="grid gap-px md:col-span-2 lg:col-span-2">
+            <Tile href="/dashboard/analytics">
+              <TileHeader icon={AwardIcon} label="Laptop grades" />
+              <ChartContainer
+                config={gradeChartConfig}
+                className="aspect-auto h-40 w-full"
+              >
+                <BarChart
+                  data={gradeChartData}
+                  layout="vertical"
+                  margin={{ left: 8, right: 12, top: 0, bottom: 0 }}
+                >
+                  <XAxis type="number" hide allowDecimals={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="grade"
+                    tickLine={false}
+                    axisLine={false}
+                    width={78}
+                    fontSize={11}
+                  />
+                  <ChartTooltip
+                    cursor={{ className: "fill-muted" }}
+                    content={({ active, payload }) => {
+                      const row = payload?.[0]?.payload as
+                        | { grade: string; value: number; fill: string }
+                        | undefined
+                      if (!active || !row) return null
+                      return (
+                        <TooltipBox>
+                          <TooltipRow
+                            color={row.fill}
+                            label={row.grade}
+                            value={row.value}
+                          />
+                        </TooltipBox>
+                      )
+                    }}
+                  />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={16} animationDuration={900} animationBegin={280}>
+                    {gradeChartData.map((row) => (
+                      <Cell key={row.key} fill={row.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+            </Tile>
+            <Tile href="/dashboard/laptops">
+              <TileHeader icon={ClockIcon} label="Laptop warranty" />
+              <div className="flex items-center gap-4">
+                <ChartContainer
+                  config={{
+                    Active: { label: "Active", color: "var(--color-emerald-500)" },
+                    Expiring: { label: "Expiring", color: "var(--color-amber-500)" },
+                    Expired: { label: "Expired", color: "var(--color-red-500)" },
+                  }}
+                  className="aspect-auto h-24 w-24 shrink-0"
+                >
+                  <PieChart>
+                    <Pie
+                      data={warrantyPieData}
+                      dataKey="value"
+                      nameKey="state"
+                      innerRadius={28}
+                      outerRadius={40}
+                      paddingAngle={2}
+                      strokeWidth={0}
+                      animationDuration={900}
+                      animationBegin={320}
+                    >
+                      {warrantyPieData.map((row) => (
+                        <Cell key={row.state} fill={row.fill} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ChartContainer>
+                <div className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+                  <span className={cn("flex items-center gap-1.5", warrantyStyles.Expiring.text)}>
+                    <span className={cn("size-1.5 rounded-full", warrantyStyles.Expiring.dot)} />
+                    <AnimatedNumber value={warrantyCounts.Expiring} delay={320} />{" "}
+                    expiring soon
+                  </span>
+                  <span className={cn("flex items-center gap-1.5", warrantyStyles.Expired.text)}>
+                    <span className={cn("size-1.5 rounded-full", warrantyStyles.Expired.dot)} />
+                    <AnimatedNumber value={warrantyCounts.Expired} delay={320} />{" "}
+                    expired
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Active laptops · soon is within 90 days
+                  </span>
+                </div>
+              </div>
+            </Tile>
+          </div>
+
+          <Tile className="md:col-span-2 lg:col-span-2">
+            <TileHeader
+              icon={TriangleAlertIcon}
+              label="Needs attention"
+              hint={
+                <AnimatedNumber value={attention.length} delay={400} />
+              }
+            />
+            {attention.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nothing urgent in the current filters.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {attention.map((row) => (
+                  <li key={`${row.tag}:${row.reason}`}>
+                    <Link
+                      href={row.href}
+                      className="flex items-start gap-2 rounded-lg px-1 py-1.5 text-sm hover:bg-muted/60"
+                    >
+                      <span
+                        className={cn(
+                          "mt-1.5 size-1.5 shrink-0 rounded-full",
+                          row.tone === "red" && "bg-red-500",
+                          row.tone === "amber" && "bg-amber-500",
+                          row.tone === "sky" && "bg-sky-500",
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">
+                          <span className="font-mono text-xs">{row.tag}</span>{" "}
+                          <span className="font-normal text-muted-foreground">
+                            {row.title}
+                          </span>
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {row.reason}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {missingChargers.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                <AnimatedNumber value={missingChargers.length} delay={400} /> laptop
+                {missingChargers.length === 1 ? "" : "s"} missing a charger
+              </p>
+            )}
+          </Tile>
+
+          <Tile>
+            <TileHeader icon={ClockIcon} label="Recent movement" />
+            {activity.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No history in this view.</p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {activity.map((row) => (
+                  <li key={row.key}>
+                    <Link
+                      href={row.href}
+                      className="flex items-start justify-between gap-3 rounded-lg px-1 py-1.5 text-sm hover:bg-muted/60"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-mono text-xs font-medium">
+                          {row.tag}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {row.detail}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                        {row.when.slice(5)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Tile>
+
+          <Tile>
+            <TileHeader icon={Building2Icon} label="Top departments" />
+            {departmentChartData.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No department data yet.</p>
+            ) : (
+              <ChartContainer
+                config={{ value: { label: "Assets", color: "var(--color-chart-1)" } }}
+                className="aspect-auto h-56 w-full"
+              >
+                <BarChart
+                  data={departmentChartData}
+                  layout="vertical"
+                  margin={{ left: 4, right: 12, top: 0, bottom: 0 }}
+                >
+                  <XAxis type="number" hide allowDecimals={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="department"
+                    tickLine={false}
+                    axisLine={false}
+                    width={88}
+                    fontSize={11}
+                  />
+                  <ChartTooltip
+                    cursor={{ className: "fill-muted" }}
+                    content={({ active, payload }) => {
+                      const row = payload?.[0]?.payload as
+                        | { department: string; value: number }
+                        | undefined
+                      if (!active || !row) return null
+                      return (
+                        <TooltipBox>
+                          <TooltipRow label={row.department} value={row.value} />
+                        </TooltipBox>
+                      )
+                    }}
+                  />
+                  <Bar
+                    dataKey="value"
+                    fill="var(--color-chart-1)"
+                    radius={[0, 4, 4, 0]}
+                    maxBarSize={14}
+                    animationDuration={900}
+                    animationBegin={360}
+                  />
+                </BarChart>
+              </ChartContainer>
+            )}
+          </Tile>
+
+          <Tile href="/dashboard/laptops" className="md:col-span-2 lg:col-span-2">
+            <TileHeader icon={LaptopIcon} label="Laptop brands" />
+            {brandChartData.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No laptops in this view.</p>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {brandChartData.map((row) => (
+                  <div key={row.brand} className="flex items-center gap-3 text-sm">
+                    <span className="w-24 shrink-0 truncate text-muted-foreground">
+                      {row.brand}
+                    </span>
+                    <Meter
+                      value={
+                        summary.laptops.total ? row.value / summary.laptops.total : 0
+                      }
+                    />
+                    <span className="w-6 shrink-0 text-right font-medium tabular-nums">
+                      <AnimatedNumber value={row.value} delay={420} />
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Tile>
+          <Tile href="/dashboard/remote-access">
+            <TileHeader icon={WifiIcon} label="Remote access" />
+            <p className="text-3xl font-semibold tracking-tight tabular-nums">
+              <AnimatedNumber
+                value={Math.round(remoteCoverage * 100)}
+                delay={440}
+                suffix="%"
+              />
+            </p>
+            <Meter value={remoteCoverage} />
+            <p className="text-xs text-muted-foreground">
+              <AnimatedNumber value={remoteConfigured} delay={440} /> of{" "}
+              <AnimatedNumber value={assignedLaptops.length} delay={440} /> assigned
+              laptops have AnyDesk
+            </p>
+          </Tile>
+          <Tile href="/dashboard/users">
+            <TileHeader icon={UsersIcon} label="Portal users" />
+            <p className="text-3xl font-semibold tracking-tight tabular-nums">
+              <AnimatedNumber value={users.length} delay={480} />
+            </p>
+            <p className="text-sm text-muted-foreground">
+              <AnimatedNumber value={activeUsers.length} delay={480} /> active ·{" "}
+              <AnimatedNumber value={adminUsers.length} delay={480} /> admin
+              {adminUsers.length === 1 ? "" : "s"}
+            </p>
+          </Tile>
+        </div>
       </div>
     </div>
   )

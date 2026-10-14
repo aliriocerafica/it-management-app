@@ -5,8 +5,14 @@ import {
   type RequestEmailDetail,
   type RequestEmailKind,
 } from "@/lib/email/templates"
-import { lookupDtrEmployeeEmail } from "@/lib/dtr"
+import { listDtrAssetRequests, lookupDtrEmployeeEmail } from "@/lib/dtr"
 import { fetchHrisEmployees } from "@/lib/hris"
+import {
+  applyRequestOverrides,
+  listNotifiedDtrRequestIds,
+  listRequestOverrides,
+  markDtrRequestNotified,
+} from "@/lib/asset-request-repository"
 import { requestEmailCc } from "@/lib/request-email-settings"
 
 const itInbox = "it@ardentparalegal.com"
@@ -120,4 +126,41 @@ export async function withStatusEmail(
 
 export async function withDenialEmail(request: AssetRequest) {
   return withRequestEmail(request, "denied")
+}
+
+// DTR requests are created by the employee in DTR itself, not through this
+// app, so there's no save handler here to email from. Called on a schedule
+// (app/api/cron/dtr-request-notices) instead: find DTR requests still
+// Pending that we haven't emailed the CC list about yet, and notify once.
+export async function notifyNewDtrAssetRequests() {
+  let dtrRequests: AssetRequest[]
+  try {
+    dtrRequests = await listDtrAssetRequests()
+  } catch (error) {
+    console.error("[dtr-notify] Couldn't reach DTR", error)
+    return { checked: 0, notified: 0 }
+  }
+
+  const overrides = await listRequestOverrides()
+  const pending = applyRequestOverrides(dtrRequests, overrides).filter(
+    (request) => request.status === "Pending",
+  )
+  if (pending.length === 0) return { checked: 0, notified: 0 }
+
+  const alreadyNotified = await listNotifiedDtrRequestIds(
+    pending.map((request) => request.id),
+  )
+  const toNotify = pending.filter((request) => !alreadyNotified.has(request.id))
+
+  let notified = 0
+  for (const request of toNotify) {
+    try {
+      await notifyAssetRequest(request, "pending")
+      await markDtrRequestNotified(request.id)
+      notified++
+    } catch (error) {
+      console.error(`[dtr-notify] Failed to email request ${request.id}`, error)
+    }
+  }
+  return { checked: pending.length, notified }
 }
