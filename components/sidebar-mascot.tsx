@@ -157,9 +157,19 @@ export function SidebarMascot({ user }: { user: ProfileUser }) {
         <DropdownMenuTrigger
           aria-label="Change mascot or show profile photo"
           title="Change mascot or show profile photo"
-          className="absolute right-0 bottom-0 flex size-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          className={cn(
+            "absolute flex items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+            // The photo fills its whole circle, unlike the mascot's sheet, so
+            // the button sits smaller and half outside it, ringed in the
+            // sidebar colour like a status badge.
+            chosen === "profile"
+              ? "-right-1.5 -bottom-1.5 size-5 shadow-[0_0_0_2px_var(--sidebar)]"
+              : "right-0 bottom-0 size-6",
+          )}
         >
-          <RefreshCwIcon className="size-3" />
+          <RefreshCwIcon
+            className={chosen === "profile" ? "size-2.5" : "size-3"}
+          />
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className="grid w-auto min-w-0 grid-cols-4 gap-1 rounded-2xl p-2"
