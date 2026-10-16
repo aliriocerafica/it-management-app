@@ -5,7 +5,6 @@ import {
   CheckIcon,
   ChevronDownIcon,
   PlusIcon,
-  RotateCcwIcon,
 } from "lucide-react";
 
 import { FormField, selectClass } from "@/components/add-laptop-dialog";
@@ -329,23 +328,27 @@ function ResolutionTimeForm({
 }) {
   // When closing, whether to set the time by hand or leave it to the system.
   const [custom, setCustom] = useState(!closing);
+  // The times and the hours/minutes always agree: changing a time updates
+  // the duration, and typing a duration moves "Closed at" to match.
   const [opened, setOpened] = useState(toLocalInput(ticket.createdAt));
   const [closed, setClosed] = useState(() =>
-    toLocalInput(ticket.closedAt ?? new Date().toISOString()),
+    toLocalInput(
+      // A time entered by hand before (the old way) becomes the closing
+      // time, so the dates show it too.
+      ticket.closedAt && ticket.resolutionMinutes !== null
+        ? new Date(
+            new Date(ticket.createdAt).getTime() +
+              ticket.resolutionMinutes * 60_000,
+          ).toISOString()
+        : (ticket.closedAt ?? new Date().toISOString()),
+    ),
   );
-  // Hours and minutes as typed by hand, kept as text so a field can be
-  // cleared while retyping; null follows the two dates.
-  const [manual, setManual] = useState<{
+  // Hours and minutes while they're being typed, as text so a field can be
+  // cleared and retyped; null shows the duration between the two times.
+  const [typing, setTyping] = useState<{
     hours: string;
     minutes: string;
-  } | null>(
-    ticket.resolutionMinutes === null
-      ? null
-      : {
-          hours: String(Math.floor(ticket.resolutionMinutes / 60)),
-          minutes: String(ticket.resolutionMinutes % 60),
-        },
-  );
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const openedAt = new Date(opened);
@@ -358,10 +361,34 @@ function ResolutionTimeForm({
         Math.round((closedAt.getTime() - openedAt.getTime()) / 60_000),
       )
     : 0;
-  const shown = manual ?? {
+  const shown = typing ?? {
     hours: String(Math.floor(calculated / 60)),
     minutes: String(calculated % 60),
   };
+
+  // Typing hours or minutes closes the ticket that long after it opened.
+  // An emptied field counts as 0; 90 minutes is fine and shows as 1 h 30.
+  function changeDuration(next: { hours: string; minutes: string }) {
+    setTyping(next);
+    setError(null);
+    if (Number.isNaN(openedAt.getTime())) return;
+    const total =
+      Math.max(0, Math.floor(Number(next.hours) || 0)) * 60 +
+      Math.max(0, Math.floor(Number(next.minutes) || 0));
+    setClosed(
+      toLocalInput(
+        new Date(openedAt.getTime() + total * 60_000).toISOString(),
+      ),
+    );
+  }
+
+  // Changing a time or day; the hours and minutes follow.
+  function changeTimes(nextOpened: string, nextClosed: string) {
+    setOpened(nextOpened);
+    setClosed(nextClosed);
+    setTyping(null);
+    setError(null);
+  }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -384,11 +411,8 @@ function ResolutionTimeForm({
     onSave({
       createdAt: openedAt.toISOString(),
       closedAt: closedAt.toISOString(),
-      // An emptied field counts as 0.
-      resolutionMinutes: manual
-        ? Math.max(0, Math.floor(Number(manual.hours) || 0)) * 60 +
-          Math.min(59, Math.max(0, Math.floor(Number(manual.minutes) || 0)))
-        : null,
+      // The two times now carry the duration.
+      resolutionMinutes: null,
     });
   }
 
@@ -461,9 +485,10 @@ function ResolutionTimeForm({
                 value={{ from: opened.slice(0, 10), to: closed.slice(0, 10) }}
                 onChange={(range) => {
                   if (!range) return;
-                  setOpened(`${range.from}T${opened.slice(11)}`);
-                  setClosed(`${range.to}T${closed.slice(11)}`);
-                  setError(null);
+                  changeTimes(
+                    `${range.from}T${opened.slice(11)}`,
+                    `${range.to}T${closed.slice(11)}`,
+                  );
                 }}
                 showPresets={false}
                 applyFirstClick
@@ -475,10 +500,12 @@ function ResolutionTimeForm({
                 id="resolutionOpenedTime"
                 type="time"
                 value={opened.slice(11)}
-                onChange={(event) => {
-                  setOpened(`${opened.slice(0, 10)}T${event.target.value}`);
-                  setError(null);
-                }}
+                onChange={(event) =>
+                  changeTimes(
+                    `${opened.slice(0, 10)}T${event.target.value}`,
+                    closed,
+                  )
+                }
               />
             </FormField>
             <FormField label="Closed at" htmlFor="resolutionClosedTime">
@@ -486,10 +513,12 @@ function ResolutionTimeForm({
                 id="resolutionClosedTime"
                 type="time"
                 value={closed.slice(11)}
-                onChange={(event) => {
-                  setClosed(`${closed.slice(0, 10)}T${event.target.value}`);
-                  setError(null);
-                }}
+                onChange={(event) =>
+                  changeTimes(
+                    opened,
+                    `${closed.slice(0, 10)}T${event.target.value}`,
+                  )
+                }
               />
             </FormField>
             <FormField label="Hours" htmlFor="resolutionHours">
@@ -501,8 +530,9 @@ function ResolutionTimeForm({
                 placeholder="0"
                 value={shown.hours}
                 onChange={(event) =>
-                  setManual({ ...shown, hours: event.target.value })
+                  changeDuration({ ...shown, hours: event.target.value })
                 }
+                onBlur={() => setTyping(null)}
               />
             </FormField>
             <FormField label="Minutes" htmlFor="resolutionMinutes">
@@ -510,42 +540,28 @@ function ResolutionTimeForm({
                 id="resolutionMinutes"
                 type="number"
                 min={0}
-                max={59}
                 step={1}
                 placeholder="0"
                 value={shown.minutes}
                 onChange={(event) =>
-                  setManual({ ...shown, minutes: event.target.value })
+                  changeDuration({ ...shown, minutes: event.target.value })
                 }
+                onBlur={() => setTyping(null)}
               />
             </FormField>
             <p className="text-[11px] text-muted-foreground sm:col-span-2">
-              {manual === null
-                ? "Hours and minutes follow the two dates. Type over them if the fix took a different amount of time."
-                : "Hours and minutes were entered by hand, so they no longer follow the dates."}
+              Change the times and the hours and minutes follow, or type the
+              hours and minutes and &ldquo;Closed at&rdquo; moves to match.
             </p>
           </>
         )}
       </div>
 
       <DialogFooter className="mx-0 mb-0 items-center px-6 py-4">
-        {error ? (
+        {error && (
           <p role="alert" className="mr-auto text-sm text-destructive">
             {error}
           </p>
-        ) : (
-          custom &&
-          manual !== null && (
-            <Button
-              variant="ghost"
-              type="button"
-              className="mr-auto"
-              onClick={() => setManual(null)}
-            >
-              <RotateCcwIcon />
-              Use dates
-            </Button>
-          )
         )}
         <DialogClose render={<Button variant="outline" type="button" />}>
           Cancel
