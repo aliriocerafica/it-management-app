@@ -1,6 +1,7 @@
 import type { AssetRequest, RequestStatus } from "@/lib/asset-requests"
 import type { Accessory, AccessoryKind } from "@/lib/accessories"
 import type { Laptop } from "@/lib/laptops"
+import type { Ticket } from "@/lib/tickets"
 import { queued } from "@/lib/save-queue"
 
 export const INVENTORY_CHANGED = "inventory-changed"
@@ -253,6 +254,48 @@ export async function returnDtrAsset(id: string, returnCondition: "NEW" | "GOOD"
     )
     notifyInventoryChanged()
     return saved
+  })
+}
+
+export async function createTicket(ticket: Ticket) {
+  return queued([ticket.id], async () => {
+    const saved = await parse<Ticket>(
+      await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ticket),
+      }),
+    )
+    notifyInventoryChanged()
+    return saved
+  })
+}
+
+export async function saveTicket(ticket: Ticket) {
+  return queued([ticket.id], async () => {
+    const saved = await parse<Ticket>(
+      await fetch(`/api/tickets/${ticket.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ticket),
+      }),
+    )
+    notifyInventoryChanged()
+    return saved
+  })
+}
+
+export async function removeTickets(ids: string[]) {
+  return queued(ids, async () => {
+    const result = await parse<{ ok: boolean }>(
+      await fetch("/api/tickets", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      }),
+    )
+    notifyInventoryChanged()
+    return result
   })
 }
 

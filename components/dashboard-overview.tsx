@@ -43,6 +43,7 @@ import {
   WifiIcon,
   WrenchIcon,
   XIcon,
+  BoxesIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -67,12 +68,14 @@ import {
   type LaptopStatus,
 } from "@/lib/laptops"
 import { useAnimatedNumber } from "@/lib/use-animated-number"
+import { inDateRange, toIsoDay, type DateRange } from "@/lib/date-range"
 import { useToday } from "@/lib/use-today"
 import type { SessionUser } from "@/lib/auth/dto"
 import type { UserDto } from "@/lib/user-repository"
 import { cn } from "@/lib/utils"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { FilterMenu } from "@/components/laptop-inventory-table"
+import { DateRangeFilter } from "@/components/date-range-filter"
 import { Button } from "@/components/ui/button"
 
 const UNASSIGNED = "Unassigned"
@@ -99,6 +102,9 @@ const accessoryRoutes: Record<AccessoryKind, string> = {
   ram: "/dashboard/ram",
   charger: "/dashboard/chargers",
 }
+
+// Status columns in the Assets table; retired items aren't on hand.
+const assetStatusColumns: LaptopStatus[] = ["Vacant", "In use", "In repair"]
 
 const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
   headset: HeadphonesIcon,
@@ -324,6 +330,8 @@ export function DashboardOverview({
   const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<LaptopStatus[]>([])
   const [gradeFilter, setGradeFilter] = useState<Grade[]>([])
+  // The days the Released tile and column count; this month when unset.
+  const [dateRange, setDateRange] = useState<DateRange | null>(null)
 
   const departments = useMemo(
     () =>
@@ -432,23 +440,69 @@ export function DashboardOverview({
     return counts
   }, [today, laptops])
 
-  const releasedThisMonth = useMemo(() => {
-    if (!today) return 0
-    let count = 0
-    for (const item of [...laptops, ...accessories]) {
-      for (const entry of item.history) {
-        if (!entry.handler) continue
-        const from = parseDate(entry.from)
-        if (
-          from.getFullYear() === today.getFullYear() &&
-          from.getMonth() === today.getMonth()
-        ) {
-          count++
+  // The days the Released tile and column count: the picked range, or this
+  // month until one is picked.
+  const releasePeriod = useMemo((): DateRange | null => {
+    if (dateRange) return dateRange
+    if (!today) return null
+    return {
+      from: toIsoDay(new Date(today.getFullYear(), today.getMonth(), 1)),
+      to: toIsoDay(new Date(today.getFullYear(), today.getMonth() + 1, 0)),
+    }
+  }, [dateRange, today])
+
+  // Releases (assignments to someone) in that period, per asset type.
+  const releases = useMemo(() => {
+    const count = (items: { history: { handler: string | null; from: string }[] }[]) => {
+      let total = 0
+      for (const item of items) {
+        for (const entry of item.history) {
+          if (entry.handler && releasePeriod && inDateRange(entry.from, releasePeriod)) {
+            total++
+          }
         }
       }
+      return total
     }
-    return count
-  }, [today, laptops, accessories])
+    const laptopReleases = count(laptops)
+    const byKind = Object.fromEntries(
+      (Object.keys(accessoryConfigs) as AccessoryKind[]).map((kind) => [
+        kind,
+        count(accessories.filter((item) => item.kind === kind)),
+      ]),
+    ) as Record<AccessoryKind, number>
+    return {
+      laptops: laptopReleases,
+      byKind,
+      total: laptopReleases + Object.values(byKind).reduce((sum, n) => sum + n, 0),
+    }
+  }, [laptops, accessories, releasePeriod])
+
+  // Biggest stock first; types with nothing on hand or released go last.
+  const assetRows = [
+    {
+      key: "laptops",
+      title: "Laptops",
+      href: "/dashboard/laptops",
+      icon: LaptopIcon as LucideIcon,
+      counts: summary.laptops,
+      released: releases.laptops,
+    },
+    ...categories.map((category) => ({
+      key: category.kind,
+      title: category.title,
+      href: category.href,
+      icon: category.icon,
+      counts: category.counts,
+      released: releases.byKind[category.kind],
+    })),
+  ].sort((a, b) => {
+    const emptyA = a.counts.total === 0 && a.released === 0
+    const emptyB = b.counts.total === 0 && b.released === 0
+    if (emptyA !== emptyB) return emptyA ? 1 : -1
+    return b.counts.total - a.counts.total || b.released - a.released
+  })
+  const maxOnHand = Math.max(1, ...assetRows.map((row) => row.counts.total))
 
   const assignedLaptops = laptops.filter(
     (l) => l.status !== "Vacant" && l.status !== "Retired",
@@ -801,12 +855,27 @@ export function DashboardOverview({
             </p>
           </Tile>
           <Tile>
-            <TileHeader icon={UserCheckIcon} label="Released this month" />
+            <TileHeader
+              icon={UserCheckIcon}
+              label="Released"
+              hint={
+                <DateRangeFilter
+                  label="This month"
+                  value={dateRange}
+                  onChange={setDateRange}
+                  className="-my-1.5 h-7 px-2.5 text-xs"
+                />
+              }
+            />
             <p className="text-3xl font-semibold tracking-tight tabular-nums">
-              <AnimatedNumber value={releasedThisMonth} delay={200} />
+              <AnimatedNumber value={releases.total} delay={200} />
             </p>
             <MiniSpark data={assignSpark} color="var(--color-chart-2)" />
-            <p className="text-xs text-muted-foreground">Assignments since the 1st</p>
+            <p className="text-xs text-muted-foreground">
+              <AnimatedNumber value={releases.laptops} delay={200} /> laptops ·{" "}
+              <AnimatedNumber value={releases.total - releases.laptops} delay={200} />{" "}
+              accessories {dateRange ? "in these dates" : "since the 1st"}
+            </p>
           </Tile>
           <Tile href="/dashboard/analytics">
             <TileHeader icon={ShieldCheckIcon} label="Fleet health" />
@@ -833,45 +902,88 @@ export function DashboardOverview({
             </p>
           </Tile>
 
-          <div className="grid grid-cols-3 gap-px sm:grid-cols-5 md:col-span-2 lg:col-span-4 lg:grid-cols-9">
-            <Tile href="/dashboard/laptops" className="gap-1.5 p-2.5">
-              <TileHeader icon={LaptopIcon} label="Laptops" />
-              <p className="text-lg font-semibold tracking-tight tabular-nums">
-                <AnimatedNumber value={summary.laptops.total} delay={360} />
-              </p>
-              <div className="flex flex-wrap gap-x-1.5 text-[10px] text-muted-foreground">
-                {statuses.map((status) => (
-                  <span key={status} className="flex items-center gap-1">
-                    <span className={cn("size-1 rounded-full", statusStyles[status].dot)} />
-                    <AnimatedNumber value={summary.laptops[status]} delay={360} />
-                  </span>
-                ))}
-              </div>
-            </Tile>
-            {categories.map((category, i) => (
-              <Tile key={category.kind} href={category.href} className="gap-1.5 p-2.5">
-                <TileHeader icon={category.icon} label={category.title} />
-                <p className="text-lg font-semibold tracking-tight tabular-nums">
-                  <AnimatedNumber
-                    value={category.counts.total}
-                    delay={400 + i * 50}
-                  />
-                </p>
-                <p className="text-[10px] text-muted-foreground">
-                  <AnimatedNumber
-                    value={category.counts.Vacant}
-                    delay={400 + i * 50}
-                  />{" "}
-                  vacant ·{" "}
-                  <AnimatedNumber
-                    value={category.counts["In use"]}
-                    delay={400 + i * 50}
-                  />{" "}
-                  in use
-                </p>
-              </Tile>
-            ))}
-          </div>
+          {/* One row per asset type: stock on hand, and how many were
+              released in the Released tile's period. */}
+          <Tile className="gap-0 p-0 md:col-span-2 lg:col-span-4">
+            <div className="px-4 pt-4 pb-3">
+              <TileHeader
+                icon={BoxesIcon}
+                label="Assets"
+                hint={dateRange ? "Released in these dates" : "Released this month"}
+              />
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[36rem] border-collapse text-xs">
+                <thead>
+                  <tr className="border-y border-border bg-muted/40 text-[11px] text-muted-foreground">
+                    <th className="px-4 py-2 text-left font-medium">Asset</th>
+                    <th className="w-[28%] px-4 py-2 text-left font-medium">On hand</th>
+                    {assetStatusColumns.map((status) => (
+                      <th key={status} className="px-4 py-2 text-right font-medium">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className={cn("size-1.5 rounded-full", statusStyles[status].dot)} />
+                          {status}
+                        </span>
+                      </th>
+                    ))}
+                    <th className="px-4 py-2 text-right font-medium">Released</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assetRows.map((row, i) => {
+                    const Icon = row.icon
+                    const empty = row.counts.total === 0 && row.released === 0
+                    return (
+                      <tr
+                        key={row.key}
+                        className={cn(
+                          "border-b border-border last:border-b-0 hover:bg-muted/40",
+                          empty && "text-muted-foreground opacity-60",
+                        )}
+                      >
+                        <td className="px-4 py-2">
+                          <Link
+                            href={row.href}
+                            className="flex items-center gap-2 font-medium hover:underline"
+                          >
+                            <Icon className="size-3.5 text-muted-foreground" />
+                            {row.title}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className="flex items-center gap-3">
+                            <span className="w-8 text-sm font-semibold tabular-nums">
+                              <AnimatedNumber value={row.counts.total} delay={360 + i * 40} />
+                            </span>
+                            <Meter
+                              value={row.counts.total / maxOnHand}
+                              className="bg-sky-500"
+                            />
+                          </span>
+                        </td>
+                        {assetStatusColumns.map((status) => (
+                          <td key={status} className="px-4 py-2 text-right tabular-nums">
+                            {row.counts[status] || (
+                              <span className="text-muted-foreground">0</span>
+                            )}
+                          </td>
+                        ))}
+                        <td className="px-4 py-2 text-right font-medium tabular-nums">
+                          {row.released ? (
+                            <span className="text-emerald-600 dark:text-emerald-400">
+                              {row.released}
+                            </span>
+                          ) : (
+                            <span className="font-normal text-muted-foreground">0</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Tile>
 
           <Tile className="md:col-span-2 lg:col-span-3">
             <TileHeader

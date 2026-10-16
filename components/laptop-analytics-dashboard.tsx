@@ -101,7 +101,7 @@ function percent(value: number) {
 }
 
 // Counts up to `value` when it first appears and whenever it changes.
-function AnimatedNumber({
+export function AnimatedNumber({
   value,
   delay = 0,
   format = (n) => Math.round(n).toLocaleString(),
@@ -117,7 +117,7 @@ function AnimatedNumber({
 // False until the zero-width bar has been painted, so it can grow to its
 // real width. Pair with `growClass` on the bar. Two frames, because the
 // first can land before that first paint.
-function useGrowIn() {
+export function useGrowIn() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     let id = requestAnimationFrame(() => {
@@ -128,7 +128,7 @@ function useGrowIn() {
   return ready;
 }
 
-const growClass =
+export const growClass =
   "transition-[width] duration-900 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
 
 function recommendation(r: GradedLaptop, today: Date) {
@@ -204,7 +204,7 @@ function exportReport(rows: GradedLaptop[], today: Date) {
 }
 
 // A flat cell in the bento grid; the grid's 1px gaps draw the dividers.
-function BentoCard({ className, ...props }: React.ComponentProps<typeof Card>) {
+export function BentoCard({ className, ...props }: React.ComponentProps<typeof Card>) {
   return (
     <Card
       className={cn(
@@ -216,7 +216,7 @@ function BentoCard({ className, ...props }: React.ComponentProps<typeof Card>) {
   );
 }
 
-function TooltipBox({ children }: { children: React.ReactNode }) {
+export function TooltipBox({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-w-36 gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
       {children}
@@ -224,7 +224,7 @@ function TooltipBox({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TooltipRow({
+export function TooltipRow({
   color,
   label,
   value,
@@ -279,7 +279,7 @@ function Delta({
   );
 }
 
-function StatCard({
+export function StatCard({
   label,
   value,
   children,

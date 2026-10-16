@@ -344,6 +344,50 @@ model AssetRequest {
   @@map("asset_requests")
 }
 
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+  ARCHIVED
+}
+
+// An IT troubleshooting ticket: Open → In progress → Closed, then Archived.
+model Ticket {
+  id                String               @id @default(cuid())
+  ticketNo          Int                  @unique @default(autoincrement())
+  employeeId        String?
+  requesterName     String
+  requesterEmail    String?
+  // Department, or the client account the requester works on.
+  department        String?
+  workLocation      String?
+  category          String
+  subject           String
+  description       String               @default("")
+  priority          AssetRequestPriority @default(NORMAL)
+  status            TicketStatus         @default(OPEN)
+  // The status an archived ticket had, so restoring puts it back there.
+  archivedFrom      TicketStatus?
+  assignedTo        String?
+  resolutionNote    String?
+  // Resolution time entered by hand; null to use opened → closed.
+  resolutionMinutes Int?
+  // Employee feedback, from the old ticket log.
+  satisfaction      String?
+  // Where an imported ticket came from (its id in the old system), so
+  // running the import again updates it instead of adding a copy.
+  sourceId          String?              @unique
+  // The old system's update history, as text.
+  importedLog       String?
+  createdAt         DateTime             @default(now())
+  closedAt          DateTime?
+  updatedAt         DateTime             @updatedAt
+
+  @@index([status])
+  @@index([employeeId])
+  @@map("tickets")
+}
+
 // DTR requests live in AURA. IT-side approve / deny / archive is stored here
 // when the DTR row should not keep its original status in this queue.
 model AssetRequestOverride {

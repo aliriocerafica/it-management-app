@@ -15,6 +15,7 @@ import {
   KeyboardIcon,
   BoxesIcon,
   ChartColumnIcon,
+  ChartPieIcon,
   ChevronDownIcon,
   ClipboardListIcon,
   FileTextIcon,
@@ -95,6 +96,11 @@ const topLevelItems: NavItem[] = [
     title: "Laptop Analytics",
     href: "/dashboard/analytics",
     icon: ChartColumnIcon,
+  },
+  {
+    title: "Ticket Analytics",
+    href: "/dashboard/ticket-analytics",
+    icon: ChartPieIcon,
   },
 ]
 

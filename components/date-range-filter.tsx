@@ -28,7 +28,8 @@ function span(from: Date, to: Date): DateRange {
   return { from: toIsoDay(from), to: toIsoDay(to) };
 }
 
-// "Last" means the previous whole calendar week, month or quarter.
+// "This" means the current calendar week or month (Monday to Sunday, 1st to
+// last day); "Last" means the previous whole week, month or quarter.
 const presets: { label: string; range: (today: Date) => DateRange }[] = [
   { label: "Today", range: (today) => span(today, today) },
   {
@@ -36,11 +37,26 @@ const presets: { label: string; range: (today: Date) => DateRange }[] = [
     range: (today) => span(addDays(today, -1), addDays(today, -1)),
   },
   {
+    label: "This week",
+    range: (today) => {
+      const monday = startOfWeek(today);
+      return span(monday, addDays(monday, 6));
+    },
+  },
+  {
     label: "Last week",
     range: (today) => {
       const monday = addDays(startOfWeek(today), -7);
       return span(monday, addDays(monday, 6));
     },
+  },
+  {
+    label: "This month",
+    range: (today) =>
+      span(
+        new Date(today.getFullYear(), today.getMonth(), 1),
+        new Date(today.getFullYear(), today.getMonth() + 1, 0),
+      ),
   },
   {
     label: "Last month",
@@ -59,6 +75,19 @@ const presets: { label: string; range: (today: Date) => DateRange }[] = [
         new Date(today.getFullYear(), quarterStart, 0),
       );
     },
+  },
+  {
+    label: "This year",
+    range: (today) =>
+      span(new Date(today.getFullYear(), 0, 1), new Date(today.getFullYear(), 11, 31)),
+  },
+  {
+    label: "Last year",
+    range: (today) =>
+      span(
+        new Date(today.getFullYear() - 1, 0, 1),
+        new Date(today.getFullYear() - 1, 11, 31),
+      ),
   },
 ];
 

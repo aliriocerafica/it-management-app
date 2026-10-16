@@ -124,7 +124,7 @@ import {
 import { anyInDateRange, type DateRange } from "@/lib/date-range";
 import { useEmployeeDirectory } from "@/lib/use-employee-directory";
 import { useServerState } from "@/lib/use-server-state";
-import { cn } from "@/lib/utils";
+import { cn, pageItems } from "@/lib/utils";
 
 // Lists employees rather than laptops: those with no laptop tagged to them.
 const NO_LAPTOP = "No laptop";
@@ -1535,15 +1535,16 @@ export function LaptopInventoryTable({
             >
               <ChevronLeftIcon />
             </Button>
-            {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
+            {pageItems(currentPage, pageCount).map((n) => (
               <Button
                 key={n}
+                disabled={n < 0}
                 variant={n === currentPage ? "secondary" : "ghost"}
                 size="icon-sm"
                 className={cn(n === currentPage && "text-foreground")}
                 onClick={() => setPage(n)}
               >
-                {n}
+                {n < 0 ? "…" : n}
               </Button>
             ))}
             <Button

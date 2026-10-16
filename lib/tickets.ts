@@ -9,15 +9,42 @@ export const ticketStatuses = [
 ] as const;
 export type TicketStatus = (typeof ticketStatuses)[number];
 
+// Categories a ticket is filed under. Tickets imported from the old system
+// keep its free-text types ("Laptop Release and Setup", "Box Crashing", …);
+// ticketCategoryGroup() files those under one of these.
 export const ticketCategories = [
-  "Hardware",
-  "Software",
-  "Network",
-  "Account access",
-  "Email",
-  "Printer",
+  "Account & access",
+  "Laptop release & setup",
+  "Hardware & repairs",
+  "Peripherals",
+  "Software & apps",
+  "Email & communication",
+  "Cloud storage",
+  "Network & VPN",
+  "DTR & AURA",
+  "Printing",
   "Other",
 ];
+
+// Checked in order against a type's first part; the first match wins.
+const categoryRules: [RegExp, string][] = [
+  [/dtr|aura|location|geo|biometric|leave adjustment|coa|clock out|dashboard|data track|ardent track|^beta/, "DTR & AURA"],
+  [/vpn|hotspot|network|wifi|router|internet/, "Network & VPN"],
+  [/print/, "Printing"],
+  [/dropbox|\bbox\b|egnyte|one ?drive|share link/, "Cloud storage"],
+  [/account|password|passkey|security|restriction|auth/, "Account & access"],
+  [/ms office|ms word|microsoft|outlook|one note|email|ring central|^rc\b|slack|communication|meeting|teams/, "Email & communication"],
+  [/peripheral|monitor|charger|headset|headphone|\bmic\b|speaker|keyboard|mouse|camera|steel ?series|touch?pad|toucpad|battery|numpad|volume|brightness/, "Peripherals"],
+  [/laptop release|laptop set-?up|format|turn ?over|onboarding|device release|phone release/, "Laptop release & setup"],
+  [/hardware|hadrware|device|repair|\bram\b|screen|screw|cleaning|audit|incident|audio|lag|performance/, "Hardware & repairs"],
+  [/app|software|adobe|nitro|pdf|chrome|grammarly|krisp|activetrak|file explore|anydesk|rdp|remote desktop|salesforce|filevine|paint|install|noise/, "Software & apps"],
+];
+
+export function ticketCategoryGroup(category: string) {
+  if (ticketCategories.includes(category)) return category;
+  const first = category.split(",")[0].trim().toLowerCase();
+  return categoryRules.find(([rule]) => rule.test(first))?.[1] ?? "Other";
+}
 
 export type Ticket = {
   id: string;
@@ -26,6 +53,8 @@ export type Ticket = {
   requesterName: string;
   requesterEmail: string | null;
   department: string | null;
+  // Onsite or WFH, when known.
+  workLocation?: string | null;
   // e.g. Hardware, Software, Network, Account access
   category: string;
   subject: string;
@@ -43,6 +72,8 @@ export type Ticket = {
   // Resolution time entered by hand, for tickets closed later than they
   // were actually fixed. Null to use opened → closed.
   resolutionMinutes: number | null;
+  // Employee feedback, on tickets imported from the old log.
+  satisfaction?: string | null;
 };
 
 export function isOpenTicket(ticket: Pick<Ticket, "status">) {
@@ -71,12 +102,27 @@ export function resolutionTime(
   ticket: Pick<Ticket, "createdAt" | "closedAt" | "resolutionMinutes">,
 ) {
   const minutes = resolutionMinutes(ticket);
-  if (minutes === null) return null;
+  return minutes === null ? null : formatMinutes(minutes);
+}
+
+// A duration in hours and minutes, e.g. "100 hrs 45 mins".
+export function formatMinutes(total: number) {
+  const minutes = Math.round(total);
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   const hrs = `${hours} ${hours === 1 ? "hr" : "hrs"}`;
   const mins = `${rest} ${rest === 1 ? "min" : "mins"}`;
   return hours === 0 ? mins : `${hrs} ${mins}`;
+}
+
+// A name typed in all capitals, in normal case: "ALEJANDRO CERAFICA JR." →
+// "Alejandro Cerafica Jr.". Names with any lowercase, and single words like
+// "IT", are left as typed.
+export function personName(name: string) {
+  if (name !== name.toUpperCase() || !/\s/.test(name.trim())) return name;
+  return name
+    .toLowerCase()
+    .replace(/(^|[\s.'-])(\p{L})/gu, (_, before, letter) => before + letter.toUpperCase());
 }
 
 export function ticketCode(ticket: Pick<Ticket, "ticketNo">) {

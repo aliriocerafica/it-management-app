@@ -1,11 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { CheckIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  PlusIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 
-import { FormField } from "@/components/add-laptop-dialog";
+import { FormField, selectClass } from "@/components/add-laptop-dialog";
 import { textareaClass } from "@/components/asset-request-dialogs";
 import { DateRangeFilter } from "@/components/date-range-filter";
+import { EmployeePickerDialog } from "@/components/employee-picker-dialog";
 import { FormSelect } from "@/components/form-select";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,13 +26,21 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { requestPriorities, type RequestPriority } from "@/lib/asset-requests";
+import type { Employee } from "@/lib/employees";
 import { ticketCategories, ticketCode, type Ticket } from "@/lib/tickets";
-import { useEmployeeDirectory } from "@/lib/use-employee-directory";
 import { cn } from "@/lib/utils";
 
-// The "New ticket" dialog with its own trigger button. The parent assigns
+// The "New ticket" dialog with its own trigger button. The database assigns
 // the ticket number.
-export function TicketDialog({ onAdd }: { onAdd: (ticket: Ticket) => void }) {
+export function TicketDialog({
+  onAdd,
+  itOfficers,
+}: {
+  onAdd: (ticket: Ticket) => void;
+  // Who a ticket can be assigned to: the IT Officers from the
+  // accountability form settings.
+  itOfficers: string[];
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -38,6 +52,7 @@ export function TicketDialog({ onAdd }: { onAdd: (ticket: Ticket) => void }) {
       <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         {open && (
           <TicketForm
+            itOfficers={itOfficers}
             onSubmit={(ticket) => {
               onAdd(ticket);
               setOpen(false);
@@ -49,52 +64,53 @@ export function TicketDialog({ onAdd }: { onAdd: (ticket: Ticket) => void }) {
   );
 }
 
-function TicketForm({ onSubmit }: { onSubmit: (ticket: Ticket) => void }) {
-  const { employees, status } = useEmployeeDirectory();
-  const [requesterName, setRequesterName] = useState("");
-  const [department, setDepartment] = useState("");
-  const [employeeId, setEmployeeId] = useState<string | null>(null);
-  const [requesterEmail, setRequesterEmail] = useState("");
+function TicketForm({
+  itOfficers,
+  onSubmit,
+}: {
+  itOfficers: string[];
+  onSubmit: (ticket: Ticket) => void;
+}) {
+  // Chosen in the same employee picker as assigning an asset. The
+  // department isn't shown but is still saved, from the picked employee.
+  const [requester, setRequester] = useState<Employee | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [category, setCategory] = useState(ticketCategories[0]);
   const [error, setError] = useState<string | null>(null);
-
-  // Picking a name from the HRIS list fills in their department and ID;
-  // anyone else can still be typed in by hand.
-  function changeRequester(name: string) {
-    setRequesterName(name);
-    const match = employees.find(
-      (e) => e.name.toLowerCase() === name.trim().toLowerCase(),
-    );
-    setEmployeeId(match?.id ?? null);
-    setRequesterEmail(match?.email?.trim() ?? "");
-    if (match) setDepartment(match.department);
-  }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const get = (key: string) => String(form.get(key) ?? "").trim();
 
-    const name = requesterName.trim().replace(/\s+/g, " ");
-    if (!name) {
+    const name = requester?.name.trim().replace(/\s+/g, " ") ?? "";
+    if (!requester || !name) {
       setError("Who reported the issue?");
       return;
     }
-    const subject = get("subject");
-    if (!subject) {
-      setError("Add a short subject for the issue.");
+    // "Other" saves the type of issue as typed, like the imported tickets.
+    const otherIssue = get("otherIssue").replace(/\s+/g, " ");
+    if (category === "Other" && !otherIssue) {
+      setError("Type what kind of issue it is.");
       return;
     }
+    const issue = category === "Other" ? otherIssue : category;
+    const description = get("description");
+    // No subject field: a short description becomes the subject, otherwise
+    // the type of issue does (the same as imported tickets).
+    const short = description.replace(/\s+/g, " ");
+    const subject = short && short.length <= 80 ? short : issue;
 
     onSubmit({
       id: crypto.randomUUID(),
       ticketNo: 0,
-      employeeId,
+      employeeId: requester.id || null,
       requesterName: name,
-      requesterEmail: requesterEmail.trim() || null,
-      department: department.trim() || null,
-      category: get("category"),
+      requesterEmail: requester.email?.trim() || null,
+      department: requester.department?.trim() || null,
+      category: issue,
       subject,
-      description: get("description"),
+      description: subject === short ? "" : description,
       priority: get("priority") as RequestPriority,
       status: "Open",
       assignedTo: get("assignedTo") || null,
@@ -117,52 +133,53 @@ function TicketForm({ onSubmit }: { onSubmit: (ticket: Ticket) => void }) {
       </DialogHeader>
 
       <div className="grid min-h-0 gap-3 overflow-y-auto px-6 py-5 sm:grid-cols-2">
-        <FormField label="Reported by" htmlFor="ticketRequesterName">
-          <Input
-            id="ticketRequesterName"
-            value={requesterName}
-            onChange={(event) => changeRequester(event.target.value)}
-            list="ticket-employee-options"
-            placeholder={
-              status === "loading"
-                ? "Loading employees…"
-                : "Search HRIS or type a full name"
-            }
-            autoComplete="off"
-            required
+        <FormField
+          label="Reported by"
+          htmlFor="ticketRequester"
+          className="sm:col-span-2"
+        >
+          <button
+            id="ticketRequester"
+            type="button"
+            aria-haspopup="dialog"
             autoFocus
-          />
-          <datalist id="ticket-employee-options">
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.name}>
-                {[employee.id, employee.department].filter(Boolean).join(" · ")}
-              </option>
-            ))}
-          </datalist>
-          <p className="text-[11px] text-muted-foreground">
-            {status === "error"
-              ? "Couldn't reach HRIS. Type the name by hand."
-              : employeeId
-                ? `HRIS employee ${employeeId}${requesterEmail ? ` · ${requesterEmail}` : ""}`
-                : " "}
-          </p>
-        </FormField>
-        <FormField label="Department" htmlFor="ticketDepartment" optional>
-          <Input
-            id="ticketDepartment"
-            value={department}
-            onChange={(event) => setDepartment(event.target.value)}
-            placeholder="e.g. Finance"
-          />
+            className={cn(
+              selectClass,
+              "flex items-center justify-between gap-2 text-left",
+            )}
+            onClick={() => setPicking(true)}
+          >
+            <span className={cn("truncate", !requester && "text-muted-foreground")}>
+              {requester ? (
+                <>
+                  {requester.name}
+                  {(requester.id || requester.department) && (
+                    <span className="text-muted-foreground">
+                      {" · "}
+                      {[requester.id, requester.department]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  )}
+                </>
+              ) : (
+                "Select employee"
+              )}
+            </span>
+            <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          </button>
         </FormField>
         <FormField label="Category" htmlFor="ticketCategory">
           <FormSelect
             id="ticketCategory"
-            name="category"
-            defaultValue={ticketCategories[0]}
-            options={ticketCategories.map((category) => ({
-              value: category,
-              label: category,
+            value={category}
+            onChange={(value) => {
+              setCategory(value);
+              setError(null);
+            }}
+            options={ticketCategories.map((option) => ({
+              value: option,
+              label: option,
             }))}
           />
         </FormField>
@@ -177,19 +194,35 @@ function TicketForm({ onSubmit }: { onSubmit: (ticket: Ticket) => void }) {
             }))}
           />
         </FormField>
-        <FormField label="Subject" htmlFor="ticketSubject">
-          <Input
-            id="ticketSubject"
-            name="subject"
-            placeholder="e.g. Laptop won't connect to Wi-Fi"
-            required
-          />
-        </FormField>
-        <FormField label="Assigned to" htmlFor="ticketAssignedTo" optional>
-          <Input
+        {category === "Other" && (
+          <FormField
+            label="Type of issue"
+            htmlFor="ticketOtherIssue"
+            className="sm:col-span-2"
+          >
+            <Input
+              id="ticketOtherIssue"
+              name="otherIssue"
+              placeholder="e.g. CCTV, Google Form creation"
+              autoFocus
+              required
+            />
+          </FormField>
+        )}
+        <FormField
+          label="Assigned to"
+          htmlFor="ticketAssignedTo"
+          className="sm:col-span-2"
+          optional
+        >
+          <FormSelect
             id="ticketAssignedTo"
             name="assignedTo"
-            placeholder="e.g. IT Support"
+            defaultValue=""
+            options={[
+              { value: "", label: "Unassigned" },
+              ...itOfficers.map((name) => ({ value: name, label: name })),
+            ]}
           />
         </FormField>
         <FormField
@@ -201,7 +234,7 @@ function TicketForm({ onSubmit }: { onSubmit: (ticket: Ticket) => void }) {
           <textarea
             id="ticketDescription"
             name="description"
-            placeholder="e.g. Started after yesterday's update; other devices connect fine"
+            placeholder="e.g. Laptop won't connect to Wi-Fi since yesterday's update"
             rows={3}
             className={textareaClass}
           />
@@ -222,6 +255,21 @@ function TicketForm({ onSubmit }: { onSubmit: (ticket: Ticket) => void }) {
           Create ticket
         </Button>
       </DialogFooter>
+
+      <EmployeePickerDialog
+        open={picking}
+        onOpenChange={setPicking}
+        holders={[]}
+        noun="ticket"
+        title="Select employee"
+        description="Who reported the issue?"
+        selectedLabel="Reported by"
+        onPick={(employee) => {
+          setRequester(employee);
+          setError(null);
+          setPicking(false);
+        }}
+      />
     </form>
   );
 }

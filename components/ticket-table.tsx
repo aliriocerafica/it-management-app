@@ -32,6 +32,7 @@ import {
 import { daysAgo } from "@/components/asset-request-table";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { DateRangeFilter } from "@/components/date-range-filter";
+import { ErrorToast } from "@/components/error-toast";
 import {
   ColumnHeader,
   FilterMenu,
@@ -61,10 +62,19 @@ import {
   type RequestPriority,
 } from "@/lib/asset-requests";
 import { anyInDateRange, type DateRange } from "@/lib/date-range";
+import {
+  createTicket,
+  errorMessage,
+  removeTickets,
+  saveTicket,
+} from "@/lib/inventory-api";
 import { formatDate, initials } from "@/lib/laptops";
 import {
   isOpenTicket,
+  personName,
   resolutionTime,
+  ticketCategories,
+  ticketCategoryGroup,
   ticketCode,
   ticketStatusStyles,
   type Ticket,
@@ -72,7 +82,7 @@ import {
 } from "@/lib/tickets";
 import { useServerState } from "@/lib/use-server-state";
 import { useToday } from "@/lib/use-today";
-import { cn } from "@/lib/utils";
+import { cn, pageItems } from "@/lib/utils";
 
 const tabs = ["Open", "Closed", "Archived"] as const;
 type Tab = (typeof tabs)[number];
@@ -218,9 +228,12 @@ function exportCsv(rows: Ticket[], tab: Tab) {
 
 export function TicketTable({
   initialData,
+  itOfficers,
   canDelete = false,
 }: {
   initialData: Ticket[];
+  // Names a ticket can be assigned to.
+  itOfficers: string[];
   // Only admins can permanently delete an archived ticket.
   canDelete?: boolean;
 }) {
@@ -249,17 +262,22 @@ export function TicketTable({
     message: string;
     run: () => void;
   } | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const categories = useMemo(
-    () => [...new Set(tickets.map((t) => t.category))].sort(),
-    [tickets],
-  );
+  // The category groups in use, in the standard order.
+  const categories = useMemo(() => {
+    const used = new Set(tickets.map((t) => ticketCategoryGroup(t.category)));
+    return ticketCategories.filter((c) => used.has(c));
+  }, [tickets]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return tickets.filter((t) => {
       if (tabOf(t) !== tab) return false;
-      if (categoryFilter.length && !categoryFilter.includes(t.category))
+      if (
+        categoryFilter.length &&
+        !categoryFilter.includes(ticketCategoryGroup(t.category))
+      )
         return false;
       if (priorityFilter.length && !priorityFilter.includes(t.priority))
         return false;
@@ -333,21 +351,36 @@ export function TicketTable({
     (t) => t.status === "Archived",
   );
 
+  // Background saves: the table updates right away, and if the database
+  // rejects the change it's rolled back and the reason shown.
+  function persist(save: Promise<unknown>, rollback?: () => void) {
+    save.catch((error: unknown) => {
+      rollback?.();
+      setSaveError(errorMessage(error));
+    });
+  }
+
   function deleteTickets(removed: Ticket[]) {
     const removedIds = new Set(removed.map((t) => t.id));
     const snapshot = tickets;
-    setTickets((prev) => prev.filter((t) => !removedIds.has(t.id)));
+    const dropRemoved = () =>
+      setTickets((prev) => prev.filter((t) => !removedIds.has(t.id)));
+    dropRemoved();
     setSelected((prev) => {
       const next = new Set(prev);
       for (const id of removedIds) next.delete(id);
       return next;
     });
+    persist(removeTickets([...removedIds]), () => setTickets(snapshot));
     setUndo({
       message:
         removed.length === 1
           ? `Deleted ${ticketCode(removed[0])}`
           : `Deleted ${removed.length} tickets`,
-      run: () => setTickets(snapshot),
+      run: () => {
+        setTickets(snapshot);
+        persist(Promise.all(removed.map((t) => createTicket(t))), dropRemoved);
+      },
     });
   }
 
@@ -356,29 +389,43 @@ export function TicketTable({
     setTickets((prev) => prev.map((t) => byId.get(t.id) ?? t));
   }
 
+  // Shows the changed tickets and saves them, putting the previous versions
+  // back if the save fails.
+  function commit(next: Ticket[], previous: Ticket[]) {
+    replaceTickets(next);
+    persist(Promise.all(next.map((t) => saveTicket(t))), () =>
+      replaceTickets(previous),
+    );
+  }
+
+  // Applies a change with an Undo that saves the originals back.
+  function change(originals: Ticket[], next: Ticket[], message: string) {
+    commit(next, originals);
+    setUndo({ message, run: () => commit(originals, next) });
+  }
+
   function runAction(originals: Ticket[], action: TicketAction) {
     const { apply, done } = ticketActions[action];
-    replaceTickets(originals.map(apply));
     setSelected((prev) => {
       const next = new Set(prev);
       for (const t of originals) next.delete(t.id);
       return next;
     });
-    setUndo({
-      message:
-        originals.length === 1
-          ? `${done} ${ticketCode(originals[0])}`
-          : `${done} ${originals.length} tickets`,
-      run: () => replaceTickets(originals),
-    });
+    change(
+      originals,
+      originals.map(apply),
+      originals.length === 1
+        ? `${done} ${ticketCode(originals[0])}`
+        : `${done} ${originals.length} tickets`,
+    );
   }
 
   function setStatus(ticket: Ticket, status: TicketStatus) {
-    replaceTickets([{ ...ticket, status }]);
-    setUndo({
-      message: `Marked ${ticketCode(ticket)} as ${status.toLowerCase()}`,
-      run: () => replaceTickets([ticket]),
-    });
+    change(
+      [ticket],
+      [{ ...ticket, status }],
+      `Marked ${ticketCode(ticket)} as ${status.toLowerCase()}`,
+    );
   }
 
   function clearFilters() {
@@ -551,17 +598,17 @@ export function TicketTable({
               Export
             </Button>
             <TicketDialog
+              itOfficers={itOfficers}
               onAdd={(ticket) => {
-                // Nothing stores tickets yet, so the number is assigned here.
-                setTickets((prev) => [
-                  {
-                    ...ticket,
-                    ticketNo: Math.max(0, ...prev.map((t) => t.ticketNo)) + 1,
+                // The database assigns the ticket number.
+                createTicket(ticket).then(
+                  (saved) => {
+                    setTickets((prev) => [saved, ...prev]);
+                    setTab("Open");
+                    setPage(1);
                   },
-                  ...prev,
-                ]);
-                setTab("Open");
-                setPage(1);
+                  (error: unknown) => setSaveError(errorMessage(error)),
+                );
               }}
             />
           </div>
@@ -668,7 +715,7 @@ export function TicketTable({
                           </AvatarFallback>
                         </Avatar>
                         <div className="leading-tight">
-                          <div>{ticket.requesterName}</div>
+                          <div>{personName(ticket.requesterName)}</div>
                           <div className="text-[11px] text-muted-foreground">
                             {ticket.requesterEmail || ticket.department}
                           </div>
@@ -702,7 +749,7 @@ export function TicketTable({
                       </span>
                     </td>
                     <td className={cn(cellClass, "hidden @2xl:table-cell")}>
-                      {ticket.assignedTo ?? (
+                      {(ticket.assignedTo && personName(ticket.assignedTo)) ?? (
                         <span className="text-muted-foreground">
                           Unassigned
                         </span>
@@ -923,15 +970,16 @@ export function TicketTable({
             >
               <ChevronLeftIcon />
             </Button>
-            {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
+            {pageItems(currentPage, pageCount).map((n) => (
               <Button
                 key={n}
+                disabled={n < 0}
                 variant={n === currentPage ? "secondary" : "ghost"}
                 size="icon-sm"
                 className={cn(n === currentPage && "text-foreground")}
                 onClick={() => setPage(n)}
               >
-                {n}
+                {n < 0 ? "…" : n}
               </Button>
             ))}
             <Button
@@ -1017,11 +1065,11 @@ export function TicketTable({
           const original = editingTime;
           const next = { ...original, ...edit };
           setEditingTime(null);
-          replaceTickets([next]);
-          setUndo({
-            message: `Updated ${ticketCode(original)}: resolved in ${resolutionTime(next)}`,
-            run: () => replaceTickets([original]),
-          });
+          change(
+            [original],
+            [next],
+            `Updated ${ticketCode(original)}: resolved in ${resolutionTime(next)}`,
+          );
         }}
       />
 
@@ -1035,16 +1083,16 @@ export function TicketTable({
           const original = closing;
           const next: Ticket = { ...original, ...edit, status: "Closed" };
           setClosing(null);
-          replaceTickets([next]);
           setSelected((prev) => {
             const rest = new Set(prev);
             rest.delete(original.id);
             return rest;
           });
-          setUndo({
-            message: `Closed ${ticketCode(original)}: resolved in ${resolutionTime(next)}`,
-            run: () => replaceTickets([original]),
-          });
+          change(
+            [original],
+            [next],
+            `Closed ${ticketCode(original)}: resolved in ${resolutionTime(next)}`,
+          );
         }}
       />
 
@@ -1056,6 +1104,7 @@ export function TicketTable({
         }}
         onDismiss={() => setUndo(null)}
       />
+      <ErrorToast message={saveError} onDismiss={() => setSaveError(null)} />
     </div>
   );
 }

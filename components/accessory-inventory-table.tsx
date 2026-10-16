@@ -128,7 +128,7 @@ import { useToday } from "@/lib/use-today";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { anyInDateRange, type DateRange } from "@/lib/date-range";
 import { useServerState } from "@/lib/use-server-state";
-import { cn } from "@/lib/utils";
+import { cn, pageItems } from "@/lib/utils";
 
 export const accessoryIcons: Record<AccessoryKind, LucideIcon> = {
   headset: HeadphonesIcon,
@@ -1307,15 +1307,16 @@ export function AccessoryInventoryTable({
             >
               <ChevronLeftIcon />
             </Button>
-            {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
+            {pageItems(currentPage, pageCount).map((n) => (
               <Button
                 key={n}
+                disabled={n < 0}
                 variant={n === currentPage ? "secondary" : "ghost"}
                 size="icon-sm"
                 className={cn(n === currentPage && "text-foreground")}
                 onClick={() => setPage(n)}
               >
-                {n}
+                {n < 0 ? "…" : n}
               </Button>
             ))}
             <Button
