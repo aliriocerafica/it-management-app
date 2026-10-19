@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, Cell, ReferenceLine, XAxis, YAxis } from "recharts";
 import {
   CalendarDaysIcon,
   FlagIcon,
@@ -36,7 +36,12 @@ import {
   ChartTooltip,
 } from "@/components/ui/chart";
 import { requestPriorities, type RequestPriority } from "@/lib/asset-requests";
-import { inDateRange, type DateRange } from "@/lib/date-range";
+import {
+  fromIsoDay,
+  inDateRange,
+  toIsoDay,
+  type DateRange,
+} from "@/lib/date-range";
 import { formatDate } from "@/lib/laptops";
 import {
   formatMinutes,
@@ -54,13 +59,6 @@ import { cn } from "@/lib/utils";
 
 const UNASSIGNED = "Unassigned";
 const UNKNOWN_LOCATION = "Not recorded";
-
-const monthChartConfig = {
-  opened: {
-    label: "Opened",
-    theme: { light: "#2a78d6", dark: "#3987e5" },
-  },
-} satisfies ChartConfig;
 
 // Single-hue bars for the ranked lists, matching the chart above.
 const barFill = "bg-[#2a78d6] dark:bg-[#6da7ec]";
@@ -122,107 +120,294 @@ type MonthRow = {
   avgMinutes: number | null;
 };
 
-function MonthlyCard({ rows }: { rows: Row[] }) {
-  const data = useMemo((): MonthRow[] => {
-    if (rows.length === 0) return [];
-    const keys = rows.map((r) => monthKey(r.createdAt)).sort();
-    const [firstYear, firstMonth] = keys[0].split("-").map(Number);
-    const [lastYear, lastMonth] = keys.at(-1)!.split("-").map(Number);
-    const months: MonthRow[] = [];
-    // Every month in between, including empty ones.
+// `key` doubles as the CSS variable name (--color-<key>), so it must stay a
+// plain identifier; category names like "Account & access" can't be used.
+type CategorySlot = {
+  key: string;
+  hex: { light: string; dark: string };
+  swatch: string;
+};
+
+// Eight fixed hues assigned in frequency order and held fixed regardless of
+// filters, so a category never changes color as the page is filtered.
+// Categories past the 8th most common fold into OTHER_SLOT.
+const CATEGORY_SLOTS: CategorySlot[] = [
+  { key: "c1", hex: { light: "#3b6ea5", dark: "#4f86c6" }, swatch: "bg-[#3b6ea5] dark:bg-[#4f86c6]" },
+  { key: "c2", hex: { light: "#2a9d8f", dark: "#33b3a3" }, swatch: "bg-[#2a9d8f] dark:bg-[#33b3a3]" },
+  { key: "c3", hex: { light: "#c98a1b", dark: "#dda03a" }, swatch: "bg-[#c98a1b] dark:bg-[#dda03a]" },
+  { key: "c4", hex: { light: "#8e4f9e", dark: "#a865b8" }, swatch: "bg-[#8e4f9e] dark:bg-[#a865b8]" },
+  { key: "c5", hex: { light: "#c8553d", dark: "#dc6a50" }, swatch: "bg-[#c8553d] dark:bg-[#dc6a50]" },
+  { key: "c6", hex: { light: "#4a8c3f", dark: "#5fa353" }, swatch: "bg-[#4a8c3f] dark:bg-[#5fa353]" },
+  { key: "c7", hex: { light: "#b83b5e", dark: "#cf5577" }, swatch: "bg-[#b83b5e] dark:bg-[#cf5577]" },
+  { key: "c8", hex: { light: "#8b5e3c", dark: "#a87752" }, swatch: "bg-[#8b5e3c] dark:bg-[#a87752]" },
+];
+
+const OTHER_SLOT: CategorySlot = {
+  key: "other",
+  hex: { light: "#8c8a85", dark: "#8c8a85" },
+  swatch: "bg-[#8c8a85]",
+};
+
+type SlotInfo = { slot: CategorySlot; groups: string[]; label: string };
+
+// Ranks category groups by volume across *all* tickets (not the filtered
+// set) so a filter never repaints survivors.
+function useCategorySlots(all: Row[]): SlotInfo[] {
+  return useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of all) counts.set(r.group, (counts.get(r.group) ?? 0) + 1);
+    const ranked = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([group]) => group);
+    const groupsBySlot = new Map<CategorySlot, string[]>();
+    ranked.forEach((group, i) => {
+      const slot = i < CATEGORY_SLOTS.length ? CATEGORY_SLOTS[i] : OTHER_SLOT;
+      groupsBySlot.set(slot, [...(groupsBySlot.get(slot) ?? []), group]);
+    });
+    return [...CATEGORY_SLOTS, OTHER_SLOT]
+      .filter((slot) => groupsBySlot.has(slot))
+      .map((slot) => {
+        const groups = groupsBySlot.get(slot)!;
+        return { slot, groups, label: slot === OTHER_SLOT ? "Other" : groups[0] };
+      });
+  }, [all]);
+}
+
+type MonthData = MonthRow & { title: string } & Record<
+    string,
+    number | string | null
+  >;
+
+const IDLE_FILL = "var(--color-muted)";
+
+type Bucket = "day" | "week" | "month";
+
+const bucketTitles: Record<Bucket, string> = {
+  day: "Tickets per day",
+  week: "Tickets per week",
+  month: "Tickets per month",
+};
+
+function startOfDay(value: string | Date) {
+  const d = new Date(value);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+// The first day of the bucket a date falls in; weeks start on Monday.
+function bucketStart(date: Date, bucket: Bucket) {
+  if (bucket === "month") return new Date(date.getFullYear(), date.getMonth(), 1);
+  if (bucket === "week") {
+    const offset = (date.getDay() + 6) % 7;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() - offset);
+  }
+  return date;
+}
+
+function nextBucket(date: Date, bucket: Bucket) {
+  if (bucket === "month") return new Date(date.getFullYear(), date.getMonth() + 1, 1);
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() + (bucket === "week" ? 7 : 1),
+  );
+}
+
+function bucketLabels(date: Date, bucket: Bucket) {
+  if (bucket === "month") {
+    const label = monthLabel(monthKey(date));
+    return { label, title: label };
+  }
+  const label = date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return bucket === "week"
+    ? { label, title: `Week of ${formatDate(date)}` }
+    : {
+        label,
+        title: date.toLocaleDateString("en-GB", {
+          weekday: "short",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        }),
+      };
+}
+
+function MonthlyCard({
+  rows,
+  slots,
+  dateRange,
+}: {
+  rows: Row[];
+  slots: SlotInfo[];
+  dateRange: DateRange | null;
+}) {
+  const [active, setActive] = useState<number | null>(null);
+
+  const { data, bucket } = useMemo((): { data: MonthData[]; bucket: Bucket } => {
+    if (rows.length === 0) return { data: [], bucket: "month" };
+    // Span the picked date range when there is one, so empty days still show.
+    const opened = rows.map((r) => startOfDay(r.createdAt).getTime());
+    const start = dateRange
+      ? fromIsoDay(dateRange.from)
+      : new Date(Math.min(...opened));
+    const end = dateRange ? fromIsoDay(dateRange.to) : new Date(Math.max(...opened));
+    const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+    const bucket: Bucket = days <= 31 ? "day" : days <= 182 ? "week" : "month";
+
+    const keyOf = (value: string | Date) =>
+      toIsoDay(bucketStart(startOfDay(value), bucket));
+    const out: MonthData[] = [];
     for (
-      let d = new Date(firstYear, firstMonth - 1, 1);
-      d <= new Date(lastYear, lastMonth - 1, 1);
-      d = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+      let d = bucketStart(start, bucket);
+      d <= end;
+      d = nextBucket(d, bucket)
     ) {
-      const key = monthKey(d);
-      const opened = rows.filter((r) => monthKey(r.createdAt) === key);
-      const times = resolvedMinutes(opened);
-      months.push({
+      const key = toIsoDay(d);
+      const inBucket = rows.filter((r) => keyOf(r.createdAt) === key);
+      const times = resolvedMinutes(inBucket);
+      const row: MonthData = {
         key,
-        label: monthLabel(key),
-        opened: opened.length,
-        closed: rows.filter((r) => r.closedAt && monthKey(r.closedAt) === key)
+        ...bucketLabels(d, bucket),
+        opened: inBucket.length,
+        closed: rows.filter((r) => r.closedAt && keyOf(r.closedAt) === key)
           .length,
         avgMinutes: times.length ? average(times) : null,
-      });
+      };
+      for (const { slot, groups } of slots) {
+        row[slot.key] = inBucket.filter((r) => groups.includes(r.group)).length;
+      }
+      out.push(row);
     }
-    return months;
-  }, [rows]);
+    return { data: out, bucket };
+  }, [rows, slots, dateRange]);
+
+  const config = useMemo(
+    () =>
+      Object.fromEntries(
+        slots.map(({ slot, label }) => [slot.key, { label, theme: slot.hex }]),
+      ) satisfies ChartConfig,
+    [slots],
+  );
+
+  const avgPerMonth = data.length
+    ? data.reduce((sum, m) => sum + m.opened, 0) / data.length
+    : 0;
 
   return (
     <BentoCard className="lg:col-span-3">
       <CardHeader>
-        <CardTitle className="text-base">Tickets per month</CardTitle>
-        <CardDescription>
-          Tickets opened each month · hover a bar for closures and resolve time
-        </CardDescription>
+        <CardTitle className="text-base">{bucketTitles[bucket]}</CardTitle>
       </CardHeader>
-      <CardContent className="mt-auto">
+      <CardContent className="flex flex-1 flex-col">
         {data.length === 0 ? (
           <p className="py-24 text-center text-sm text-muted-foreground">
             No tickets match these filters.
           </p>
         ) : (
-          <ChartContainer
-            config={monthChartConfig}
-            className="aspect-auto h-72 w-full"
-          >
-            <BarChart data={data} margin={{ left: -16, right: 8, top: 12 }}>
-              <CartesianGrid
-                className="stroke-border"
-                strokeDasharray="3 3"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="label"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                minTickGap={12}
-                fontSize={11}
-              />
-              <YAxis
-                allowDecimals={false}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={4}
-              />
-              <ChartTooltip
-                cursor={{ className: "fill-muted" }}
-                content={({ active, payload }) => {
-                  const row = payload?.[0]?.payload as MonthRow | undefined;
-                  if (!active || !row) return null;
-                  return (
-                    <TooltipBox>
-                      <div className="font-medium">{row.label}</div>
-                      <TooltipRow
-                        color="var(--color-opened)"
-                        label="Opened"
-                        value={row.opened}
-                      />
-                      <TooltipRow label="Closed" value={row.closed} />
-                      <TooltipRow
-                        label="Avg resolve time"
-                        value={
-                          row.avgMinutes === null
-                            ? "–"
-                            : formatMinutes(row.avgMinutes)
+          <>
+            <ChartContainer
+              config={config}
+              className="aspect-auto min-h-72 w-full flex-1"
+            >
+              <BarChart
+                data={data}
+                margin={{ left: -16, right: 8, top: 12 }}
+                onMouseMove={(state) =>
+                  setActive(
+                    state.activeTooltipIndex == null
+                      ? null
+                      : Number(state.activeTooltipIndex),
+                  )
+                }
+                onMouseLeave={() => setActive(null)}
+              >
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  minTickGap={8}
+                  fontSize={11}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={4}
+                  fontSize={11}
+                />
+                <ReferenceLine
+                  y={avgPerMonth}
+                  stroke="var(--color-muted-foreground)"
+                  strokeOpacity={0.6}
+                  strokeDasharray="6 6"
+                />
+                <ChartTooltip
+                  cursor={false}
+                  content={({ active: shown, payload }) => {
+                    const row = payload?.[0]?.payload as MonthData | undefined;
+                    if (!shown || !row) return null;
+                    return (
+                      <TooltipBox>
+                        <div className="font-medium">{row.title}</div>
+                        <TooltipRow label="Opened" value={row.opened} />
+                        <TooltipRow label="Closed" value={row.closed} />
+                        <TooltipRow
+                          label="Avg resolve time"
+                          value={
+                            row.avgMinutes === null
+                              ? "–"
+                              : formatMinutes(row.avgMinutes)
+                          }
+                        />
+                        <div className="my-0.5 border-t border-border/60" />
+                        {slots
+                          .filter(({ slot }) => Number(row[slot.key]) > 0)
+                          .map(({ slot, label }) => (
+                            <TooltipRow
+                              key={slot.key}
+                              color={`var(--color-${slot.key})`}
+                              label={label}
+                              value={row[slot.key]}
+                            />
+                          ))}
+                      </TooltipBox>
+                    );
+                  }}
+                />
+                {slots.map(({ slot }) => (
+                  <Bar
+                    key={slot.key}
+                    dataKey={slot.key}
+                    stackId="month"
+                    radius={4}
+                    maxBarSize={44}
+                    stroke="var(--color-background)"
+                    strokeWidth={3}
+                    animationDuration={700}
+                  >
+                    {data.map((m, i) => (
+                      <Cell
+                        key={m.key}
+                        fill={
+                          active === null || active === i
+                            ? `var(--color-${slot.key})`
+                            : IDLE_FILL
                         }
                       />
-                    </TooltipBox>
-                  );
-                }}
-              />
-              <Bar
-                dataKey="opened"
-                fill="var(--color-opened)"
-                radius={[4, 4, 0, 0]}
-                maxBarSize={28}
-                animationDuration={900}
-              />
-            </BarChart>
-          </ChartContainer>
+                    ))}
+                  </Bar>
+                ))}
+              </BarChart>
+            </ChartContainer>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+              {slots.map(({ slot, label }) => (
+                <span key={slot.key} className="inline-flex items-center gap-1.5">
+                  <span className={cn("size-2.5 rounded-[2px]", slot.swatch)} />
+                  {label}
+                </span>
+              ))}
+            </div>
+          </>
         )}
       </CardContent>
     </BentoCard>
@@ -493,6 +678,7 @@ export function TicketAnalyticsDashboard({ tickets }: { tickets: Ticket[] }) {
     () => [...new Set(all.map((r) => r.year))].sort().reverse(),
     [all],
   );
+  const categorySlots = useCategorySlots(all);
 
   // Filtered by everything except category, so the category ranking still
   // shows the categories that are filtered out.
@@ -727,7 +913,11 @@ export function TicketAnalyticsDashboard({ tickets }: { tickets: Ticket[] }) {
             />
           </div>
 
-          <MonthlyCard rows={rows} />
+          <MonthlyCard
+            rows={rows}
+            slots={categorySlots}
+            dateRange={dateRange}
+          />
           <MostRequestedCard
             rows={dimRows}
             active={categoryFilter}
