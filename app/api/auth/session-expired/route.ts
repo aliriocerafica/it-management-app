@@ -13,7 +13,11 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/dashboard", request.url))
   }
 
-  const response = NextResponse.redirect(new URL("/login", request.url))
+  const reason = new URL(request.url).searchParams.get("reason")
+  const login = new URL("/login", request.url)
+  if (reason === "inactivity") login.searchParams.set("reason", "inactivity")
+
+  const response = NextResponse.redirect(login)
   response.cookies.delete(SESSION_COOKIE_NAME)
   return response
 }

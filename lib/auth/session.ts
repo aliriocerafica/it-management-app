@@ -44,12 +44,16 @@ export async function createSession(
   })
 }
 
+type SessionCheck =
+  | { ok: true; user: SessionUser }
+  | { ok: false; reason: "invalid" | "idle" }
+
 // Cached per-request so repeated calls (layout + route handlers within the
 // same render pass) only hit the database once.
-export const verifySession = cache(async (): Promise<SessionUser | null> => {
+export const checkSession = cache(async (): Promise<SessionCheck> => {
   const cookieStore = await cookies()
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value
-  if (!token) return null
+  if (!token) return { ok: false, reason: "invalid" }
 
   const tokenHash = hashToken(token)
   const session = await prisma.session.findUnique({
@@ -58,10 +62,10 @@ export const verifySession = cache(async (): Promise<SessionUser | null> => {
   })
 
   if (!session || session.revokedAt || session.expiresAt.getTime() < Date.now()) {
-    return null
+    return { ok: false, reason: "invalid" }
   }
 
-  if (!session.user.isActive) return null
+  if (!session.user.isActive) return { ok: false, reason: "invalid" }
 
   const idleLimitMs = IDLE_TIMEOUT_MINUTES * 60 * 1000
   if (Date.now() - session.lastActiveAt.getTime() > idleLimitMs) {
@@ -69,7 +73,7 @@ export const verifySession = cache(async (): Promise<SessionUser | null> => {
       where: { id: session.id },
       data: { revokedAt: new Date() },
     })
-    return null
+    return { ok: false, reason: "idle" }
   }
 
   // Sliding window: refresh activity without blocking the response.
@@ -78,19 +82,28 @@ export const verifySession = cache(async (): Promise<SessionUser | null> => {
     .catch(() => {})
 
   return {
-    id: session.user.id,
-    name: session.user.name,
-    email: session.user.email,
-    role: session.user.role,
-    avatarUrl: session.user.avatarUrl,
+    ok: true,
+    user: {
+      id: session.user.id,
+      name: session.user.name,
+      email: session.user.email,
+      role: session.user.role,
+      avatarUrl: session.user.avatarUrl,
+    },
   }
+})
+
+export const verifySession = cache(async (): Promise<SessionUser | null> => {
+  const result = await checkSession()
+  return result.ok ? result.user : null
 })
 
 /** For Server Components — sends the user to /login if there's no valid session. */
 export async function requireSession(): Promise<SessionUser> {
-  const user = await verifySession()
-  if (!user) redirect("/api/auth/session-expired")
-  return user
+  const result = await checkSession()
+  if (result.ok) return result.user
+  const reason = result.reason === "idle" ? "?reason=inactivity" : ""
+  redirect(`/api/auth/session-expired${reason}`)
 }
 
 export async function currentSessionTokenHash(): Promise<string | null> {

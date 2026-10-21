@@ -1,7 +1,15 @@
 import { LoginForm } from "@/components/login-form"
+import { InactivityLogoutNotice } from "@/components/session-timeout"
 import { ThemeToggle } from "@/components/theme-toggle"
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  const params = await searchParams
+  const reason = Array.isArray(params.reason) ? params.reason[0] : params.reason
+
   return (
     <div className="relative z-10 flex min-h-svh flex-col items-center justify-center overflow-hidden bg-background p-6 authkit:bg-transparent">
       <div
@@ -12,6 +20,7 @@ export default function LoginPage() {
         <ThemeToggle />
       </div>
       <div className="relative w-full max-w-sm">
+        <InactivityLogoutNotice show={reason === "inactivity"} />
         <LoginForm />
       </div>
     </div>

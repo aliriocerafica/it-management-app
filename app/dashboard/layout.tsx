@@ -1,5 +1,6 @@
 import { AppSidebar } from "@/components/app-sidebar"
 import { DataRefresher } from "@/components/data-refresher"
+import { SessionIdleWatch } from "@/components/session-timeout"
 import {
   SidebarInset,
   SidebarProvider,
@@ -23,6 +24,7 @@ export default async function DashboardLayout({
 
   return (
     <TooltipProvider>
+      <SessionIdleWatch />
       <DataRefresher />
       <SidebarProvider
         className="h-svh min-h-0 overflow-hidden"
