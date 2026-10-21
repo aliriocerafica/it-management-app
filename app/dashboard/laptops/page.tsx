@@ -1,19 +1,29 @@
 import { LaptopInventoryTable } from "@/components/laptop-inventory-table"
-import { listFormStateByHolder } from "@/lib/accountability-repository"
+import {
+  listFormStateByHolder,
+  listSaleForms,
+} from "@/lib/accountability-repository"
 import { listOpenLocalAssetRequests } from "@/lib/asset-request-repository"
 import { listAccessories, listLaptops } from "@/lib/inventory-repository"
 
 export const dynamic = "force-dynamic"
 
 export default async function LaptopInventoryPage() {
-  const [laptops, ramModules, chargers, openRequests, formStateByHolder] =
-    await Promise.all([
-      listLaptops(),
-      listAccessories("ram"),
-      listAccessories("charger"),
-      listOpenLocalAssetRequests(),
-      listFormStateByHolder(),
-    ])
+  const [
+    laptops,
+    ramModules,
+    chargers,
+    openRequests,
+    formStateByHolder,
+    saleForms,
+  ] = await Promise.all([
+    listLaptops(),
+    listAccessories("ram"),
+    listAccessories("charger"),
+    listOpenLocalAssetRequests(),
+    listFormStateByHolder(),
+    listSaleForms(),
+  ])
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -26,6 +36,7 @@ export default async function LaptopInventoryPage() {
         chargers={chargers}
         openRequests={openRequests}
         formStateByHolder={formStateByHolder}
+        saleForms={saleForms}
       />
     </div>
   )

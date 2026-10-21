@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import {
+  ArchiveRestoreIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -22,6 +24,7 @@ import {
   PaletteIcon,
   PencilIcon,
   SearchIcon,
+  SendIcon,
   ShieldCheckIcon,
   Trash2Icon,
   TriangleAlertIcon,
@@ -42,9 +45,11 @@ import { AssignLaptopDialog } from "@/components/assign-laptop-dialog";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import {
   DisposeLaptopDialog,
+  type DisposalInput,
   type DisposalOutcome,
 } from "@/components/dispose-laptop-dialog";
 import { EmployeesWithoutLaptop } from "@/components/employees-without-laptop";
+import { SaleFormDialog } from "@/components/sale-form-dialog";
 import { ErrorToast } from "@/components/error-toast";
 import {
   PendingRepairIcon,
@@ -52,7 +57,7 @@ import {
 } from "@/components/pending-repair-badge";
 import { UndoToast } from "@/components/undo-toast";
 import { type AssetRequest } from "@/lib/asset-requests";
-import { type FormState } from "@/lib/accountability-forms";
+import { type FormState, type FormVersion } from "@/lib/accountability-forms";
 import {
   createLaptop,
   errorMessage,
@@ -61,6 +66,7 @@ import {
   saveAccessory,
   saveAssetRequest,
   saveLaptop,
+  sendSaleForm,
 } from "@/lib/inventory-api";
 import { returnedToVacant } from "@/lib/inventory-lifecycle";
 import { inventoryKindForAssetType, samePerson } from "@/lib/issue-stock";
@@ -98,6 +104,7 @@ import {
   formatDate,
   initials,
   parseDate,
+  saleOf,
   statusStyles,
   statuses,
   warrantyInfo,
@@ -128,8 +135,11 @@ import { cn, pageItems } from "@/lib/utils";
 
 // Lists employees rather than laptops: those with no laptop tagged to them.
 const NO_LAPTOP = "No laptop";
-type Tab = "All" | LaptopStatus | typeof NO_LAPTOP;
-const tabs: Tab[] = ["All", ...statuses, NO_LAPTOP];
+// Retired laptops that were sold, kept apart from the rest of Retired so
+// they can be put back into inventory.
+const SOLD = "Sold";
+type Tab = "All" | LaptopStatus | typeof SOLD | typeof NO_LAPTOP;
+const tabs: Tab[] = ["All", ...statuses, SOLD, NO_LAPTOP];
 
 export const cellClass =
   "border-r border-border px-2.5 py-2 align-middle whitespace-nowrap";
@@ -300,6 +310,7 @@ export function FilterMenu<T extends string>({
 const noRamModules: Accessory[] = [];
 const noChargers: Accessory[] = [];
 const noRequests: AssetRequest[] = [];
+const noSaleForms: Record<string, FormVersion> = {};
 
 export function LaptopInventoryTable({
   initialData,
@@ -307,6 +318,7 @@ export function LaptopInventoryTable({
   chargers: initialChargers = noChargers,
   openRequests: initialOpenRequests = noRequests,
   formStateByHolder = {},
+  saleForms: initialSaleForms = noSaleForms,
 }: {
   initialData: Laptop[];
   ramModules?: Accessory[];
@@ -317,6 +329,8 @@ export function LaptopInventoryTable({
   // Each holder's accountability-form status, for a non-blocking flag next
   // to their name when it's missing or stale.
   formStateByHolder?: Record<string, FormState>;
+  // The latest buyer's accountability form for each sold laptop, by id.
+  saleForms?: Record<string, FormVersion>;
 }) {
   const today = useToday();
   const [laptops, setLaptops] = useServerState(initialData);
@@ -356,6 +370,10 @@ export function LaptopInventoryTable({
   const [returnOpen, setReturnOpen] = useState(false);
   const [disposing, setDisposing] = useState<Laptop | null>(null);
   const [disposeOpen, setDisposeOpen] = useState(false);
+  const [saleForms, setSaleForms] = useServerState(initialSaleForms);
+  // Laptops whose buyer's form is being emailed right now.
+  const [sendingForms, setSendingForms] = useState<Set<string>>(new Set());
+  const [saleFormFor, setSaleFormFor] = useState<Laptop | null>(null);
   const [formPrompt, setFormPrompt] = useState<{
     laptopId: string;
     employeeName: string;
@@ -384,9 +402,15 @@ export function LaptopInventoryTable({
     return laptops.filter((l) => {
       if (brandFilter.length && !brandFilter.includes(l.brand)) return false;
       if (!anyInDateRange(activityDates(l), dateRange)) return false;
-      if (tab !== "All" && l.status !== tab) return false;
+      const sale = saleOf(l);
+      if (tab === SOLD) {
+        if (!sale) return false;
+      } else if (tab !== "All" && (l.status !== tab || sale)) {
+        return false;
+      }
       if (!q) return true;
       return [
+        sale?.buyer ?? "",
         l.assetTag,
         l.brand,
         l.model,
@@ -430,9 +454,10 @@ export function LaptopInventoryTable({
       Vacant: 0,
       "In repair": 0,
       Retired: 0,
+      [SOLD]: 0,
       [NO_LAPTOP]: withoutLaptop.length,
     };
-    for (const l of laptops) counts[l.status] += 1;
+    for (const l of laptops) counts[saleOf(l) ? SOLD : l.status] += 1;
     return counts;
   }, [laptops, withoutLaptop]);
 
@@ -795,7 +820,7 @@ export function LaptopInventoryTable({
   function disposeLaptop(
     id: string,
     outcome: DisposalOutcome,
-    input: { party: string; price: string; note: string },
+    input: DisposalInput,
   ) {
     const todayIso = isoToday();
     const headline =
@@ -824,6 +849,43 @@ export function LaptopInventoryTable({
     );
     setDisposeOpen(false);
     setDisposing(null);
+    if (outcome === "sell" && input.sendFormTo) {
+      emailSaleForm(id, input.party, input.sendFormTo);
+    }
+  }
+
+  // Emails the buyer their form in the background; the Sold tab shows it
+  // as sent once it's gone.
+  function emailSaleForm(id: string, buyer: string, to: string) {
+    setSendingForms((prev) => new Set(prev).add(id));
+    sendSaleForm(id, buyer, to)
+      .then((form) => setSaleForms((prev) => ({ ...prev, [id]: form })))
+      .catch((error: unknown) =>
+        setSaveError(`Couldn't send the accountability form: ${errorMessage(error)}`),
+      )
+      .finally(() =>
+        setSendingForms((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        }),
+      );
+  }
+
+  // Puts a sold laptop back into inventory, e.g. a sale that fell through
+  // or a unit bought back.
+  function returnSoldToStock(id: string) {
+    updateLaptop(
+      id,
+      (l) => {
+        const buyer = saleOf(l)?.buyer;
+        return returnedToVacant(
+          l,
+          `Back in inventory after sale${buyer ? ` to ${buyer}` : ""}`,
+        );
+      },
+      (l) => `Returned ${l.assetTag} to inventory`,
+    );
   }
 
   function returnToStock(note: string, alsoReturn: AssignedAssets) {
@@ -994,6 +1056,8 @@ export function LaptopInventoryTable({
                 <LaptopIcon className="size-4" />
               ) : t === NO_LAPTOP ? (
                 <UserXIcon className="size-4" />
+              ) : t === SOLD ? (
+                <CoinsIcon className="size-4" />
               ) : (
                 <span
                   className={cn("size-2 rounded-full", statusStyles[t].dot)}
@@ -1164,6 +1228,7 @@ export function LaptopInventoryTable({
                 const status = statusStyles[laptop.status];
                 const saving = pendingSaves.has(laptop.id);
                 const installedRam = ramModulesInLaptop(ramModules, laptop.id);
+                const sale = saleOf(laptop);
                 return (
                   <tr
                     key={laptop.id}
@@ -1202,7 +1267,23 @@ export function LaptopInventoryTable({
                       </div>
                     </td>
                     <td className={cellClass}>
-                      {laptop.handler ? (
+                      {sale ? (
+                        <div className="max-w-40 min-w-0 leading-tight">
+                          <div
+                            className="truncate"
+                            title={sale.buyer ?? undefined}
+                          >
+                            {sale.buyer ?? (
+                              <span className="text-muted-foreground italic">
+                                Buyer not recorded
+                              </span>
+                            )}
+                          </div>
+                          <div className="truncate text-[11px] text-muted-foreground">
+                            Bought {formatDate(parseDate(sale.date))}
+                          </div>
+                        </div>
+                      ) : laptop.handler ? (
                         <div className="flex items-center gap-2">
                           <Avatar className="hidden size-6 after:rounded-full @2xl:flex">
                             <AvatarFallback className="bg-muted text-[9px] font-medium">
@@ -1314,13 +1395,24 @@ export function LaptopInventoryTable({
                           <span
                             className={cn("size-1.5 rounded-full", status.dot)}
                           />
-                          {laptop.status}
+                          {sale ? "Sold" : laptop.status}
                         </span>
+                        {sale && (
+                          <span className="ml-1 text-[11px] text-muted-foreground tabular-nums">
+                            ₱{sale.price}
+                          </span>
+                        )}
                         {laptop.repairIssue &&
                           laptop.status !== "In repair" && (
                             <PendingRepairIcon issue={laptop.repairIssue} />
                           )}
                       </div>
+                      {sale && (
+                        <SaleFormStatus
+                          form={saleForms[laptop.id] ?? null}
+                          sending={sendingForms.has(laptop.id)}
+                        />
+                      )}
                       {laptop.repairIssue && laptop.status !== "In repair" && (
                         <RepairedButton
                           className="mt-1"
@@ -1356,6 +1448,16 @@ export function LaptopInventoryTable({
                           >
                             <Undo2Icon />
                             Release
+                          </Button>
+                        ) : sale ? (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="min-w-27"
+                            onClick={() => returnSoldToStock(laptop.id)}
+                          >
+                            <ArchiveRestoreIcon />
+                            Restock
                           </Button>
                         ) : laptop.status === "In use" ? (
                           <Button
@@ -1448,8 +1550,26 @@ export function LaptopInventoryTable({
                                 Accountability form
                               </DropdownMenuItem>
                             )}
+                            {sale && (
+                              <DropdownMenuItem
+                                onClick={() => setSaleFormFor(laptop)}
+                              >
+                                <SendIcon />
+                                {saleForms[laptop.id]?.sends.length
+                                  ? "Resend form to sign"
+                                  : "Send form to sign"}
+                              </DropdownMenuItem>
+                            )}
+                            {sale && (
+                              <DropdownMenuItem
+                                onClick={() => returnSoldToStock(laptop.id)}
+                              >
+                                <ArchiveRestoreIcon />
+                                Return to inventory
+                              </DropdownMenuItem>
+                            )}
                             {(laptop.status === "Vacant" ||
-                              laptop.status === "Retired") && (
+                              (laptop.status === "Retired" && !sale)) && (
                               <DropdownMenuItem onClick={() => openDispose(laptop)}>
                                 <CoinsIcon />
                                 Sell / donate
@@ -1665,9 +1785,28 @@ export function LaptopInventoryTable({
           setDisposeOpen(open);
           if (!open) setDisposing(null);
         }}
+        offerSaleForm
         onConfirm={(outcome, input) =>
           disposing && disposeLaptop(disposing.id, outcome, input)
         }
+      />
+
+      <SaleFormDialog
+        laptop={saleFormFor}
+        buyer={saleFormFor ? (saleOf(saleFormFor)?.buyer ?? null) : null}
+        lastSentTo={
+          saleFormFor
+            ? (saleForms[saleFormFor.id]?.sends[0]?.toEmail ?? null)
+            : null
+        }
+        open={saleFormFor !== null}
+        onOpenChange={(open) => !open && setSaleFormFor(null)}
+        onSent={(form) => {
+          if (saleFormFor) {
+            setSaleForms((prev) => ({ ...prev, [saleFormFor.id]: form }));
+          }
+          setSaleFormFor(null);
+        }}
       />
 
       <AddLaptopDialog
@@ -1730,6 +1869,53 @@ export function LaptopInventoryTable({
           formPrompt && openAccountabilityForm(formPrompt.laptopId, names)
         }
       />
+    </div>
+  );
+}
+
+// Where a sold laptop's buyer's form stands: signed, sent, or not yet sent.
+function SaleFormStatus({
+  form,
+  sending,
+}: {
+  form: FormVersion | null;
+  sending: boolean;
+}) {
+  const lastSend = form?.sends[0];
+  if (sending) {
+    return (
+      <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+        <Loader2Icon className="size-3 animate-spin" />
+        Sending form…
+      </div>
+    );
+  }
+  if (form?.signedAt) {
+    return (
+      <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+        <CircleCheckIcon className="size-3" />
+        Form signed
+      </div>
+    );
+  }
+  if (lastSend) {
+    return (
+      <div
+        className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground"
+        title={`Sent to ${lastSend.toEmail}`}
+      >
+        <span className="flex size-3 items-center justify-center rounded-[3px] bg-emerald-600 text-white dark:bg-emerald-500">
+          <CheckIcon className="size-2.5 stroke-3" />
+        </span>
+        <span className="font-medium text-foreground">Form sent</span>
+        <span className="max-w-28 truncate">{lastSend.toEmail}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+      <span className="size-3 rounded-[3px] border border-muted-foreground/60" />
+      Form not sent
     </div>
   );
 }

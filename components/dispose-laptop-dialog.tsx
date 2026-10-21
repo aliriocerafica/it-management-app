@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -25,9 +26,17 @@ import { cn } from "@/lib/utils";
 
 export type DisposalOutcome = "sell" | "donate";
 
+export type DisposalInput = {
+  party: string;
+  price: string;
+  note: string;
+  // Email the buyer their accountability form to sign; null to skip.
+  sendFormTo: string | null;
+};
+
 export type DisposalConfirm = (
   outcome: DisposalOutcome,
-  input: { party: string; price: string; note: string },
+  input: DisposalInput,
 ) => void;
 
 export function DisposeLaptopDialog({
@@ -36,9 +45,12 @@ export function DisposeLaptopDialog({
   onOpenChange,
   onConfirm,
   noun = "laptop",
+  offerSaleForm = false,
 }: {
   laptop: TrackedItem | null;
   noun?: string;
+  // Offer to email the buyer an accountability form to sign.
+  offerSaleForm?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: DisposalConfirm;
@@ -51,6 +63,7 @@ export function DisposeLaptopDialog({
             key={laptop.assetTag}
             laptop={laptop}
             noun={noun}
+            offerSaleForm={offerSaleForm}
             onConfirm={onConfirm}
           />
         )}
@@ -62,10 +75,12 @@ export function DisposeLaptopDialog({
 function DisposeForm({
   laptop,
   noun,
+  offerSaleForm,
   onConfirm,
 }: {
   laptop: TrackedItem;
   noun: string;
+  offerSaleForm: boolean;
   onConfirm: DisposalConfirm;
 }) {
   const options: {
@@ -92,19 +107,25 @@ function DisposeForm({
   const [party, setParty] = useState("");
   const [price, setPrice] = useState("");
   const [note, setNote] = useState("");
+  const [sendForm, setSendForm] = useState(false);
+  const [email, setEmail] = useState("");
   const selling = outcome === "sell";
   const missingPrice = selling && !price.trim();
+  const sendingForm = offerSaleForm && selling && sendForm;
+  // The form is made out to the buyer, so it needs their name and email.
+  const missingFormDetails = sendingForm && (!party.trim() || !email.trim());
 
   return (
     <form
       className="flex min-h-0 flex-col"
       onSubmit={(event) => {
         event.preventDefault();
-        if (missingPrice) return;
+        if (missingPrice || missingFormDetails) return;
         onConfirm(outcome, {
           party: party.trim(),
           price: price.trim(),
           note: note.trim(),
+          sendFormTo: sendingForm ? email.trim() : null,
         });
       }}
     >
@@ -117,7 +138,9 @@ function DisposeForm({
           {laptop.brand} {laptop.model} ·{" "}
           <span className="font-mono text-xs">{laptop.assetTag}</span>
           <span className="mt-1 block">
-            Takes it out of inventory for good. Status becomes Retired.
+            {offerSaleForm
+              ? "Takes it out of inventory. A sold one can be returned to stock from the Sold tab."
+              : "Takes it out of inventory for good. Status becomes Retired."}
           </span>
         </DialogDescription>
       </DialogHeader>
@@ -197,9 +220,11 @@ function DisposeForm({
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="dispose-party" className="text-xs">
             {selling ? "Buyer" : "Recipient"}
-            <span className="font-normal text-muted-foreground">
-              (optional)
-            </span>
+            {!sendingForm && (
+              <span className="font-normal text-muted-foreground">
+                (optional)
+              </span>
+            )}
           </Label>
           <Input
             id="dispose-party"
@@ -209,6 +234,7 @@ function DisposeForm({
               selling ? "e.g. Juan Dela Cruz" : "e.g. Local school, ABC Foundation"
             }
             autoFocus={!selling}
+            required={sendingForm}
           />
         </div>
 
@@ -226,15 +252,59 @@ function DisposeForm({
             placeholder="e.g. Sold as-is, screen has dead pixels"
           />
         </div>
+
+        {offerSaleForm && selling && (
+          <div className="flex flex-col gap-3 rounded-xl border border-border px-3 py-3">
+            <label className="flex items-start gap-2.5 text-sm">
+              <Checkbox
+                checked={sendForm}
+                onCheckedChange={(checked) => setSendForm(checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block font-medium">
+                  Send accountability form to sign
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Emails the buyer the form for this {noun}, with a link to
+                  upload the signed copy.
+                </span>
+              </span>
+            </label>
+            {sendForm && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="dispose-email" className="text-xs">
+                  Buyer&apos;s email
+                </Label>
+                <Input
+                  id="dispose-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="name@example.com"
+                  required
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <DialogFooter className="mx-0 mb-0 px-6 py-4">
         <DialogClose render={<Button variant="outline" type="button" />}>
           Cancel
         </DialogClose>
-        <Button type="submit" variant="destructive" disabled={missingPrice}>
+        <Button
+          type="submit"
+          variant="destructive"
+          disabled={missingPrice || missingFormDetails}
+        >
           {selling ? <CoinsIcon /> : <GiftIcon />}
-          {selling ? "Mark as sold" : "Mark as donated"}
+          {selling
+            ? sendingForm
+              ? "Mark as sold & send form"
+              : "Mark as sold"
+            : "Mark as donated"}
         </Button>
       </DialogFooter>
     </form>

@@ -446,11 +446,15 @@ model AccountabilityForm {
   // that's still pending. Recorded by hand.
   signedAt      DateTime?
   signedByName  String?
+  // Set on a buyer's form for a laptop that was sold; null on an
+  // employee's form for what they currently hold.
+  saleLaptopId  String?
   sends         AccountabilityFormSend[]
   signLinks     AccountabilityFormSignLink[]
 
   @@unique([holderName, version])
   @@index([holderName])
+  @@index([saleLaptopId])
   @@map("accountability_forms")
 }
 

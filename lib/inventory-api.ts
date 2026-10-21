@@ -1,3 +1,4 @@
+import type { FormVersion } from "@/lib/accountability-forms"
 import type { AssetRequest, RequestStatus } from "@/lib/asset-requests"
 import type { Accessory, AccessoryKind } from "@/lib/accessories"
 import type { Laptop } from "@/lib/laptops"
@@ -46,6 +47,17 @@ export async function saveLaptop(laptop: Laptop) {
     notifyInventoryChanged()
     return saved
   })
+}
+
+// Emails a sold laptop's buyer their accountability form to sign.
+export async function sendSaleForm(laptopId: string, buyer: string, to: string) {
+  return parse<FormVersion>(
+    await fetch(`/api/laptops/${laptopId}/sale-form`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ buyer, to }),
+    }),
+  )
 }
 
 export async function createLaptop(laptop: Laptop) {

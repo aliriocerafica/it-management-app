@@ -12,7 +12,7 @@ import { deleteSignedCopyFiles } from "@/lib/accountability-sign-link"
 import { accessoryConfigs, type AccessoryKind } from "@/lib/accessories"
 import type { Prisma } from "@/lib/generated/prisma"
 import { fetchHrisEmployees } from "@/lib/hris"
-import { formatDate } from "@/lib/laptops"
+import { formatDate, type Laptop } from "@/lib/laptops"
 import {
   fillAccountabilityForm,
   type EquipmentRow,
@@ -128,6 +128,19 @@ const formInclude = {
 } satisfies Prisma.AccountabilityFormInclude
 type FormRecord = Prisma.AccountabilityFormGetPayload<{ include: typeof formInclude }>
 
+// An employee's form for what they hold, as opposed to a buyer's form for a
+// laptop that was sold.
+const holderForm = { saleLaptopId: null } satisfies Prisma.AccountabilityFormWhereInput
+
+// Version numbers are shared by a person's employee and buyer forms.
+async function nextVersion(holderName: string) {
+  const { _max } = await prisma.accountabilityForm.aggregate({
+    where: { holderName },
+    _max: { version: true },
+  })
+  return (_max.version ?? 0) + 1
+}
+
 function versionFromDb(row: FormRecord): FormVersion {
   return {
     id: row.id,
@@ -173,6 +186,7 @@ export async function listAccountabilityRows(): Promise<AccountabilityRow[]> {
   const [holdings, forms, emailFor] = await Promise.all([
     currentHoldings(),
     prisma.accountabilityForm.findMany({
+      where: holderForm,
       orderBy: { version: "desc" },
       include: formInclude,
     }),
@@ -234,7 +248,7 @@ export async function generateForm(
   const signature = signatureOf(holder.equipment)
 
   const latest = await prisma.accountabilityForm.findFirst({
-    where: { holderName },
+    where: { holderName, ...holderForm },
     orderBy: { version: "desc" },
     include: formInclude,
   })
@@ -253,7 +267,7 @@ export async function generateForm(
       holderName,
       employeeId: holder.employeeId,
       department: holder.department,
-      version: (latest?.version ?? 0) + 1,
+      version: await nextVersion(holderName),
       hrName: names.hrName,
       itOfficerName: names.itOfficerName,
       generatedOn: formatDate(new Date()),
@@ -268,11 +282,83 @@ export async function generateForm(
 
 export async function listFormVersions(holderName: string): Promise<FormVersion[]> {
   const rows = await prisma.accountabilityForm.findMany({
-    where: { holderName },
+    where: { holderName, ...holderForm },
     orderBy: { version: "desc" },
     include: formInclude,
   })
   return rows.map(versionFromDb)
+}
+
+export async function getFormVersion(formId: string): Promise<FormVersion | null> {
+  const row = await prisma.accountabilityForm.findUnique({
+    where: { id: formId },
+    include: formInclude,
+  })
+  return row ? versionFromDb(row) : null
+}
+
+// The buyer's form for a sold laptop: the laptop and its charger. Reuses the
+// latest one for this laptop when nothing on it would change.
+export async function generateSaleForm(
+  laptop: Laptop,
+  buyerName: string,
+  names: { hrName: string; itOfficerName: string },
+  createdByName: string | null,
+): Promise<FormVersion> {
+  const equipment: EquipmentRow[] = [
+    { item: "Laptop", brand: laptop.brand, model: laptop.model, serialNumber: laptop.serialNumber, unitCount: 1 },
+    {
+      item: "Laptop Charger",
+      brand: laptop.brand,
+      model: laptop.charger.partNumber,
+      serialNumber: laptop.charger.serialNumber,
+      unitCount: 1,
+    },
+  ]
+  const signature = signatureOf(equipment)
+
+  const latest = await prisma.accountabilityForm.findFirst({
+    where: { saleLaptopId: laptop.id },
+    orderBy: { createdAt: "desc" },
+    include: formInclude,
+  })
+  if (
+    latest &&
+    latest.holderName === buyerName &&
+    latest.signature === signature &&
+    latest.hrName === names.hrName &&
+    latest.itOfficerName === names.itOfficerName
+  ) {
+    return versionFromDb(latest)
+  }
+
+  const created = await prisma.accountabilityForm.create({
+    data: {
+      holderName: buyerName,
+      version: await nextVersion(buyerName),
+      hrName: names.hrName,
+      itOfficerName: names.itOfficerName,
+      generatedOn: formatDate(new Date()),
+      equipment,
+      signature,
+      createdByName,
+      saleLaptopId: laptop.id,
+    },
+    include: formInclude,
+  })
+  return versionFromDb(created)
+}
+
+// The latest buyer's form for each sold laptop, by laptop id.
+export async function listSaleForms(): Promise<Record<string, FormVersion>> {
+  const rows = await prisma.accountabilityForm.findMany({
+    where: { saleLaptopId: { not: null } },
+    orderBy: { createdAt: "desc" },
+    include: formInclude,
+  })
+  const byLaptop: Record<string, FormVersion> = {}
+  for (const row of rows) byLaptop[row.saleLaptopId!] ??= versionFromDb(row)
+  return byLaptop
 }
 
 export async function renderFormPdf(formId: string) {
@@ -350,7 +436,7 @@ export async function deleteFormVersion(formId: string) {
 
 // Removes every version (and its send history) for these holders.
 export async function deleteFormsFor(holderNames: string[]) {
-  return deleteForms({ holderName: { in: holderNames } })
+  return deleteForms({ holderName: { in: holderNames }, ...holderForm })
 }
 
 // Puts deleted versions back with their original ids, dates and sends.

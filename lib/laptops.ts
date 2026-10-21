@@ -229,6 +229,21 @@ export function formatDate(date: Date) {
   });
 }
 
+// A sold laptop's sale, read from the open history entry that disposal
+// writes ("Sold to Juan for ₱5,000. As-is"). Null if it isn't sold.
+export function saleOf(laptop: Pick<Laptop, "status" | "history">) {
+  if (laptop.status !== "Retired") return null;
+  const current = laptop.history.find((entry) => entry.to === null);
+  const match = current?.note?.match(/^Sold(?: to (.+?))? for ₱(\S+?)(?:\. ([\s\S]*))?$/);
+  if (!current || !match) return null;
+  return {
+    buyer: match[1] ?? null,
+    price: match[2],
+    note: match[3] ?? null,
+    date: current.from,
+  };
+}
+
 // The fields the shared assign / repair dialogs need from any tracked item.
 export type TrackedItem = Pick<
   Laptop,
