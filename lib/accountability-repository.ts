@@ -26,16 +26,15 @@ type Holding = {
   equipment: EquipmentRow[]
 }
 
-// Only these go on the form: laptops (with their chargers), headsets and
-// laptop bags. Consumables and small peripherals (batteries, mice,
-// keyboards, monitors) are left off.
-const accountableKinds = ["HEADSET", "BAG"] as const
+// Everything goes on the form (laptops with their chargers, and every
+// accessory kind) except batteries, which are consumables.
+const excludedKind = "BATTERY" as const
 
 // Accountable equipment currently assigned to someone (in use or out for
 // repair), grouped by holder, as rows for the form's equipment table.
 async function currentHoldings(holderName?: string): Promise<Map<string, Holding>> {
   const where = holderName ? { handlerName: holderName } : { handlerName: { not: null } }
-  const accessoryWhere = { ...where, kind: { in: [...accountableKinds] } }
+  const accessoryWhere = { ...where, kind: { not: excludedKind } }
   const [laptops, accessories] = await Promise.all([
     prisma.laptop.findMany({
       where,
