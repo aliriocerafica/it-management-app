@@ -17,9 +17,9 @@ import {
   ChartColumnIcon,
   ChartPieIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
   ClipboardListIcon,
   FileTextIcon,
-  ChevronLeftIcon,
   HeadphonesIcon,
   LaptopIcon,
   LayersIcon,
@@ -280,6 +280,9 @@ function groupBadgeLabel(items: NavItem[], total: string) {
   return `${total} updates`
 }
 
+const labelMotion =
+  "min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity,flex-grow] duration-300 ease-sidebar motion-reduce:duration-0 max-w-48 flex-1 opacity-100 group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:opacity-0"
+
 function NavCount({ item, floating }: { item: NavItem; floating?: boolean }) {
   if (!item.badge) return null
   return (
@@ -293,7 +296,9 @@ function NavCount({ item, floating }: { item: NavItem; floating?: boolean }) {
       }
       className={cn(
         countBadgeClass,
-        floating && "absolute top-0.5 right-1 h-4 min-w-4 px-0.5 text-[9px]",
+        floating
+          ? "absolute top-0.5 right-1 h-4 min-w-4 px-0.5 text-[9px]"
+          : "max-w-12 shrink-0 overflow-hidden transition-[max-width,opacity,margin] duration-300 ease-sidebar motion-reduce:duration-0 group-data-[collapsible=icon]:mr-0 group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0",
       )}
     >
       {item.badge}
@@ -330,9 +335,8 @@ function SidebarLink({
             : undefined
         }
         className={cn(
-          "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",
+          "flex items-center gap-3 rounded-lg text-sm font-medium transition-[padding,gap,color,background-color] duration-300 ease-sidebar motion-reduce:duration-0",
           nested ? "h-9 px-2.5" : "h-10 rounded-xl px-3",
-          collapsed && "justify-center rounded-xl px-0",
           isActive
             ? "bg-neutral-900/5 text-neutral-900 dark:bg-white/10 dark:text-white"
             : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -344,16 +348,13 @@ function SidebarLink({
             isActive && "text-neutral-900 dark:text-white",
           )}
         />
-        <span className={cn("flex-1 truncate", collapsed && "sr-only")}>
-          {item.title}
-        </span>
+        <span className={labelMotion}>{item.title}</span>
         <NavCount item={item} floating={collapsed} />
         {item.action && (
           <button
             type="button"
             className={cn(
-              "flex size-5 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-accent hover:text-foreground",
-              collapsed && "hidden",
+              "flex size-5 max-w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-muted-foreground transition-[max-width,opacity,margin] duration-300 ease-sidebar motion-reduce:duration-0 group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0 hover:bg-accent hover:text-foreground",
             )}
             aria-label={`Add ${item.title}`}
             onClick={(event) => event.preventDefault()}
@@ -470,14 +471,15 @@ function NavGroupMenu({
           onOpenChange(!open)
         }}
         className={cn(
-          "flex h-10 w-full cursor-pointer items-center gap-3 rounded-xl px-3 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+          "flex h-10 w-full cursor-pointer items-center gap-3 rounded-xl px-3 text-left text-sm font-medium outline-none transition-[padding,gap,color,background-color] duration-300 ease-sidebar motion-reduce:duration-0 focus-visible:ring-2 focus-visible:ring-sidebar-ring",
           open || childActive
             ? "bg-neutral-900/5 text-neutral-900 dark:bg-white/10 dark:text-white"
             : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         )}
       >
         <group.icon className="size-4 shrink-0" />
-        <span className="flex-1 truncate">{group.title}</span>
+        <span className={labelMotion}>{group.title}</span>
+        <span className="flex shrink-0 items-center gap-1 overflow-hidden transition-[max-width,opacity] duration-300 ease-sidebar motion-reduce:duration-0 max-w-24 group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0">
         {!open && total && (
           <span aria-label={totalLabel} className={countBadgeClass}>
             {total}
@@ -507,14 +509,15 @@ function NavGroupMenu({
         </button>
         <ChevronDownIcon
           className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
+            "size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-sidebar motion-reduce:duration-0",
             open && "rotate-180 text-foreground",
           )}
         />
+        </span>
       </div>
       <div
         className={cn(
-          "grid transition-[grid-template-rows] duration-200 ease-out",
+          "grid transition-[grid-template-rows] duration-300 ease-sidebar motion-reduce:duration-0",
           open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
         )}
       >
@@ -539,6 +542,24 @@ function NavGroupMenu({
   )
 }
 
+const SIDEBAR_MOTION_MS = 300
+
+function useSettledCollapse(collapsed: boolean) {
+  const [settled, setSettled] = useState(collapsed)
+
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (reduce || !collapsed) {
+      setSettled(collapsed)
+      return
+    }
+    const id = window.setTimeout(() => setSettled(true), SIDEBAR_MOTION_MS)
+    return () => window.clearTimeout(id)
+  }, [collapsed])
+
+  return settled
+}
+
 export function AppSidebar({
   user,
   vacantCounts: initialVacantCounts,
@@ -552,6 +573,7 @@ export function AppSidebar({
   const router = useRouter()
   const { state, toggleSidebar } = useSidebar()
   const collapsed = state === "collapsed"
+  const iconLayout = useSettledCollapse(collapsed)
   const initial = user.name.trim()[0]?.toUpperCase() ?? "?"
   const [search, setSearch] = useState("")
   const activeGroupId =
@@ -671,25 +693,35 @@ export function AppSidebar({
         <ChevronLeftIcon
           className={cn(
             "size-3.5 transition-transform duration-200",
-            collapsed && "rotate-180"
+            collapsed && "rotate-180",
           )}
         />
       </button>
 
-      <SidebarHeader className="gap-4 p-4 group-data-[collapsible=icon]:px-3">
+      <SidebarHeader className="gap-4 overflow-x-clip p-4 transition-[gap,padding] duration-300 ease-sidebar motion-reduce:duration-0 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:p-3">
         <DropdownMenu>
-          <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+          <div
+            className={cn(
+              "flex items-center gap-2",
+              iconLayout && "justify-center",
+            )}
+          >
             {/* The mascot is a button of its own (click to boop it), so it
                 sits beside the menu trigger rather than inside it. */}
-            {!collapsed && <SidebarMascot user={user} />}
+            {!iconLayout && <SidebarMascot user={user} />}
             <DropdownMenuTrigger
               aria-label="Account menu"
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl p-1 text-left group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0 outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl p-1 text-left outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
               {/* Collapsed, there's no room for both: a still of the mascot
                   opens the menu. */}
-              {collapsed && <MascotStill user={user} className="size-11" />}
-              <div className="grid min-w-0 flex-1 leading-tight group-data-[collapsible=icon]:hidden">
+              {iconLayout && (
+                <MascotStill
+                  user={user}
+                  className="size-8 transition-[width,height] duration-300 ease-sidebar motion-reduce:duration-0"
+                />
+              )}
+              <div className={cn(labelMotion, "leading-tight")}>
                 <span className="truncate text-base font-semibold text-sidebar-foreground">
                   {user.name}
                 </span>
@@ -753,26 +785,34 @@ export function AppSidebar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <form
-          role="search"
-          onSubmit={(event) => event.preventDefault()}
-          className="relative group-data-[collapsible=icon]:hidden"
+        <div
+          className={cn(
+            "grid transition-[grid-template-rows,opacity] duration-300 ease-sidebar motion-reduce:duration-0",
+            collapsed ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100",
+          )}
         >
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search pages"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            autoComplete="off"
-            aria-label="Search pages"
-            className="h-10 rounded-xl border-0 bg-muted/70 pl-9 shadow-none focus-visible:ring-2 dark:bg-muted/40"
-          />
-        </form>
+          <form
+            role="search"
+            onSubmit={(event) => event.preventDefault()}
+            className="relative min-h-0 overflow-hidden"
+          >
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search pages"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              autoComplete="off"
+              aria-label="Search pages"
+              tabIndex={collapsed ? -1 : undefined}
+              className="h-10 rounded-xl border-0 bg-muted/70 pl-9 shadow-none focus-visible:ring-2 dark:bg-muted/40"
+            />
+          </form>
+        </div>
       </SidebarHeader>
 
-      <SidebarContent className="gap-0 px-3 group-data-[collapsible=icon]:px-2">
-        <nav className="flex flex-col gap-1 px-1 pb-3 group-data-[collapsible=icon]:px-0">
+      <SidebarContent className="gap-0 px-3">
+        <nav className="flex flex-col gap-1 px-1 pb-3">
           {visibleTopLevelItems.length === 0 && visibleGroups.length === 0 && (
             <p className="px-3 py-2 text-sm text-muted-foreground">
               No results for &ldquo;{search}&rdquo;
@@ -783,7 +823,7 @@ export function AppSidebar({
               key={item.href}
               item={item}
               pathname={pathname}
-              collapsed={collapsed}
+              collapsed={iconLayout}
             />
           ))}
           {visibleGroups.map((group) => (
@@ -791,11 +831,12 @@ export function AppSidebar({
               key={group.id}
               group={group}
               pathname={pathname}
-              collapsed={collapsed}
+              collapsed={iconLayout}
               open={
-                query.length > 0 ||
-                openGroupId === group.id ||
-                lockedGroupIds.has(group.id)
+                !collapsed &&
+                (query.length > 0 ||
+                  openGroupId === group.id ||
+                  lockedGroupIds.has(group.id))
               }
               onOpenChange={(next) => {
                 if (query) return
@@ -813,14 +854,13 @@ export function AppSidebar({
           href="/dashboard/settings#appearance"
           title={collapsed ? "Themes" : undefined}
           className={cn(
-            "flex h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            collapsed && "justify-center px-0",
+            "flex h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium text-muted-foreground transition-[color,background-color] duration-300 ease-sidebar hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             pathname.startsWith("/dashboard/settings") &&
               "bg-neutral-900/5 text-neutral-900 dark:bg-white/10 dark:text-white",
           )}
         >
           <PaletteIcon className="size-4 shrink-0" />
-          <span className={cn(collapsed && "sr-only")}>Themes</span>
+          <span className={labelMotion}>Themes</span>
         </Link>
       </SidebarFooter>
     </Sidebar>

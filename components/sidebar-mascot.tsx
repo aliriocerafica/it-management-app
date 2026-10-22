@@ -142,7 +142,7 @@ export function SidebarMascot({ user }: { user: ProfileUser }) {
   return (
     <div className="relative shrink-0">
       {chosen === "profile" ? (
-        <ProfileAvatar user={user} className="avatar-shine size-11 text-base" />
+        <ProfileAvatar user={user} className="avatar-shine size-11 text-base transition-[width,height] duration-300 ease-sidebar motion-reduce:duration-0 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:text-sm" />
       ) : (
         <Mascot
           key={chosen}
