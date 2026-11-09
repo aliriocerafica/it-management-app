@@ -78,6 +78,15 @@ export async function listAccessories(kind: AccessoryKind): Promise<Accessory[]>
   return rows.map(accessoryFromDb)
 }
 
+// Every accessory of every kind, for fleet-wide reports like cost analytics.
+export async function listAllAccessories(): Promise<Accessory[]> {
+  const rows = await prisma.accessory.findMany({
+    include: accessoryInclude,
+    orderBy: [{ kind: "asc" }, { assetTag: "asc" }],
+  })
+  return rows.map(accessoryFromDb)
+}
+
 export async function getInventorySummary(): Promise<InventorySummary> {
   const [laptopGroups, accessoryRows] = await Promise.all([
     prisma.laptop.groupBy({

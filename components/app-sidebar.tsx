@@ -30,6 +30,7 @@ import {
   MemoryStickIcon,
   MouseIcon,
   PaletteIcon,
+  PhilippinePesoIcon,
   PlugIcon,
   PlusIcon,
   SearchIcon,
@@ -101,6 +102,11 @@ const topLevelItems: NavItem[] = [
     title: "Ticket Analytics",
     href: "/dashboard/ticket-analytics",
     icon: ChartPieIcon,
+  },
+  {
+    title: "Cost Analytics",
+    href: "/dashboard/cost-analytics",
+    icon: PhilippinePesoIcon,
   },
 ]
 
