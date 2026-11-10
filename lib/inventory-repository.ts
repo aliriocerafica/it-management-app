@@ -222,6 +222,8 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
         purchaseDate: fromIsoDate(laptop.purchaseDate),
         warrantyYears: laptop.warrantyYears,
         price: laptop.price ?? null,
+        repairCost: laptop.repairCost ?? null,
+        repairDate: laptop.repairDate ? fromIsoDate(laptop.repairDate) : null,
         status: statusToDb[laptop.status],
         repairIssue,
         anydeskAddress,
@@ -245,6 +247,14 @@ export async function upsertLaptop(laptop: Laptop): Promise<Laptop> {
         purchaseDate: fromIsoDate(laptop.purchaseDate),
         warrantyYears: laptop.warrantyYears,
         price: laptop.price ?? null,
+        // Left as is when the laptop sent has no repair cost field.
+        repairCost: laptop.repairCost,
+        repairDate:
+          laptop.repairDate === undefined
+            ? undefined
+            : laptop.repairDate
+              ? fromIsoDate(laptop.repairDate)
+              : null,
         status: statusToDb[laptop.status],
         repairIssue,
         anydeskAddress,

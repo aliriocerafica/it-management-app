@@ -398,6 +398,8 @@ export function AddLaptopDialog({
           purchaseDate,
           warrantyYears: Number(get("warrantyYears")),
           price: get("price") ? Number(get("price")) : null,
+          repairCost: get("repairCost") ? Number(get("repairCost")) : null,
+          repairDate: get("repairCost") ? get("repairDate") || null : null,
           repairIssue: get("repairIssue") || null,
           charger,
           anydeskAddress,
@@ -645,6 +647,30 @@ export function AddLaptopDialog({
                 defaultValue={laptop?.price ?? ""}
               />
             </FormField>
+            {editing && (
+              <FormField label="Repair cost" htmlFor="repairCost" optional>
+                <Input
+                  id="repairCost"
+                  name="repairCost"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="Total spent on repairs"
+                  defaultValue={laptop?.repairCost ?? ""}
+                />
+              </FormField>
+            )}
+            {editing && (
+              <FormField label="Repair date" htmlFor="repairDate" optional>
+                <Input
+                  id="repairDate"
+                  name="repairDate"
+                  type="date"
+                  defaultValue={laptop?.repairDate ?? ""}
+                />
+              </FormField>
+            )}
             {editing && (
               <PendingRepairField defaultValue={laptop?.repairIssue ?? ""} />
             )}

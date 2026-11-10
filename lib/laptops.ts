@@ -28,6 +28,10 @@ export type Laptop = {
   warrantyYears: number;
   // Acquisition cost. Null for units added before this was tracked.
   price?: number | null;
+  // Total spent repairing this unit. Null if never repaired.
+  repairCost?: number | null;
+  // ISO date (yyyy-mm-dd) the repair was paid for.
+  repairDate?: string | null;
   status: LaptopStatus;
   // What's wrong and still needs fixing. Set while "In repair", and kept
   // when the laptop goes back into use before the repair is complete

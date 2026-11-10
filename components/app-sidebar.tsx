@@ -731,9 +731,6 @@ export function AppSidebar({
                 <span className="truncate text-base font-semibold text-sidebar-foreground">
                   {user.name}
                 </span>
-                <span className="truncate text-sm text-muted-foreground">
-                  IT Management
-                </span>
               </div>
             </DropdownMenuTrigger>
           </div>

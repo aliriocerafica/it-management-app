@@ -63,19 +63,76 @@ export function TicketDialog({
   );
 }
 
+// Edits an existing ticket's details, whatever its status. Controlled by the
+// table, which opens it from a row's menu.
+export function EditTicketDialog({
+  ticket,
+  open,
+  onOpenChange,
+  onSave,
+  itOfficers,
+}: {
+  ticket: Ticket | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (ticket: Ticket) => void;
+  itOfficers: string[];
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        {ticket && open && (
+          <TicketForm
+            key={ticket.id}
+            ticket={ticket}
+            itOfficers={itOfficers}
+            onSubmit={onSave}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// The ticket's requester as a picker entry, so editing starts from them.
+function requesterOf(ticket: Ticket): Employee {
+  return {
+    id: ticket.employeeId ?? "",
+    name: ticket.requesterName,
+    department: ticket.department ?? "",
+    title: "",
+    email: ticket.requesterEmail ?? "",
+  };
+}
+
 function TicketForm({
   itOfficers,
   onSubmit,
+  ticket,
 }: {
   itOfficers: string[];
   onSubmit: (ticket: Ticket) => void;
+  // Set when editing; otherwise the form creates a new ticket.
+  ticket?: Ticket;
 }) {
   // Chosen in the same employee picker as assigning an asset. The
   // department isn't shown but is still saved, from the picked employee.
-  const [requester, setRequester] = useState<Employee | null>(null);
+  const [requester, setRequester] = useState<Employee | null>(
+    ticket ? requesterOf(ticket) : null,
+  );
   const [picking, setPicking] = useState(false);
-  const [category, setCategory] = useState(ticketCategories[0]);
+  // Imported tickets keep free-text types; those edit as "Other".
+  const knownCategory = ticket && ticketCategories.includes(ticket.category);
+  const [category, setCategory] = useState(
+    !ticket ? ticketCategories[0] : knownCategory ? ticket.category : "Other",
+  );
   const [error, setError] = useState<string | null>(null);
+  // Someone no longer listed as an IT Officer stays selectable on their
+  // own tickets.
+  const assignees =
+    ticket?.assignedTo && !itOfficers.includes(ticket.assignedTo)
+      ? [ticket.assignedTo, ...itOfficers]
+      : itOfficers;
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -95,6 +152,28 @@ function TicketForm({
     }
     const issue = category === "Other" ? otherIssue : category;
     const description = get("description");
+
+    if (ticket) {
+      const subject = get("subject").replace(/\s+/g, " ");
+      if (!subject) {
+        setError("Give the ticket a subject.");
+        return;
+      }
+      // Status, dates and resolution are changed by the row actions.
+      onSubmit({
+        ...ticket,
+        employeeId: requester.id || null,
+        requesterName: name,
+        requesterEmail: requester.email?.trim() || null,
+        department: requester.department?.trim() || null,
+        category: issue,
+        subject,
+        description,
+        priority: get("priority") as RequestPriority,
+        assignedTo: get("assignedTo") || null,
+      });
+      return;
+    }
     // No subject field: a short description becomes the subject, otherwise
     // the type of issue does (the same as imported tickets).
     const short = description.replace(/\s+/g, " ");
@@ -124,10 +203,12 @@ function TicketForm({
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
       <DialogHeader className="border-b border-border px-6 py-5 pr-12">
         <DialogTitle className="text-lg font-semibold">
-          New troubleshooting ticket
+          {ticket ? `Edit ${ticketCode(ticket)}` : "New troubleshooting ticket"}
         </DialogTitle>
         <DialogDescription>
-          Log an IT issue an employee needs fixed.
+          {ticket
+            ? "Change who reported it, the issue, priority or who it's assigned to."
+            : "Log an IT issue an employee needs fixed."}
         </DialogDescription>
       </DialogHeader>
 
@@ -186,7 +267,7 @@ function TicketForm({
           <FormSelect
             id="ticketPriority"
             name="priority"
-            defaultValue="Normal"
+            defaultValue={ticket?.priority ?? "Normal"}
             options={requestPriorities.map((priority) => ({
               value: priority,
               label: priority,
@@ -203,7 +284,22 @@ function TicketForm({
               id="ticketOtherIssue"
               name="otherIssue"
               placeholder="e.g. CCTV, Google Form creation"
-              autoFocus
+              defaultValue={knownCategory ? "" : ticket?.category}
+              autoFocus={!ticket}
+              required
+            />
+          </FormField>
+        )}
+        {ticket && (
+          <FormField
+            label="Subject"
+            htmlFor="ticketSubject"
+            className="sm:col-span-2"
+          >
+            <Input
+              id="ticketSubject"
+              name="subject"
+              defaultValue={ticket.subject}
               required
             />
           </FormField>
@@ -217,10 +313,10 @@ function TicketForm({
           <FormSelect
             id="ticketAssignedTo"
             name="assignedTo"
-            defaultValue=""
+            defaultValue={ticket?.assignedTo ?? ""}
             options={[
               { value: "", label: "Unassigned" },
-              ...itOfficers.map((name) => ({ value: name, label: name })),
+              ...assignees.map((name) => ({ value: name, label: name })),
             ]}
           />
         </FormField>
@@ -235,6 +331,7 @@ function TicketForm({
             name="description"
             placeholder="e.g. Laptop won't connect to Wi-Fi since yesterday's update"
             rows={3}
+            defaultValue={ticket?.description}
             className={textareaClass}
           />
         </FormField>
@@ -250,8 +347,8 @@ function TicketForm({
           Cancel
         </DialogClose>
         <Button type="submit">
-          <PlusIcon />
-          Create ticket
+          {ticket ? <CheckIcon /> : <PlusIcon />}
+          {ticket ? "Save changes" : "Create ticket"}
         </Button>
       </DialogFooter>
 

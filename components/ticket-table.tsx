@@ -16,6 +16,7 @@ import {
   EllipsisIcon,
   FlagIcon,
   HashIcon,
+  PencilIcon,
   PlayIcon,
   RotateCcwIcon,
   SearchIcon,
@@ -41,7 +42,11 @@ import {
   rowsPerPageOptions,
 } from "@/components/laptop-inventory-table";
 import { Scrollable } from "@/components/scrollable";
-import { ResolutionTimeDialog, TicketDialog } from "@/components/ticket-dialog";
+import {
+  EditTicketDialog,
+  ResolutionTimeDialog,
+  TicketDialog,
+} from "@/components/ticket-dialog";
 import { UndoToast } from "@/components/undo-toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -253,6 +258,8 @@ export function TicketTable({
     action: TicketAction;
   } | null>(null);
   const [editingTime, setEditingTime] = useState<Ticket | null>(null);
+  // The ticket whose details are being edited.
+  const [editing, setEditing] = useState<Ticket | null>(null);
   // The ticket being closed, while choosing how its resolution time is set.
   const [closing, setClosing] = useState<Ticket | null>(null);
   // Archived tickets about to be permanently deleted.
@@ -425,6 +432,17 @@ export function TicketTable({
       [ticket],
       [{ ...ticket, status }],
       `Marked ${ticketCode(ticket)} as ${status.toLowerCase()}`,
+    );
+  }
+
+  function assign(ticket: Ticket, assignedTo: string | null) {
+    if ((ticket.assignedTo ?? null) === assignedTo) return;
+    change(
+      [ticket],
+      [{ ...ticket, assignedTo }],
+      assignedTo
+        ? `Assigned ${ticketCode(ticket)} to ${personName(assignedTo)}`
+        : `Unassigned ${ticketCode(ticket)}`,
     );
   }
 
@@ -676,6 +694,7 @@ export function TicketTable({
                 const PrimaryIcon = ticketActions[primary].icon;
                 const isActive =
                   closing?.id === ticket.id ||
+                  editing?.id === ticket.id ||
                   editingTime?.id === ticket.id ||
                   (confirming?.tickets.length === 1 &&
                     confirming.tickets[0].id === ticket.id) ||
@@ -749,11 +768,51 @@ export function TicketTable({
                       </span>
                     </td>
                     <td className={cn(cellClass, "hidden @2xl:table-cell")}>
-                      {(ticket.assignedTo && personName(ticket.assignedTo)) ?? (
-                        <span className="text-muted-foreground">
-                          Unassigned
-                        </span>
-                      )}
+                      {/* Click to reassign without opening the full editor. */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <button
+                              type="button"
+                              aria-label={`Change who ${code} is assigned to`}
+                              className="group -mx-1.5 inline-flex max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            />
+                          }
+                        >
+                          <span
+                            className={cn(
+                              "truncate",
+                              !ticket.assignedTo && "text-muted-foreground",
+                            )}
+                          >
+                            {ticket.assignedTo
+                              ? personName(ticket.assignedTo)
+                              : "Unassigned"}
+                          </span>
+                          <ChevronDownIcon className="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-56">
+                          <DropdownMenuRadioGroup
+                            value={ticket.assignedTo ?? ""}
+                            onValueChange={(value) =>
+                              assign(ticket, (value as string) || null)
+                            }
+                          >
+                            <DropdownMenuRadioItem value="">
+                              Unassigned
+                            </DropdownMenuRadioItem>
+                            {(ticket.assignedTo &&
+                            !itOfficers.includes(ticket.assignedTo)
+                              ? [ticket.assignedTo, ...itOfficers]
+                              : itOfficers
+                            ).map((name) => (
+                              <DropdownMenuRadioItem key={name} value={name}>
+                                {personName(name)}
+                              </DropdownMenuRadioItem>
+                            ))}
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                     {tab !== "Open" && (
                       <td
@@ -834,6 +893,10 @@ export function TicketTable({
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
                             {/* Only what the row's main button doesn't already do. */}
+                            <DropdownMenuItem onClick={() => setEditing(ticket)}>
+                              <PencilIcon />
+                              Edit ticket
+                            </DropdownMenuItem>
                             {ticket.status === "Open" && (
                               <DropdownMenuItem
                                 onClick={() => setStatus(ticket, "In progress")}
@@ -1054,6 +1117,19 @@ export function TicketTable({
             : `Delete ${pendingDelete.length} tickets`
         }
         onConfirm={() => deleteTickets(pendingDelete)}
+      />
+
+      <EditTicketDialog
+        ticket={editing}
+        open={editing !== null}
+        onOpenChange={(next) => !next && setEditing(null)}
+        itOfficers={itOfficers}
+        onSave={(next) => {
+          if (!editing) return;
+          const original = editing;
+          setEditing(null);
+          change([original], [next], `Updated ${ticketCode(original)}`);
+        }}
       />
 
       <ResolutionTimeDialog

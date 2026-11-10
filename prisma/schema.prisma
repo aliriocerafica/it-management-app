@@ -166,6 +166,10 @@ model Laptop {
   warrantyYears  Int
   // Acquisition cost. Null for units added before this was tracked.
   price          Float?
+  // Total spent repairing this unit (PHP). Null if never repaired.
+  repairCost     Float?
+  // When that repair was paid for; places it in monthly cost reports.
+  repairDate     DateTime?   @db.Date
   status         AssetStatus
   // What's wrong and still needs fixing. Kept after the laptop leaves
   // repair, so it can go back into use with a repair still pending.

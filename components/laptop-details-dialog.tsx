@@ -393,6 +393,13 @@ function LaptopDetails({
             {laptop.price != null && (
               <Detail label="Price">{formatPrice(laptop.price)}</Detail>
             )}
+            {laptop.repairCost != null && (
+              <Detail label="Repair cost">
+                {formatPrice(laptop.repairCost)}
+                {laptop.repairDate &&
+                  ` · ${formatDate(parseDate(laptop.repairDate))}`}
+              </Detail>
+            )}
             <Detail label="Age">
               {today ? formatAge(laptop.purchaseDate, today) : "—"}
             </Detail>
