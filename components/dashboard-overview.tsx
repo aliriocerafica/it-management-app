@@ -711,10 +711,21 @@ export function DashboardOverview({
 
   const activity = useMemo(() => {
     const rows: Activity[] = []
+    // Laptop and accessory ids are separate sequences, and one item can have
+    // two history rows that start the same day with no note. Source plus
+    // position keeps each row's key unique.
+    const activityKey = (
+      source: "laptop" | "accessory",
+      id: string,
+      index: number,
+      from: string,
+      to: string | null,
+      handler: string | null,
+    ) => `${source}:${id}:${index}:${from}:${to ?? ""}:${handler ?? ""}`
     for (const laptop of laptops) {
-      for (const entry of laptop.history) {
+      laptop.history.forEach((entry, index) => {
         rows.push({
-          key: `${laptop.id}:${entry.from}:${entry.note ?? ""}`,
+          key: activityKey("laptop", laptop.id, index, entry.from, entry.to, entry.handler),
           href: "/dashboard/laptops",
           tag: laptop.assetTag,
           title: `${laptop.brand} ${laptop.model}`,
@@ -722,13 +733,13 @@ export function DashboardOverview({
             || (entry.handler ? `Assigned to ${entry.handler}` : "With IT"),
           when: entry.from,
         })
-      }
+      })
     }
     for (const item of accessories) {
       const href = accessoryRoutes[item.kind]
-      for (const entry of item.history) {
+      item.history.forEach((entry, index) => {
         rows.push({
-          key: `${item.id}:${entry.from}:${entry.note ?? ""}`,
+          key: activityKey("accessory", item.id, index, entry.from, entry.to, entry.handler),
           href,
           tag: item.assetTag,
           title: `${item.brand} ${item.model}`,
@@ -736,7 +747,7 @@ export function DashboardOverview({
             || (entry.handler ? `Assigned to ${entry.handler}` : "Back in stock"),
           when: entry.from,
         })
-      }
+      })
     }
     return rows
       .sort((a, b) => (a.when < b.when ? 1 : a.when > b.when ? -1 : 0))
